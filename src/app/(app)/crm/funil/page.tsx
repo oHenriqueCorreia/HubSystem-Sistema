@@ -11,6 +11,7 @@ import { Board } from "@/features/crm/components/board";
 import { LeadFilters } from "@/features/crm/components/lead-filters";
 import { CrmViewTabs } from "@/features/crm/components/crm-tabs";
 import { PipelinePicker } from "@/features/crm/components/pipeline-picker";
+import { PipelineConfig } from "@/features/crm/components/pipeline-config";
 
 export const metadata: Metadata = { title: "Funil" };
 
@@ -41,6 +42,8 @@ export default async function FunilPage({ searchParams }: PageProps<"/crm/funil"
     etiqueta: str(sp.etiqueta),
     segmento: str(sp.segmento),
   });
+  const counts: Record<string, number> = {};
+  for (const c of cards) counts[c.stage_id] = (counts[c.stage_id] ?? 0) + 1;
 
   return (
     <>
@@ -49,13 +52,16 @@ export default async function FunilPage({ searchParams }: PageProps<"/crm/funil"
         title={`Funil · ${pipeline.name}`}
         description={`${cards.length} negócio(s). Arraste os cartões ou use o menu “…” para mudar de etapa.`}
         actions={
-          user.permissions["crm.leads.import"] ? (
-            <Button asChild variant="outline">
-              <Link href="/crm/importar">
-                <FileUp aria-hidden="true" /> Importar leads
-              </Link>
-            </Button>
-          ) : null
+          <>
+            {user.permissions["crm.pipeline.configure"] && <PipelineConfig pipeline={pipeline} counts={counts} />}
+            {user.permissions["crm.leads.import"] && (
+              <Button asChild variant="outline">
+                <Link href="/crm/importar">
+                  <FileUp aria-hidden="true" /> Importar leads
+                </Link>
+              </Button>
+            )}
+          </>
         }
       />
       <PageBody className="grid gap-4">

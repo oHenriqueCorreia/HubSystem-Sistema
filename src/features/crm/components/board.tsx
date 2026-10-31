@@ -36,6 +36,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatBRL } from "@/domain/shared/money";
+import { formatPhone } from "@/domain/shared/phone";
+import { formatRelative } from "@/domain/shared/dates";
 import { leadMapsUrl } from "@/domain/crm/maps";
 import { cn } from "cn";
 import { moveDeal } from "../actions";
@@ -229,7 +231,7 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
           },
         }}
       >
-        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6" role="list" aria-label={`Etapas do funil ${pipeline.name}`}>
+        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 sm:-mx-6 sm:snap-none sm:px-6" role="list" aria-label={`Etapas do funil ${pipeline.name}`}>
           {pipeline.stages.map((stage) => {
             const list = columns[stage.id] ?? [];
             const limit = limits[stage.id] ?? PAGE;
@@ -334,7 +336,7 @@ function Column({ stage, count, total, children }: { stage: Stage; count: number
     <section
       role="listitem"
       aria-label={`${stage.name}, ${count} negócio(s)`}
-      className={cn("flex w-72 shrink-0 snap-start flex-col rounded-xl bg-muted/60", isOver && "ring-2 ring-ring")}
+      className={cn("flex max-h-[calc(100dvh-15rem)] w-[min(18rem,85vw)] shrink-0 snap-start flex-col rounded-xl bg-muted/60", isOver && "ring-2 ring-ring")}
     >
       <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
         <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
@@ -346,7 +348,7 @@ function Column({ stage, count, total, children }: { stage: Stage; count: number
           {total > 0 && ` · ${formatBRL(total)}`}
         </span>
       </header>
-      <div ref={setNodeRef} className="grid min-h-24 content-start gap-2 px-2 pb-3">
+      <div ref={setNodeRef} className="grid min-h-24 flex-1 content-start gap-2 overflow-y-auto overscroll-y-contain px-2 pb-3">
         {count === 0 && <p className="rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">Solte um negócio aqui</p>}
         {children}
       </div>
@@ -450,6 +452,12 @@ function CardView({
         {[card.lead.city, card.lead.state].filter(Boolean).join(" – ") || "Sem cidade"}
         {ownerName && ` · ${ownerName}`}
       </p>
+      {(card.lead.phone_e164 || card.lead.email) && (
+        <p className="truncate text-xs text-muted-foreground">
+          {[card.lead.phone_e164 ? formatPhone(card.lead.phone_e164) : null, card.lead.email].filter(Boolean).join(" · ")}
+        </p>
+      )}
+      {card.lead.last_contact_at && <p className="text-xs text-muted-foreground">Último contato {formatRelative(card.lead.last_contact_at)}</p>}
       {!dragging && (
         <a
           href={leadMapsUrl(card.lead)}

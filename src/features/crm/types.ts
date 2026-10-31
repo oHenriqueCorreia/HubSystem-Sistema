@@ -83,6 +83,8 @@ export type Deal = {
 
 export type BoardCard = Deal & {
   lead: Pick<Lead, "id" | "name" | "address" | "neighborhood" | "city" | "state" | "place_id" | "gmb_url" | "phone_e164" | "whatsapp_e164" | "next_contact_at" | "last_contact_at"> & {
+    email?: string | null;
+    source?: string | null;
     tags: Tag[];
   };
 };

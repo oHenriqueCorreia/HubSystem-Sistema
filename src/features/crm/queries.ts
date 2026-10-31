@@ -127,7 +127,7 @@ export const getCrmLookups = cache(async (): Promise<CrmLookups> => {
   const supabase = await createClient();
   const [pipelines, stages, segments, tags, owners, reasons, templates, org] = await Promise.all([
     supabase.from("pipelines").select("id, name, position").eq("is_active", true).order("position"),
-    supabase.from("stages").select("id, pipeline_id, name, position, color, kind, sla_days").order("position"),
+    supabase.from("stages").select("id, pipeline_id, name, position, color, kind, sla_days").is("archived_at", null).order("position"),
     supabase.from("segments").select("id, name").order("name"),
     supabase.from("tags").select("id, name, color").is("archived_at", null).order("name"),
     supabase.from("profiles").select("id, full_name, email").eq("is_active", true).order("full_name"),
@@ -195,7 +195,7 @@ export async function getBoard(pipelineId: string, filters: Pick<LeadFilters, "q
     .select(
       `id, lead_id, pipeline_id, stage_id, owner_id, amount_cents, billing, position, expected_close_date,
        lost_reason_id, lost_note, won_at, lost_at, stage_changed_at,
-       lead:leads!inner(id, name, address, neighborhood, city, state, place_id, gmb_url, phone_e164, whatsapp_e164, next_contact_at, last_contact_at, segment_id, deleted_at,
+       lead:leads!inner(id, name, address, neighborhood, city, state, place_id, gmb_url, phone_e164, whatsapp_e164, email, source, next_contact_at, last_contact_at, segment_id, deleted_at,
                         lead_tags(tag_id, tag:tags(id, name, color)))`,
     )
     .eq("pipeline_id", pipelineId)
