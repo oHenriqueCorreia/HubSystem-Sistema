@@ -49,8 +49,15 @@ export function defineAction<S extends z.ZodType, T>(
   };
 }
 
-/** Lança o erro do Supabase para ser tratado por defineAction. */
-export function must<T>(res: { data: T; error: { code?: string; message: string } | null }): T {
+/**
+ * Lança o erro do Supabase para ser tratado por defineAction.
+ * Use .single() quando a linha for obrigatória: ausência vira erro PGRST116.
+ */
+export function must<T>(res: { data: T; error: { code?: string; message: string } | null }): NonNullable<T> {
   if (res.error) throw res.error;
-  return res.data;
+  if (res.data === null || res.data === undefined) {
+    // RPCs que retornam void chegam como null: tratamos como sucesso vazio.
+    return undefined as unknown as NonNullable<T>;
+  }
+  return res.data as NonNullable<T>;
 }

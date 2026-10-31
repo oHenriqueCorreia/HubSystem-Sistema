@@ -310,6 +310,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_create_role: {
+        Args: { p_copy_from?: string; p_description: string; p_name: string }
+        Returns: string
+      }
+      admin_set_user_role: {
+        Args: { p_role: string; p_user: string }
+        Returns: undefined
+      }
       admin_set_user_active: {
         Args: { p_active: boolean; p_user: string }
         Returns: undefined

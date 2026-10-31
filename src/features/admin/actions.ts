@@ -140,7 +140,7 @@ export const createRole = defineAction({ schema: createRoleSchema, permission: "
     }),
   );
   revalidatePath("/configuracoes/papeis");
-  return ok({ id: id as string }, "Papel criado.");
+  return ok({ id }, "Papel criado.");
 });
 
 export const deleteRole = defineAction({ schema: setRoleSchema.pick({ roleId: true }), permission: "admin.roles" }, async ({ roleId }) => {
