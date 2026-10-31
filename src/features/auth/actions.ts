@@ -11,7 +11,7 @@ export async function signIn(raw: unknown): Promise<ActionResult<never>> {
   if (!parsed.success) return fail("validation", "Revise os campos destacados.");
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data: auth, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
   });
@@ -26,11 +26,12 @@ export async function signIn(raw: unknown): Promise<ActionResult<never>> {
   }
 
   // Perfil desativado no HubSystem também bloqueia (além do bloqueio no Auth).
-  const { data: profile } = await supabase.from("profiles").select("is_active").maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("is_active").eq("id", auth.user.id).maybeSingle();
   if (!profile?.is_active) {
     await supabase.auth.signOut();
     return fail("forbidden", "Seu acesso está desativado. Fale com o administrador.");
   }
+  await supabase.from("profiles").update({ last_seen_at: new Date().toISOString() }).eq("id", auth.user.id);
 
   redirect(safeNext(parsed.data.next));
 }
