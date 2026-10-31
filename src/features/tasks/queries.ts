@@ -229,14 +229,37 @@ export async function getEvent(id: string): Promise<CalendarEvent | null> {
 
 // --- Cadências -----------------------------------------------------------------
 
-export type CadenceStep = { id: string; position: number; day_offset: number; time_of_day: string; channel: string; title: string; instruction: string; message: string };
-export type CadenceTemplate = { id: string; name: string; description: string; is_active: boolean; steps: CadenceStep[]; enrollments: number };
+export type CadenceStep = {
+  id: string;
+  position: number;
+  day_offset: number;
+  time_of_day: string;
+  channel: string;
+  title: string;
+  instruction: string;
+  message: string;
+  auto_send: boolean;
+  whatsapp_template: string | null;
+  template_language: string;
+  add_tag_id: string | null;
+  move_to_stage_id: string | null;
+};
+export type CadenceTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  require_consent: boolean;
+  send_window: { start: string; end: string; days: number[] };
+  steps: CadenceStep[];
+  enrollments: number;
+};
 
 export async function listCadences(): Promise<CadenceTemplate[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("cadence_templates")
-    .select("id, name, description, is_active, cadence_steps(id, position, day_offset, time_of_day, channel, title, instruction, message), cadence_enrollments(count)")
+    .select("id, name, description, is_active, require_consent, send_window, cadence_steps(id, position, day_offset, time_of_day, channel, title, instruction, message, auto_send, whatsapp_template, template_language, add_tag_id, move_to_stage_id), cadence_enrollments(count)")
     .order("name");
   if (error) throw error;
   return ((data ?? []) as Row[]).map((t) => ({

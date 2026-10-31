@@ -6,6 +6,8 @@ import { EmptyState } from "@/components/app/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { listCadences } from "@/features/tasks/queries";
+import { getCrmLookups } from "@/features/crm/queries";
+import { RunCadencesButton } from "@/features/tasks/components/run-cadences-button";
 import { CadenceEditor } from "@/features/tasks/components/cadence-editor";
 import { CADENCE_PRESETS } from "@/features/tasks/cadence-presets";
 import { CHANNEL_LABEL, type Channel } from "@/features/tasks/types";
@@ -15,10 +17,14 @@ export const metadata: Metadata = { title: "Cadências" };
 export default async function CadenciasPage() {
   const user = await requirePermission("crm.cadences.read");
   const canManage = Boolean(user.permissions["crm.cadences.manage"]);
-  const cadences = await listCadences();
+  const [cadences, lookups] = await Promise.all([listCadences(), getCrmLookups()]);
+  const tags = lookups.tags.map((t) => ({ id: t.id, name: t.name }));
+  const stages = lookups.pipelines.flatMap((p) => p.stages.map((st) => ({ id: st.id, label: `${p.name} · ${st.name}` })));
 
   const create = canManage ? (
     <CadenceEditor
+      tags={tags}
+      stages={stages}
       trigger={
         <Button>
           <Plus aria-hidden="true" /> Nova cadência
@@ -33,14 +39,19 @@ export default async function CadenciasPage() {
         breadcrumbs={[{ label: "Comercial" }, { label: "Cadências" }]}
         title="Cadências de prospecção"
         description="Planeje contatos com objetivo, contexto e próximo passo. Inicie uma sequência pela página de cada lead."
-        actions={create}
+        actions={
+          <>
+            {canManage && <RunCadencesButton />}
+            {create}
+          </>
+        }
       />
       <PageBody className="grid gap-6">
         <section className="grid gap-4 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-surface to-surface p-5 sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="grid gap-2">
             <p className="text-xs font-semibold tracking-[0.16em] text-primary uppercase">Playbook comercial</p>
             <h2 className="text-xl font-semibold tracking-tight">Cada contato precisa de um motivo.</h2>
-            <p className="max-w-2xl text-sm text-muted-foreground">Defina o objetivo da etapa, personalize a mensagem e registre a resposta no lead. As etapas geram tarefas; o envio de mensagens continua sob seu controle.</p>
+            <p className="max-w-2xl text-sm text-muted-foreground">Defina o objetivo da etapa, personalize a mensagem e registre a resposta no lead. As etapas geram tarefas. Etapas marcadas como automáticas enviam modelos aprovados do WhatsApp no horário permitido, só para quem deu consentimento.</p>
           </div>
           <dl className="flex gap-5 text-sm">
             <div><dt className="text-muted-foreground">Ativas</dt><dd className="text-xl font-semibold tabular">{cadences.filter((c) => c.is_active).length}</dd></div>
@@ -63,7 +74,7 @@ export default async function CadenciasPage() {
                     <p className="text-sm text-muted-foreground">{preset.summary}</p>
                     <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Quando usar:</span> {preset.whenToUse}</p>
                   </div>
-                  <CadenceEditor starter={preset.values} trigger={<Button variant="outline" className="w-full justify-between">Usar este roteiro <ArrowUpRight aria-hidden="true" /></Button>} />
+                  <CadenceEditor starter={preset.values} tags={tags} stages={stages} trigger={<Button variant="outline" className="w-full justify-between">Usar este roteiro <ArrowUpRight aria-hidden="true" /></Button>} />
                 </article>
               ))}
             </div>
@@ -93,6 +104,8 @@ export default async function CadenciasPage() {
                   {canManage && (
                     <CadenceEditor
                       template={c}
+                      tags={tags}
+                      stages={stages}
                       trigger={
                         <Button variant="ghost" size="sm">
                           <Pencil aria-hidden="true" /> Editar

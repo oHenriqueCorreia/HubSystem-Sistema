@@ -82,6 +82,9 @@ export const cadenceTemplateSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome.").max(80),
   description: z.string().trim().max(500).default(""),
   isActive: z.boolean().default(true),
+  requireConsent: z.boolean().default(true),
+  windowStart: z.string().regex(/^\d{2}:\d{2}$/, "Hora inválida.").default("08:00"),
+  windowEnd: z.string().regex(/^\d{2}:\d{2}$/, "Hora inválida.").default("20:00"),
   steps: z
     .array(
       z.object({
@@ -91,13 +94,19 @@ export const cadenceTemplateSchema = z.object({
         title: z.string().trim().min(2, "Informe o título.").max(120),
         instruction: z.string().trim().max(2000).default(""),
         message: z.string().trim().max(2000).default(""),
-      }),
+        autoSend: z.boolean().default(false),
+        whatsappTemplate: z.string().trim().max(200).nullable().default(null),
+        templateLanguage: z.string().trim().max(20).default("pt_BR"),
+        addTagId: z.uuid().nullable().default(null),
+        moveToStageId: z.uuid().nullable().default(null),
+      }).refine((s) => !s.autoSend || s.channel !== "whatsapp" || Boolean(s.whatsappTemplate), { path: ["whatsappTemplate"], message: "Informe o nome do modelo aprovado." }),
     )
     .min(1, "Adicione pelo menos uma etapa.")
     .max(30),
 });
 
 export type CadenceTemplateValues = z.input<typeof cadenceTemplateSchema>;
+export const enrollmentStatusSchema = z.object({ id: z.uuid(), leadId: z.uuid(), status: z.enum(["ativa", "pausada", "cancelada"]) });
 
 export const enrollSchema = z.object({ leadId: z.uuid(), templateId: z.uuid(), startDate: z.iso.date().nullable().optional() });
 

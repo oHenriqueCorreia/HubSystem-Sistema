@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import { fail, ok } from "@/domain/shared/result";
 import { DEFAULT_WORK_HOURS, freeSlots, mergeIntervals, zonedIso, type Interval, type WorkHours } from "@/domain/calendar";
 import { googleBusy, syncUserQuietly } from "@/lib/google/calendar";
+import { runCadences } from "@/lib/cadence-runner";
+import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
 import {
   availabilitySchema,
   cadenceTemplateSchema,
@@ -15,6 +17,7 @@ import {
   checklistToggleSchema,
   commentSchema,
   enrollSchema,
+  enrollmentStatusSchema,
   eventFormSchema,
   idSchema,
   taskFormSchema,
@@ -261,15 +264,25 @@ export const restoreEvent = defineAction({ schema: idSchema, permission: "calend
 
 // --- Cadências ---------------------------------------------------------------
 
+function templateRow(input: z.output<typeof cadenceTemplateSchema>) {
+  return {
+    name: input.name,
+    description: input.description,
+    is_active: input.isActive,
+    require_consent: input.requireConsent,
+    send_window: { start: input.windowStart, end: input.windowEnd, days: [1, 2, 3, 4, 5] },
+  };
+}
+
 export const saveCadence = defineAction({ schema: cadenceTemplateSchema, permission: "crm.cadences.manage" }, async (input) => {
   const supabase = await createClient();
   let id = input.id;
   if (id) {
-    must(await supabase.from("cadence_templates").update({ name: input.name, description: input.description, is_active: input.isActive }).eq("id", id));
+    must(await supabase.from("cadence_templates").update({ ...templateRow(input) }).eq("id", id));
     // Etapas usadas por tarefas existentes ficam desvinculadas (set null), sem perder as tarefas.
     must(await supabase.from("cadence_steps").delete().eq("template_id", id));
   } else {
-    const t = must(await supabase.from("cadence_templates").insert({ name: input.name, description: input.description, is_active: input.isActive }).select("id").single()) as { id: string };
+    const t = must(await supabase.from("cadence_templates").insert({ ...templateRow(input) }).select("id").single()) as { id: string };
     id = t.id;
   }
   must(
@@ -283,6 +296,11 @@ export const saveCadence = defineAction({ schema: cadenceTemplateSchema, permiss
         title: s.title,
         instruction: s.instruction,
         message: s.message,
+        auto_send: s.autoSend,
+        whatsapp_template: s.channel === "whatsapp" && s.autoSend ? s.whatsappTemplate : null,
+        template_language: s.templateLanguage || "pt_BR",
+        add_tag_id: s.addTagId,
+        move_to_stage_id: s.moveToStageId,
       })),
     ),
   );
@@ -413,4 +431,22 @@ export const getAvailability = defineAction({ schema: availabilitySchema, permis
   const workHours = prefs.work_hours ?? DEFAULT_WORK_HOURS;
   const busy = mergeIntervals([...internal, ...(google ?? [])]);
   return ok<Availability>({ busy, free: freeSlots(input.date, busy, workHours, input.minutes), source: google ? "google" : "interno", workHours });
+});
+
+// --- Cadências: controle por contato e execução manual -----------------------------
+
+export const setEnrollmentStatus = defineAction({ schema: enrollmentStatusSchema, permission: "tasks.update" }, async (input) => {
+  const supabase = await createClient();
+  must(await supabase.rpc("set_enrollment_status", { p_enrollment: input.id, p_status: input.status }));
+  revalidateWork(input.leadId);
+  return ok(null, input.status === "ativa" ? "Cadência retomada." : input.status === "pausada" ? "Cadência pausada para este contato." : "Contato removido da cadência.");
+});
+
+/** Executa agora as etapas automáticas vencidas da organização (além do cron diário). */
+export const runCadencesNow = defineAction({ schema: z.object({}), permission: "crm.cadences.manage" }, async (_input, { user }) => {
+  if (!process.env.SUPABASE_SECRET_KEY) return fail("business_rule", "Automação indisponível: falta SUPABASE_SECRET_KEY no servidor.");
+  if (!(await withinRateLimit(`cadences:${user.organizationId}`, 12, 3600))) return fail("business_rule", RATE_LIMIT_MESSAGE);
+  const r = await runCadences(user.organizationId);
+  revalidatePath("/crm/cadencias");
+  return ok(r, `Processado: ${r.enviados} enviado(s), ${r.executados} ação(ões), ${r.bloqueados} bloqueado(s), ${r.erros} erro(s), ${r.aguardando} aguardando horário.`);
 });

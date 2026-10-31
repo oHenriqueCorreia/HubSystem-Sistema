@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime, todayLocal } from "@/domain/shared/dates";
-import { cancelEnrollment, enrollLead } from "../actions";
+import { cancelEnrollment, enrollLead, setEnrollmentStatus } from "../actions";
 import { TaskItem } from "./task-item";
 import { TaskSheet } from "./task-sheet";
 import { TaskFormDialog } from "./task-form-dialog";
@@ -49,7 +49,7 @@ export function LeadWorkPanel({
   const [pending, startTransition] = useTransition();
   const open = tasks.filter((t) => t.status === "a_fazer" || t.status === "em_andamento");
   const closed = tasks.filter((t) => !open.includes(t)).slice(0, 5);
-  const active = enrollments.filter((e) => e.status === "ativa");
+  const active = enrollments.filter((e) => e.status === "ativa" || e.status === "pausada");
   const current = selected ? (tasks.find((t) => t.id === selected.id) ?? selected) : null;
 
   return (
@@ -137,6 +137,23 @@ export function LeadWorkPanel({
               <li key={e.id}>
                 <Badge variant="secondary" className="gap-1">
                   <Repeat className="size-3" aria-hidden="true" /> {e.template?.name}
+                  {e.status === "pausada" && <span className="text-warning">(pausada)</span>}
+                  <button
+                    type="button"
+                    className="ml-1 rounded px-1 text-xs underline-offset-2 hover:underline"
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        const res = await setEnrollmentStatus({ id: e.id, leadId: lead.id, status: e.status === "ativa" ? "pausada" : "ativa" });
+                        if (res.ok) {
+                          toast.success(res.message);
+                          router.refresh();
+                        } else toast.error(res.message);
+                      })
+                    }
+                  >
+                    {e.status === "ativa" ? "Pausar" : "Retomar"}
+                  </button>
                   <button
                     type="button"
                     className="ml-1 rounded hover:text-danger"

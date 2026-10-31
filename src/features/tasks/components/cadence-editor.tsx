@@ -6,6 +6,7 @@ import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { ArrowDown, ArrowUp, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +18,21 @@ import { cadenceTemplateSchema, type CadenceTemplateValues } from "../schemas";
 import { CHANNEL_LABEL } from "../types";
 import type { CadenceTemplate } from "../queries";
 
-export function CadenceEditor({ trigger, template, starter }: { trigger: ReactNode; template?: CadenceTemplate; starter?: CadenceTemplateValues }) {
+const NONE = "__nenhum__";
+
+export function CadenceEditor({
+  trigger,
+  template,
+  starter,
+  tags = [],
+  stages = [],
+}: {
+  trigger: ReactNode;
+  template?: CadenceTemplate;
+  starter?: CadenceTemplateValues;
+  tags?: { id: string; name: string }[];
+  stages?: { id: string; label: string }[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -29,6 +44,9 @@ export function CadenceEditor({ trigger, template, starter }: { trigger: ReactNo
       name: template?.name ?? starter?.name ?? "",
       description: template?.description ?? starter?.description ?? "",
       isActive: template?.is_active ?? starter?.isActive ?? true,
+      requireConsent: template?.require_consent ?? true,
+      windowStart: template?.send_window?.start ?? "08:00",
+      windowEnd: template?.send_window?.end ?? "20:00",
       steps: template?.steps.map((s) => ({
         dayOffset: s.day_offset,
         timeOfDay: s.time_of_day.slice(0, 5),
@@ -36,6 +54,11 @@ export function CadenceEditor({ trigger, template, starter }: { trigger: ReactNo
         title: s.title,
         instruction: s.instruction,
         message: s.message,
+        autoSend: s.auto_send,
+        whatsappTemplate: s.whatsapp_template,
+        templateLanguage: s.template_language,
+        addTagId: s.add_tag_id,
+        moveToStageId: s.move_to_stage_id,
       })) ?? starter?.steps ?? [{ dayOffset: 0, timeOfDay: "09:00", channel: "whatsapp", title: "Primeiro contato", instruction: "", message: "" }],
     },
   });
@@ -75,6 +98,19 @@ export function CadenceEditor({ trigger, template, starter }: { trigger: ReactNo
             <FormField label="Nome" error={errors.name?.message} required>
               <Input {...form.register("name")} />
             </FormField>
+            <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-3">
+              <FormField label="Envios automáticos a partir de" error={errors.windowStart?.message}>
+                <Input type="time" {...form.register("windowStart")} />
+              </FormField>
+              <FormField label="Até" error={errors.windowEnd?.message}>
+                <Input type="time" {...form.register("windowEnd")} />
+              </FormField>
+              <label className="flex items-center gap-2 self-end pb-2 text-sm">
+                <Controller control={form.control} name="requireConsent" render={({ field }) => <Checkbox checked={field.value ?? true} onCheckedChange={(v) => field.onChange(Boolean(v))} />} />
+                Exigir consentimento
+              </label>
+              <p className="text-xs text-muted-foreground sm:col-span-3">Dias úteis, horário de Brasília. Quem pede para parar ou responde tem a cadência bloqueada ou pausada automaticamente.</p>
+            </div>
             <label className="flex items-center gap-2 self-end pb-2 text-sm">
               <Controller control={form.control} name="isActive" render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} />} />
               Ativa
@@ -140,6 +176,71 @@ export function CadenceEditor({ trigger, template, starter }: { trigger: ReactNo
                   <FormField label="Mensagem sugerida" hint="{nome} e {empresa} são preenchidos com os dados do lead ao iniciar a cadência." optional>
                     <Textarea rows={2} {...form.register(`steps.${i}.message`)} />
                   </FormField>
+                  <fieldset className="grid gap-2 rounded-md border border-dashed p-2">
+                    <legend className="px-1 text-xs font-medium text-muted-foreground">Automação (opcional)</legend>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Controller
+                        control={form.control}
+                        name={`steps.${i}.autoSend`}
+                        render={({ field }) => <Checkbox checked={field.value ?? false} onCheckedChange={(v) => field.onChange(Boolean(v))} />}
+                      />
+                      Executar automaticamente no horário
+                    </label>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_7rem]">
+                      <FormField label="Modelo aprovado do WhatsApp" hint="Nome exato do modelo na Meta. {{1}} = primeiro nome, {{2}} = empresa." error={errors.steps?.[i]?.whatsappTemplate?.message} optional>
+                        <Input placeholder="ex.: primeiro_contato" {...form.register(`steps.${i}.whatsappTemplate`, { setValueAs: (v) => v || null })} />
+                      </FormField>
+                      <FormField label="Idioma" optional>
+                        <Input {...form.register(`steps.${i}.templateLanguage`)} />
+                      </FormField>
+                    </div>
+                    {tags.length > 0 && (
+                      <FormField label="Adicionar etiqueta ao lead" optional>
+                        <Controller
+                          control={form.control}
+                          name={`steps.${i}.addTagId`}
+                          render={({ field }) => (
+                            <Select value={field.value ?? NONE} onValueChange={(v) => field.onChange(v === NONE ? null : v)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NONE}>Nenhuma</SelectItem>
+                                {tags.map((t) => (
+                                  <SelectItem key={t.id} value={t.id}>
+                                    {t.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                      </FormField>
+                    )}
+                    {stages.length > 0 && (
+                      <FormField label="Mover o negócio para a etapa" optional>
+                        <Controller
+                          control={form.control}
+                          name={`steps.${i}.moveToStageId`}
+                          render={({ field }) => (
+                            <Select value={field.value ?? NONE} onValueChange={(v) => field.onChange(v === NONE ? null : v)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NONE}>Não mover</SelectItem>
+                                {stages.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                      </FormField>
+                    )}
+                  </fieldset>
                 </li>
               ))}
             </ol>
