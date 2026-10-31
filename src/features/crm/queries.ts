@@ -62,10 +62,10 @@ function safeTerm(q: string) {
   return q.replace(/[%_\\]/g, (c) => `\\${c}`).replace(/[,()]/g, " ").trim();
 }
 
-export async function listLeads(filters: LeadFilters, pipelineId?: string) {
+export async function listLeads(filters: LeadFilters, pipelineId?: string, pageSize = PAGE_SIZE) {
   const supabase = await createClient();
   const page = Math.max(1, filters.pagina ?? 1);
-  const from = (page - 1) * PAGE_SIZE;
+  const from = (page - 1) * pageSize;
 
   const needsTag = Boolean(filters.etiqueta);
   const needsStage = Boolean(filters.etapa);
@@ -113,13 +113,13 @@ export async function listLeads(filters: LeadFilters, pipelineId?: string) {
       query = query.order("created_at", { ascending: false });
   }
 
-  const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1);
+  const { data, error, count } = await query.range(from, from + pageSize - 1);
   if (error) throw error;
   return {
     rows: (data as unknown as Row[]).map((r) => toListItem(r, pipelineId)),
     total: count ?? 0,
     page,
-    pageCount: Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE)),
+    pageCount: Math.max(1, Math.ceil((count ?? 0) / pageSize)),
   };
 }
 
@@ -135,6 +135,8 @@ export const getCrmLookups = cache(async (): Promise<CrmLookups> => {
     supabase.from("message_templates").select("id, name, body, stage_id").order("position"),
     supabase.from("organizations").select("settings").maybeSingle(),
   ]);
+
+  for (const result of [pipelines, stages, segments, tags, owners, reasons, templates, org]) if (result.error) throw result.error;
 
   const stageRows = (stages.data ?? []) as Stage[];
   const settings = (org.data?.settings ?? {}) as Record<string, unknown>;
@@ -193,7 +195,7 @@ export async function getBoard(pipelineId: string, filters: Pick<LeadFilters, "q
     .select(
       `id, lead_id, pipeline_id, stage_id, owner_id, amount_cents, billing, position, expected_close_date,
        lost_reason_id, lost_note, won_at, lost_at, stage_changed_at,
-       lead:leads!inner(id, name, city, state, phone_e164, whatsapp_e164, next_contact_at, last_contact_at, segment_id, deleted_at,
+       lead:leads!inner(id, name, address, neighborhood, city, state, place_id, gmb_url, phone_e164, whatsapp_e164, next_contact_at, last_contact_at, segment_id, deleted_at,
                         lead_tags(tag_id, tag:tags(id, name, color)))`,
     )
     .eq("pipeline_id", pipelineId)

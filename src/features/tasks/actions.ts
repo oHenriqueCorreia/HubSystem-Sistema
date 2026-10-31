@@ -80,8 +80,9 @@ export const setTaskStatus = defineAction({ schema: taskStatusSchema, permission
 
 export const moveTask = defineAction({ schema: taskMoveSchema, permission: "tasks.update" }, async (input) => {
   const supabase = await createClient();
-  must(await supabase.from("tasks").update({ status: input.status, position: input.position }).eq("id", input.id));
-  revalidateWork();
+  const changed = must(await supabase.from("tasks").update({ status: input.status, position: input.position }).eq("id", input.id).select("id, lead_id")) as { id: string; lead_id: string | null }[];
+  if (!changed.length) return fail("forbidden", "Você não pode mover esta tarefa.");
+  revalidateWork(changed[0].lead_id);
   return ok(null);
 });
 

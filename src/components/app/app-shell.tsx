@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { BrandMark } from "@/components/app/brand";
+import { Brand, BrandMark } from "@/components/app/brand";
 import { NavIconView } from "@/components/app/nav-icon";
 import { signOut } from "@/features/auth/actions";
 import type { NavGroup, NavItem } from "@/config/navigation";
@@ -86,9 +86,9 @@ export function AppShell({
       <Sidebar collapsible="icon" aria-label="Navegação principal">
         <SidebarHeader>
           <Link href="/inicio" className="flex items-center gap-2 rounded-md p-1.5 outline-none">
-            <BrandMark className="size-7 shrink-0" />
+            <BrandMark className="hidden size-7 shrink-0 group-data-[collapsible=icon]:inline-block" />
             <span className="grid leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="font-semibold" translate="no">HubSystem</span>
+              <Brand className="h-9 w-36" />
               <span className="truncate text-xs text-muted-foreground">{organizationName}</span>
             </span>
           </Link>

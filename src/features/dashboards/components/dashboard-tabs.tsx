@@ -6,8 +6,7 @@ import { cn } from "cn";
 
 export function DashboardTabs({ commercial, financial }: { commercial: boolean; financial: boolean }) {
   const pathname = usePathname();
-  const tabs = [commercial && { href: "/dashboards/comercial", label: "Comercial" }, financial && { href: "/dashboards/financeiro", label: "Financeiro" }].filter(Boolean) as { href: string; label: string }[];
-  if (tabs.length < 2) return null;
+  const tabs = [{ href: "/dashboards", label: "Visão geral" }, commercial && { href: "/dashboards/comercial", label: "Comercial" }, financial && { href: "/dashboards/financeiro", label: "Financeiro" }].filter(Boolean) as { href: string; label: string }[];
   return (
     <nav aria-label="Dashboards" className="flex gap-1 border-b">
       {tabs.map((t) => (

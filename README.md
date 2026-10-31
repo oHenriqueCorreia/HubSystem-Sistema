@@ -40,7 +40,17 @@ npm run dev                  # http://localhost:3000
 | `CRON_SECRET` | qualquer valor aleatório longo | Protege `/api/cron/*` (Vercel Cron) |
 | `SUPABASE_DB_URL` | Supabase → Connect → Session pooler | Só para `npm run db:*` |
 
-No Google Cloud, cadastre a URI de redirecionamento `https://hubsystem.vercel.app/api/google/oauth/callback` (e a de localhost, se for testar).
+### Ativar convites e Google Agenda
+
+1. Em **Supabase → Project Settings → API Keys**, copie uma chave **Secret** (`sb_secret_...`) do projeto HubSystem para `SUPABASE_SECRET_KEY`. Ela fica somente no servidor, nunca em variável `NEXT_PUBLIC_`.
+2. No **Google Cloud**, selecione ou crie um projeto, ative a **Google Calendar API** e configure **Google Auth platform → Branding / Audience / Data Access**. O sistema solicita `openid`, `email` e `https://www.googleapis.com/auth/calendar.events`. Para um aplicativo **External** em teste, adicione a conta que conectará a agenda em **Audience → Test users**.
+3. Em **Google Auth platform → Clients**, crie um cliente OAuth do tipo **Web application**. Em **Authorized redirect URIs**, cadastre exatamente `http://localhost:3000/api/google/oauth/callback` para testes locais e `https://hubsystem-phi.vercel.app/api/google/oauth/callback` para a produção atual. Se o domínio mudar, atualize esta URI e `NEXT_PUBLIC_SITE_URL` juntos.
+4. Copie o ID e o segredo do cliente para `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env.local`. Configure as mesmas variáveis, além de `SUPABASE_SECRET_KEY`, `TOKEN_ENCRYPTION_KEY` e `CRON_SECRET`, nas variáveis de ambiente da hospedagem; depois faça um novo deploy. Use a mesma `TOKEN_ENCRYPTION_KEY` para não perder acesso aos tokens já cifrados.
+5. Entre no HubSystem e acesse **Configurações → Integrações → Conectar Google Agenda**. Crie um evento de teste, use **Sincronizar agora** e confirme que ele aparece no Google Agenda. Para testar convites, use **Configurações → Usuários → Convidar**.
+
+O cron diário em `vercel.json` requer `CRON_SECRET` na Vercel; a plataforma envia esse segredo automaticamente no cabeçalho de autorização.
+
+Referências: [chaves do Supabase](https://supabase.com/docs/guides/getting-started/api-keys), [ativação da API Calendar](https://developers.google.com/workspace/guides/enable-apis), [consentimento OAuth](https://developers.google.com/workspace/guides/configure-oauth-consent), [OAuth para servidor web](https://developers.google.com/identity/protocols/oauth2/web-server) e [cron da Vercel](https://vercel.com/docs/cron-jobs/manage-cron-jobs).
 
 ## Banco de dados
 

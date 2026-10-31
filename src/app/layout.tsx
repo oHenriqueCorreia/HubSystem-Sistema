@@ -1,14 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans } from "next/font/google";
 import { Providers } from "@/components/app/providers";
 import "./globals.css";
-
-const plex = IBM_Plex_Sans({
-  variable: "--font-plex-sans",
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: { default: "HubSystem", template: "%s · HubSystem" },
@@ -16,7 +8,10 @@ export const metadata: Metadata = {
   applicationName: "HubSystem",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "HubSystem", statusBarStyle: "default" },
-  icons: { icon: [{ url: "/icons/192", type: "image/png" }], apple: [{ url: "/icons/apple" }] },
+  icons: {
+    icon: [{ url: "/brand/favicon.ico", sizes: "any" }, { url: "/brand/favicon-32.png", type: "image/png", sizes: "32x32" }],
+    apple: [{ url: "/brand/apple-touch-icon.png", sizes: "180x180" }],
+  },
   formatDetection: { telephone: false },
 };
 
@@ -25,14 +20,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f6f3" },
-    { media: "(prefers-color-scheme: dark)", color: "#121614" },
+    { media: "(prefers-color-scheme: light)", color: "#f3f6fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#07162d" },
   ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="pt-BR" className={`${plex.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="pt-BR" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full">
         <Providers>{children}</Providers>
       </body>

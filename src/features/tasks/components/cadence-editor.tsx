@@ -17,7 +17,7 @@ import { cadenceTemplateSchema, type CadenceTemplateValues } from "../schemas";
 import { CHANNEL_LABEL } from "../types";
 import type { CadenceTemplate } from "../queries";
 
-export function CadenceEditor({ trigger, template }: { trigger: ReactNode; template?: CadenceTemplate }) {
+export function CadenceEditor({ trigger, template, starter }: { trigger: ReactNode; template?: CadenceTemplate; starter?: CadenceTemplateValues }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -26,9 +26,9 @@ export function CadenceEditor({ trigger, template }: { trigger: ReactNode; templ
   const form = useForm<CadenceTemplateValues>({
     defaultValues: {
       id: template?.id,
-      name: template?.name ?? "",
-      description: template?.description ?? "",
-      isActive: template?.is_active ?? true,
+      name: template?.name ?? starter?.name ?? "",
+      description: template?.description ?? starter?.description ?? "",
+      isActive: template?.is_active ?? starter?.isActive ?? true,
       steps: template?.steps.map((s) => ({
         dayOffset: s.day_offset,
         timeOfDay: s.time_of_day.slice(0, 5),
@@ -36,7 +36,7 @@ export function CadenceEditor({ trigger, template }: { trigger: ReactNode; templ
         title: s.title,
         instruction: s.instruction,
         message: s.message,
-      })) ?? [{ dayOffset: 0, timeOfDay: "09:00", channel: "whatsapp", title: "Primeiro contato", instruction: "", message: "" }],
+      })) ?? starter?.steps ?? [{ dayOffset: 0, timeOfDay: "09:00", channel: "whatsapp", title: "Primeiro contato", instruction: "", message: "" }],
     },
   });
   const steps = useFieldArray({ control: form.control, name: "steps" });
@@ -64,7 +64,7 @@ export function CadenceEditor({ trigger, template }: { trigger: ReactNode; templ
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{template ? "Editar cadência" : "Nova cadência"}</DialogTitle>
+          <DialogTitle>{template ? "Editar cadência" : starter ? `Criar: ${starter.name}` : "Nova cadência"}</DialogTitle>
           <DialogDescription>
             Cada etapa vira uma tarefa com data e hora ao inscrever um lead. O envio de mensagens é sempre manual. Alterar o modelo não muda tarefas já criadas.
           </DialogDescription>
@@ -137,7 +137,7 @@ export function CadenceEditor({ trigger, template }: { trigger: ReactNode; templ
                   <FormField label="Instrução" optional>
                     <Input {...form.register(`steps.${i}.instruction`)} />
                   </FormField>
-                  <FormField label="Mensagem sugerida" hint="Variáveis: {nome}, {empresa}" optional>
+                  <FormField label="Mensagem sugerida" hint="{nome} e {empresa} são preenchidos com os dados do lead ao iniciar a cadência." optional>
                     <Textarea rows={2} {...form.register(`steps.${i}.message`)} />
                   </FormField>
                 </li>

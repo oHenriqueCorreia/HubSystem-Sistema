@@ -20,7 +20,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Clock, GripVertical, MoreHorizontal } from "lucide-react";
+import { Clock, ExternalLink, GripVertical, MapPin, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -36,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatBRL } from "@/domain/shared/money";
+import { leadMapsUrl } from "@/domain/crm/maps";
 import { cn } from "cn";
 import { moveDeal } from "../actions";
 import { isStale, positionBetween, type BoardCard, type CrmLookups, type Pipeline, type Stage } from "../types";
@@ -449,6 +450,17 @@ function CardView({
         {[card.lead.city, card.lead.state].filter(Boolean).join(" – ") || "Sem cidade"}
         {ownerName && ` · ${ownerName}`}
       </p>
+      {!dragging && (
+        <a
+          href={leadMapsUrl(card.lead)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-fit items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          aria-label={`Abrir ${card.lead.name} no Google Maps (nova aba)`}
+        >
+          <MapPin className="size-3.5" aria-hidden="true" /> Abrir no Google Maps <ExternalLink className="size-3" aria-hidden="true" />
+        </a>
+      )}
       <div className="flex flex-wrap items-center gap-1">
         <NextContactBadge at={card.lead.next_contact_at} compact />
         {stale && (

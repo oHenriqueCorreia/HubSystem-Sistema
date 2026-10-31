@@ -16,6 +16,7 @@ import {
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import { cn } from "cn";
 import { dayKey } from "@/domain/calendar";
 import { todayLocal } from "@/domain/shared/dates";
@@ -24,6 +25,7 @@ import { moveTask } from "../actions";
 import { STATUS_LABEL, type Task, type TaskStatus } from "../types";
 import { TaskItem } from "./task-item";
 import { TaskSheet } from "./task-sheet";
+import { TaskFormDialog } from "./task-form-dialog";
 
 type Owner = { id: string; full_name: string; email: string };
 
@@ -54,12 +56,14 @@ export function TasksView({
   owners,
   canAssign,
   canDelete,
+  canCreate,
   mode,
 }: {
   tasks: Task[];
   owners: Owner[];
   canAssign: boolean;
   canDelete: boolean;
+  canCreate: boolean;
   mode: "lista" | "quadro";
 }) {
   const [now] = useState(() => Date.now());
@@ -93,16 +97,16 @@ export function TasksView({
           ))}
         </div>
       ) : (
-        <TaskBoard tasks={tasks} now={now} onOpen={setOpen} />
+        <TaskBoard tasks={tasks} now={now} onOpen={setOpen} owners={owners} canAssign={canAssign} canCreate={canCreate} />
       )}
       <TaskSheet task={openTask} onClose={() => setOpen(null)} owners={owners} canAssign={canAssign} canDelete={canDelete} />
     </>
   );
 }
 
-const COLUMNS: TaskStatus[] = ["a_fazer", "em_andamento", "concluida"];
+const COLUMNS: TaskStatus[] = ["a_fazer", "em_andamento", "concluida", "cancelada"];
 
-function TaskBoard({ tasks, now, onOpen }: { tasks: Task[]; now: number; onOpen: (t: Task) => void }) {
+function TaskBoard({ tasks, now, onOpen, owners, canAssign, canCreate }: { tasks: Task[]; now: number; onOpen: (t: Task) => void; owners: Owner[]; canAssign: boolean; canCreate: boolean }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const initial = () => Object.fromEntries(COLUMNS.map((c) => [c, tasks.filter((t) => t.status === c).sort((a, b) => a.position - b.position)])) as Record<TaskStatus, Task[]>;
@@ -165,6 +169,7 @@ function TaskBoard({ tasks, now, onOpen }: { tasks: Task[]; now: number; onOpen:
                 <SortableTask key={t.id} task={t} now={now} onOpen={onOpen} />
               ))}
             </SortableContext>
+            {canCreate && c !== "cancelada" && <li className="list-none"><TaskFormDialog owners={owners} canAssign={canAssign} defaults={{ status: c }} trigger={<button type="button" className="flex min-h-10 w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:bg-accent hover:text-accent-foreground"><Plus className="size-4" aria-hidden="true" /> Adicionar cartão</button>} /></li>}
           </BoardColumn>
         ))}
       </div>
@@ -175,11 +180,11 @@ function TaskBoard({ tasks, now, onOpen }: { tasks: Task[]; now: number; onOpen:
 function BoardColumn({ id, label, count, children }: { id: string; label: string; count: number; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <section aria-label={`${label}, ${count} tarefa(s)`} className={cn("flex w-80 shrink-0 snap-start flex-col rounded-xl bg-muted/60", isOver && "ring-2 ring-ring")}>
-      <h2 className="px-3 pt-3 pb-2 text-sm font-semibold">
+    <section aria-label={`${label}, ${count} tarefa(s)`} className={cn("flex w-80 shrink-0 snap-start flex-col rounded-2xl border bg-muted/40", isOver && "ring-2 ring-ring")}>
+      <h2 className="px-4 pt-4 pb-3 text-sm font-semibold">
         {label} <span className="tabular font-normal text-muted-foreground">({count})</span>
       </h2>
-      <ul ref={setNodeRef} className="grid min-h-24 content-start gap-2 px-2 pb-3">
+      <ul ref={setNodeRef} className="grid min-h-28 content-start gap-2 px-2 pb-3">
         {children}
       </ul>
     </section>
@@ -189,8 +194,8 @@ function BoardColumn({ id, label, count, children }: { id: string; label: string
 function SortableTask({ task, now, onOpen }: { task: Task; now: number; onOpen: (t: Task) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-40")} {...attributes} {...listeners}>
-      <TaskItem task={task} now={now} onOpen={onOpen} />
-    </div>
+    <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn("list-none", isDragging && "opacity-40")} {...attributes} {...listeners}>
+      <TaskItem task={task} now={now} onOpen={onOpen} as="div" />
+    </li>
   );
 }

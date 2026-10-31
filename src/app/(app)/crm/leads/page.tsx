@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { FileUp, Plus, UsersRound } from "lucide-react";
+import { Download, FileUp, Plus, UsersRound } from "lucide-react";
 import { requirePermission } from "@/lib/auth/dal";
 import { PageBody, PageHeader } from "@/components/app/page-header";
 import { EmptyState, NoResults } from "@/components/app/states";
@@ -55,6 +55,11 @@ export default async function LeadsPage({ searchParams }: PageProps<"/crm/leads"
         description={`${result.total.toLocaleString("pt-BR")} lead(s)${hasFilters ? " com estes filtros" : ""}.`}
         actions={
           <>
+            <Button asChild variant="outline">
+              <a href={`/api/crm/leads/export?${new URLSearchParams(Object.entries(sp).filter((entry): entry is [string, string] => typeof entry[1] === "string")).toString()}`}>
+                <Download aria-hidden="true" /> Exportar CSV
+              </a>
+            </Button>
             {canImport && (
               <Button asChild variant="outline">
                 <Link href="/crm/importar">

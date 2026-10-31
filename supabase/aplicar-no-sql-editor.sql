@@ -1,4 +1,4 @@
--- HubSystem · migrations 0200 a 0800 em um único script (a 0100/fundação já está aplicada).
+-- HubSystem · migrations posteriores à fundação em um único script (a 0100/fundação já está aplicada).
 -- Como usar: Supabase → SQL Editor → New query → cole TODO este arquivo → Run.
 -- Tudo roda numa transação: se algo falhar, nada é aplicado.
 -- Gerado a partir de supabase/migrations/. Não edite à mão.
@@ -1081,6 +1081,22 @@ $$;
 
 grant execute on function private.can_read_task(uuid), private.can_read_event(uuid) to authenticated;
 
+create or replace function private.can_manage_event(p_event uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select auth.uid() is not null and exists (
+    select 1 from public.calendar_events e
+    where e.id = p_event and e.organization_id = private.org_id()
+      and e.deleted_at is null and private.can('calendar.manage', e.owner_id)
+  );
+$$;
+revoke all on function private.can_manage_event(uuid) from public, anon;
+grant execute on function private.can_manage_event(uuid) to authenticated;
+
 -- Atribuir a outra pessoa exige escopo além de "próprios"; vínculo com lead exige enxergar o lead.
 create or replace function private.tasks_guard()
 returns trigger
@@ -1184,12 +1200,13 @@ declare
   v_owner uuid := coalesce(p_owner, auth.uid());
   v_deal uuid;
   v_lead_name text;
+  v_company_name text;
   v_step record;
 begin
   if not private.has_perm('tasks.create') then
     raise exception 'Você não tem permissão para criar tarefas.' using errcode = '42501';
   end if;
-  select name into v_lead_name from public.leads where id = p_lead;
+  select name, coalesce(nullif(company_name, ''), name) into v_lead_name, v_company_name from public.leads where id = p_lead;
   if v_lead_name is null then
     raise exception 'Lead não encontrado.' using errcode = 'P0002';
   end if;
@@ -1211,7 +1228,7 @@ begin
                               lead_id, deal_id, cadence_enrollment_id, cadence_step_id, channel, suggested_message, category)
     values (v_org, v_step.title || ' · ' || v_lead_name, nullif(v_step.instruction, ''), v_owner, 'media',
             ((v_start + v_step.day_offset) + v_step.time_of_day) at time zone 'America/Sao_Paulo', true,
-            p_lead, v_deal, v_enroll, v_step.id, v_step.channel, nullif(v_step.message, ''), 'Cadência');
+            p_lead, v_deal, v_enroll, v_step.id, v_step.channel, nullif(replace(replace(v_step.message, '{nome}', v_lead_name), '{empresa}', v_company_name), ''), 'Cadência');
   end loop;
 
   insert into public.activities (organization_id, lead_id, deal_id, type, content, metadata)
@@ -1343,9 +1360,13 @@ create policy events_update on public.calendar_events for update to authenticate
 
 create policy event_attendees_select on public.event_attendees for select to authenticated
   using (private.can_read_event(event_id) or user_id = (select auth.uid()));
-create policy event_attendees_write on public.event_attendees for all to authenticated
-  using (exists (select 1 from public.calendar_events e where e.id = event_id and private.can('calendar.manage', e.owner_id)))
-  with check (exists (select 1 from public.calendar_events e where e.id = event_id and private.can('calendar.manage', e.owner_id)));
+create policy event_attendees_insert on public.event_attendees for insert to authenticated
+  with check (private.can_manage_event(event_id));
+create policy event_attendees_update on public.event_attendees for update to authenticated
+  using (private.can_manage_event(event_id))
+  with check (private.can_manage_event(event_id));
+create policy event_attendees_delete on public.event_attendees for delete to authenticated
+  using (private.can_manage_event(event_id));
 
 -- -----------------------------------------------------------------------------
 -- Cadência inicial (exemplo editável)
@@ -2551,5 +2572,26 @@ $$;
 grant execute on function public.lgpd_log_export(uuid) to authenticated;
 
 insert into supabase_migrations.schema_migrations (version, name) values ('20261031000800', 'lgpd') on conflict do nothing;
+
+-- ===== supabase/migrations/20261031050522_restrict_public_rpc_execution.sql
+-- Funções SECURITY DEFINER devem ser executadas apenas por usuários autenticados.
+do $$
+declare
+  fn record;
+begin
+  for fn in
+    select p.oid::regprocedure as signature
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef
+  loop
+    execute format('revoke execute on function %s from public, anon', fn.signature);
+  end loop;
+end;
+$$;
+
+alter default privileges in schema public revoke execute on functions from public, anon;
+
+insert into supabase_migrations.schema_migrations (version, name) values ('20261031050522', 'restrict_public_rpc_execution') on conflict do nothing;
 
 commit;

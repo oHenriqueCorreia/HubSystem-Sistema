@@ -19,7 +19,7 @@ const PRIORITY_STYLE: Record<Task["priority"], string> = {
   urgente: "text-danger",
 };
 
-export function TaskItem({ task, ownerName, onOpen, now }: { task: Task; ownerName?: string; onOpen?: (t: Task) => void; now: number }) {
+export function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Task; ownerName?: string; onOpen?: (t: Task) => void; now: number; as?: "li" | "div" }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [optimisticDone, setOptimisticDone] = useOptimistic(task.status === "concluida");
@@ -51,9 +51,10 @@ export function TaskItem({ task, ownerName, onOpen, now }: { task: Task; ownerNa
   }
 
   const due = task.due_at ? (task.has_time ? formatDateTime(task.due_at) : formatDate(task.due_at)) : null;
+  const Component = as;
 
   return (
-    <li className={cn("flex items-start gap-3 rounded-lg border bg-surface px-3 py-2.5", overdue && "border-danger/40")}>
+    <Component className={cn("flex items-start gap-3 rounded-xl border bg-surface px-3 py-3 shadow-sm transition-shadow hover:shadow-md", overdue && "border-danger/40")}>
       <Checkbox
         checked={optimisticDone}
         onCheckedChange={(v) => toggle(Boolean(v))}
@@ -116,6 +117,6 @@ export function TaskItem({ task, ownerName, onOpen, now }: { task: Task; ownerNa
           <Phone className="size-4" aria-hidden="true" />
         </a>
       )}
-    </li>
+    </Component>
   );
 }

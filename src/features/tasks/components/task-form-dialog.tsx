@@ -41,7 +41,7 @@ export function TaskFormDialog({
   task?: Task;
   owners: Owner[];
   canAssign: boolean;
-  defaults?: { lead?: LeadOption | null; dueDate?: string; dueTime?: string };
+  defaults?: { lead?: LeadOption | null; dueDate?: string; dueTime?: string; status?: Task["status"] };
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
 }) {
@@ -59,7 +59,7 @@ export function TaskFormDialog({
       description: task?.description ?? "",
       ownerId: task?.owner_id ?? null,
       priority: task?.priority ?? "media",
-      status: task?.status ?? "a_fazer",
+      status: task?.status ?? defaults?.status ?? "a_fazer",
       startDate: task?.start_date ?? null,
       dueDate: task?.due_at ? dayKey(task.due_at) : (defaults?.dueDate ?? null),
       dueTime: task?.due_at && task.has_time ? timeOf(task.due_at) : (defaults?.dueTime ?? null),

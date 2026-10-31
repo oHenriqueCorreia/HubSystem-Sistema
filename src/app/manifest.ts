@@ -10,13 +10,12 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "any",
-    background_color: "#f5f6f3",
-    theme_color: "#0e5e59",
+    background_color: "#f3f6fa",
+    theme_color: "#0969da",
     categories: ["business", "productivity", "finance"],
     icons: [
-      { src: "/icons/192", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icons/512", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icons/maskable", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/brand/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/brand/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
     ],
     shortcuts: [
       { name: "Meu dia", url: "/inicio" },

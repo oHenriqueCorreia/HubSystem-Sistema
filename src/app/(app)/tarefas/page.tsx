@@ -53,14 +53,14 @@ export default async function TarefasPage({ searchParams }: PageProps<"/tarefas"
         <Suspense>
           <TaskFilters owners={lookups.owners} canSeeOthers={canAssign} />
         </Suspense>
-        {tasks.length === 0 ? (
+        {tasks.length === 0 && mode !== "quadro" ? (
           hasFilters ? (
             <NoResults query={filters.q} />
           ) : (
             <EmptyState icon={ListChecks} title="Nenhuma tarefa em aberto" description="Crie uma tarefa ou inicie uma cadência em um lead para gerar as próximas ações." action={newTask} />
           )
         ) : (
-          <TasksView tasks={tasks} owners={lookups.owners} canAssign={canAssign} canDelete={Boolean(user.permissions["tasks.delete"])} mode={mode} />
+          <TasksView tasks={tasks} owners={lookups.owners} canAssign={canAssign} canCreate={Boolean(user.permissions["tasks.create"])} canDelete={Boolean(user.permissions["tasks.delete"])} mode={mode} />
         )}
       </PageBody>
     </>

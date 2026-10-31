@@ -45,18 +45,18 @@ export function LoginForm({ next, reason }: { next?: string; reason?: string }) 
   const { errors } = form.formState;
 
   return (
-    <form onSubmit={onSubmit} noValidate className="grid gap-4">
+    <form onSubmit={onSubmit} noValidate className="grid gap-5">
       {reason && REASONS[reason] && !serverError && (
         <FormAlert tone={reason === "senha" ? "success" : "info"}>{REASONS[reason]}</FormAlert>
       )}
       <FormAlert>{serverError}</FormAlert>
 
       <FormField label="E-mail" error={errors.email?.message} required>
-        <Input type="email" spellCheck={false} autoComplete="email" inputMode="email" autoFocus {...form.register("email")} />
+        <Input type="email" spellCheck={false} autoComplete="email" inputMode="email" autoFocus className="h-11" {...form.register("email")} />
       </FormField>
 
       <FormField label="Senha" error={errors.password?.message} required>
-        <PasswordInput autoComplete="current-password" {...form.register("password")} />
+        <PasswordInput autoComplete="current-password" className="h-11" {...form.register("password")} />
       </FormField>
 
       <Button type="submit" size="lg" disabled={pending} className="w-full">

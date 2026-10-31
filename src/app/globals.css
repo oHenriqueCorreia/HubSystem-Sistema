@@ -7,8 +7,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Segoe UI", system-ui, sans-serif;
+  --font-heading: "Segoe UI", system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -65,25 +65,25 @@
 :root {
   color-scheme: light;
   --radius: 0.5rem;
-  --background: #f5f6f3;
+  --background: #f3f6fa;
   --surface: #ffffff;
-  --foreground: #1c2420;
+  --foreground: #0b2245;
   --card: #ffffff;
-  --card-foreground: #1c2420;
+  --card-foreground: #0b2245;
   --popover: #ffffff;
-  --popover-foreground: #1c2420;
-  --primary: #0e5e59;
+  --popover-foreground: #0b2245;
+  --primary: #0969da;
   --primary-foreground: #ffffff;
-  --secondary: #e9ece7;
-  --secondary-foreground: #1c2420;
-  --muted: #eceee9;
-  --muted-foreground: #5b6660;
-  --accent: #e3ece9;
-  --accent-foreground: #0b3f3c;
+  --secondary: #e8f0fb;
+  --secondary-foreground: #0b2245;
+  --muted: #eaf0f7;
+  --muted-foreground: #526174;
+  --accent: #dceafc;
+  --accent-foreground: #0b3f81;
   --destructive: #b42318;
-  --border: #dde1dc;
-  --input: #cfd5cf;
-  --ring: #0e5e59;
+  --border: #d7e1ee;
+  --input: #bdccdf;
+  --ring: #0969da;
 
   --signal: #b5530a;
   --signal-soft: #fbeee3;
@@ -95,49 +95,49 @@
   --danger-soft: #fdecea;
   --info: #1d5fa8;
   --info-soft: #e8f0fa;
-  --ctx-company: #0e5e59;
-  --ctx-personal: #6b3f7a;
+  --ctx-company: #0969da;
+  --ctx-personal: #426ba3;
 
-  /* Paleta de séries validada (dataviz validate_palette.js): ordem fixa, nunca cíclica */
+  /* Séries em tons de azul da identidade visual, com contraste entre categorias. */
   --chart-1: #2a78d6;
-  --chart-2: #eb6834;
-  --chart-3: #1baf7a;
-  --chart-4: #eda100;
-  --chart-5: #e87ba4;
-  --chart-grid: #e1e0d9;
-  --chart-axis: #c3c2b7;
+  --chart-2: #0d9bd7;
+  --chart-3: #244fa4;
+  --chart-4: #52b8da;
+  --chart-5: #6d88c7;
+  --chart-grid: #e2eaf3;
+  --chart-axis: #a9bbd0;
 
-  --sidebar: #eef0ec;
-  --sidebar-foreground: #1c2420;
-  --sidebar-primary: #0e5e59;
+  --sidebar: #edf3fa;
+  --sidebar-foreground: #0b2245;
+  --sidebar-primary: #0969da;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e1e6e0;
-  --sidebar-accent-foreground: #0b3f3c;
-  --sidebar-border: #dde1dc;
-  --sidebar-ring: #0e5e59;
+  --sidebar-accent: #dceafc;
+  --sidebar-accent-foreground: #0b3f81;
+  --sidebar-border: #d7e1ee;
+  --sidebar-ring: #0969da;
 }
 
 .dark {
   color-scheme: dark;
-  --background: #121614;
-  --surface: #1a1f1c;
-  --foreground: #e6eae7;
-  --card: #1a1f1c;
-  --card-foreground: #e6eae7;
-  --popover: #1d2320;
-  --popover-foreground: #e6eae7;
-  --primary: #4fb3a9;
-  --primary-foreground: #08201d;
-  --secondary: #252c28;
-  --secondary-foreground: #e6eae7;
-  --muted: #222925;
-  --muted-foreground: #9aa59f;
-  --accent: #1f3330;
-  --accent-foreground: #cdeae6;
+  --background: #07162d;
+  --surface: #102441;
+  --foreground: #edf5ff;
+  --card: #102441;
+  --card-foreground: #edf5ff;
+  --popover: #142b4b;
+  --popover-foreground: #edf5ff;
+  --primary: #70b4ff;
+  --primary-foreground: #07162d;
+  --secondary: #183455;
+  --secondary-foreground: #edf5ff;
+  --muted: #152c4b;
+  --muted-foreground: #a8bad0;
+  --accent: #173b65;
+  --accent-foreground: #d9ecff;
   --destructive: #f2867c;
-  --border: #2c3430;
-  --input: #36403b;
-  --ring: #4fb3a9;
+  --border: #294261;
+  --input: #365574;
+  --ring: #70b4ff;
 
   --signal: #f0a35e;
   --signal-soft: #3a2615;
@@ -149,25 +149,25 @@
   --danger-soft: #3a1b18;
   --info: #7fb2ec;
   --info-soft: #172739;
-  --ctx-company: #4fb3a9;
-  --ctx-personal: #c69ad6;
+  --ctx-company: #70b4ff;
+  --ctx-personal: #9bbdff;
 
   --chart-1: #3987e5;
-  --chart-2: #d95926;
-  --chart-3: #199e70;
-  --chart-4: #c98500;
-  --chart-5: #d55181;
-  --chart-grid: #2c2c2a;
-  --chart-axis: #383835;
+  --chart-2: #32addd;
+  --chart-3: #7ca2ee;
+  --chart-4: #86d0e8;
+  --chart-5: #9b9fe6;
+  --chart-grid: #294261;
+  --chart-axis: #47617e;
 
-  --sidebar: #161b18;
-  --sidebar-foreground: #e6eae7;
-  --sidebar-primary: #4fb3a9;
-  --sidebar-primary-foreground: #08201d;
-  --sidebar-accent: #222a26;
-  --sidebar-accent-foreground: #e6eae7;
-  --sidebar-border: #2c3430;
-  --sidebar-ring: #4fb3a9;
+  --sidebar: #0b1f3b;
+  --sidebar-foreground: #edf5ff;
+  --sidebar-primary: #70b4ff;
+  --sidebar-primary-foreground: #07162d;
+  --sidebar-accent: #183455;
+  --sidebar-accent-foreground: #edf5ff;
+  --sidebar-border: #294261;
+  --sidebar-ring: #70b4ff;
 }
 
 @layer base {
@@ -246,4 +246,55 @@
       scroll-behavior: auto !important;
     }
   }
+}
+
+.auth-stage {
+  background:
+    radial-gradient(circle at 56% 45%, rgb(9 105 218 / 28%), transparent 34%),
+    radial-gradient(circle at 3% 95%, rgb(38 106 183 / 25%), transparent 38%),
+    linear-gradient(145deg, #07162d 0%, #0b2245 58%, #0b336a 100%);
+}
+
+.auth-stage::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background-image: linear-gradient(rgb(112 180 255 / 5%) 1px, transparent 1px), linear-gradient(90deg, rgb(112 180 255 / 5%) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 80%, transparent);
+}
+
+.auth-orbit-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  aspect-ratio: 1;
+  border: 1px solid rgb(112 180 255 / 20%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: auth-orbit-enter 1s ease-out both;
+}
+
+.auth-orbit-ring-one { width: 18rem; animation-delay: 0.1s; }
+.auth-orbit-ring-two { width: 25rem; animation-delay: 0.25s; }
+.auth-orbit-ring-three { width: 32rem; animation-delay: 0.4s; }
+.auth-logo { animation: auth-logo-enter 0.9s 0.3s ease-out both; }
+.auth-copy { animation: auth-copy-enter 0.7s 0.7s ease-out both; }
+.auth-panel { animation: auth-copy-enter 0.6s 0.35s ease-out both; }
+
+@keyframes auth-orbit-enter {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.75); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes auth-logo-enter {
+  from { opacity: 0; transform: translateY(16px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes auth-copy-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-orbit-ring, .auth-logo, .auth-copy, .auth-panel { animation: none; }
 }
