@@ -382,7 +382,7 @@ function ColumnFormDialog({ column, open: controlled, onOpenChange }: { column?:
         <form id="column-form" onSubmit={submit} className="grid gap-3" noValidate>
           <FormAlert>{error}</FormAlert>
           <FormField label="Nome" required>
-            <Input autoFocus value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Em revisão, Aguardando cliente" />
+            <Input autoFocus autoComplete="off" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Em revisão, Aguardando cliente…" />
           </FormField>
           <FormField label="Status das tarefas nesta coluna">
             <Select value={kind} onValueChange={(v) => setKind(v as TaskStatus)}>

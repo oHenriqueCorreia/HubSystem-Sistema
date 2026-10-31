@@ -188,7 +188,7 @@ export function CadenceEditor({
                     </label>
                     <div className="grid gap-2 sm:grid-cols-[1fr_7rem]">
                       <FormField label="Modelo aprovado do WhatsApp" hint="Nome exato do modelo na Meta. {{1}} = primeiro nome, {{2}} = empresa." error={errors.steps?.[i]?.whatsappTemplate?.message} optional>
-                        <Input placeholder="ex.: primeiro_contato" {...form.register(`steps.${i}.whatsappTemplate`, { setValueAs: (v) => v || null })} />
+                        <Input placeholder="ex.: primeiro_contato…" autoComplete="off" spellCheck={false} {...form.register(`steps.${i}.whatsappTemplate`, { setValueAs: (v) => v || null })} />
                       </FormField>
                       <FormField label="Idioma" optional>
                         <Input {...form.register(`steps.${i}.templateLanguage`)} />

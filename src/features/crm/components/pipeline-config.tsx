@@ -77,7 +77,7 @@ export function PipelineConfig({ pipeline, counts }: { pipeline: Pipeline; count
             }}
           >
             <FormField label="Nome do funil" className="flex-1">
-              <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+              <Input value={name} maxLength={60} autoComplete="off" onChange={(e) => setName(e.target.value)} />
             </FormField>
             <Button type="submit" variant="outline" disabled={pending || name.trim() === pipeline.name || name.trim().length < 2}>
               Salvar
@@ -138,7 +138,7 @@ export function PipelineConfig({ pipeline, counts }: { pipeline: Pipeline; count
           >
             <h3 className="text-sm font-semibold">Novo funil</h3>
             <div className="flex gap-2">
-              <Input value={newPipeline} maxLength={60} placeholder="Ex.: Gestão de redes sociais" onChange={(e) => setNewPipeline(e.target.value)} aria-label="Nome do novo funil" />
+              <Input value={newPipeline} maxLength={60} autoComplete="off" placeholder="Ex.: Gestão de redes sociais…" onChange={(e) => setNewPipeline(e.target.value)} aria-label="Nome do novo funil" />
               <Button type="submit" variant="outline" disabled={pending || newPipeline.trim().length < 2}>
                 Criar
               </Button>
@@ -184,7 +184,7 @@ function StageDialog({ pipelineId, stage, onClose }: { pipelineId: string; stage
         <form id="stage-form" onSubmit={submit} className="grid gap-3" noValidate>
           <FormAlert>{error}</FormAlert>
           <FormField label="Nome" required>
-            <Input autoFocus value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Reunião marcada" />
+            <Input autoFocus autoComplete="off" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Reunião marcada…" />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Tipo">

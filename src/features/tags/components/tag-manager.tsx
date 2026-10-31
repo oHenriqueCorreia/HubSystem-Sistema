@@ -147,7 +147,7 @@ function TagFormDialog({ tag, trigger }: { tag?: TagRow; trigger: React.ReactNod
         <form id="tag-form" onSubmit={submit} className="grid gap-3" noValidate>
           <FormAlert>{error}</FormAlert>
           <FormField label="Nome" required>
-            <Input autoFocus value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Criação de site" />
+            <Input autoFocus autoComplete="off" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Criação de site…" />
           </FormField>
           <FormField label="Descrição" optional>
             <Textarea rows={2} maxLength={300} value={description} onChange={(e) => setDescription(e.target.value)} />

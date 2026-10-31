@@ -137,7 +137,7 @@ function CityPicker() {
       </PopoverTrigger>
       <PopoverContent align="end" className="grid w-72 gap-2">
         <form onSubmit={search} className="flex gap-2">
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ex.: Criciúma" aria-label="Buscar cidade" autoComplete="off" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ex.: Criciúma…" aria-label="Buscar cidade" autoComplete="off" />
           <Button type="submit" size="icon" variant="outline" disabled={pending || q.trim().length < 2} aria-label="Buscar">
             {pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Search aria-hidden="true" />}
           </Button>
