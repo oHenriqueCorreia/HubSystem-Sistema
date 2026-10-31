@@ -60,6 +60,17 @@ export const eventFormSchema = z
     ownerId: z.uuid().nullable().optional(),
     leadId: z.uuid().nullable().optional(),
     attendeeIds: z.array(z.uuid()).max(50).default([]),
+    guests: z
+      .array(
+        z.object({
+          email: z.email("E-mail inválido.").transform((v) => v.toLowerCase()),
+          name: z.string().trim().max(120).default(""),
+          optional: z.boolean().default(false),
+        }),
+      )
+      .max(50, "Use no máximo 50 convidados.")
+      .default([]),
+    sendUpdates: z.boolean().default(true),
     reminderMinutes: z.number().int().min(0).max(10080).nullable().optional(),
   })
   .refine((v) => v.allDay || v.endTime > v.startTime, { path: ["endTime"], message: "O fim precisa ser depois do início." });
@@ -89,3 +100,5 @@ export const cadenceTemplateSchema = z.object({
 export type CadenceTemplateValues = z.input<typeof cadenceTemplateSchema>;
 
 export const enrollSchema = z.object({ leadId: z.uuid(), templateId: z.uuid(), startDate: z.iso.date().nullable().optional() });
+
+export const availabilitySchema = z.object({ date: z.iso.date(), ownerId: z.uuid().nullable().optional(), minutes: z.number().int().min(15).max(480).default(30) });

@@ -1,12 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { defineAction, must } from "@/lib/actions";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok } from "@/domain/shared/result";
-import { zonedIso } from "@/domain/calendar";
+import { DEFAULT_WORK_HOURS, freeSlots, mergeIntervals, zonedIso, type Interval, type WorkHours } from "@/domain/calendar";
+import { googleBusy, syncUserQuietly } from "@/lib/google/calendar";
 import {
+  availabilitySchema,
   cadenceTemplateSchema,
   checklistAddSchema,
   checklistToggleSchema,
@@ -23,6 +26,11 @@ import {
   taskMoveSchema,
   taskStatusSchema,
 } from "./schemas";
+
+/** Leva a alteração ao Google Agenda do responsável sem atrasar a resposta. */
+function syncGoogleLater(userId: string | null | undefined) {
+  if (userId) after(() => syncUserQuietly(userId));
+}
 
 function revalidateWork(leadId?: string | null) {
   revalidatePath("/tarefas");
@@ -61,24 +69,26 @@ async function syncTaskLinks(taskId: string, tagIds: string[], participantIds: s
   }
 }
 
-export const createTask = defineAction({ schema: taskFormSchema, permission: "tasks.create" }, async (input) => {
+export const createTask = defineAction({ schema: taskFormSchema, permission: "tasks.create" }, async (input, { user }) => {
   const supabase = await createClient();
   const task = must(await supabase.from("tasks").insert({ ...taskRow(input), position: Date.now() / 1000 }).select("id").single()) as { id: string };
   if (input.checklist.length) {
     must(await supabase.from("task_checklist_items").insert(input.checklist.map((title, i) => ({ task_id: task.id, title, position: i * 1024 }))));
   }
   await syncTaskLinks(task.id, input.tagIds, input.participantIds);
+  if (input.dueDate) syncGoogleLater(input.ownerId ?? user.id);
   revalidateWork(input.leadId);
   return ok({ id: task.id }, "Tarefa criada.");
 });
 
-export const updateTask = defineAction({ schema: taskFormSchema.and(z.object({ id: z.uuid() })), permission: "tasks.update" }, async (input) => {
+export const updateTask = defineAction({ schema: taskFormSchema.and(z.object({ id: z.uuid() })), permission: "tasks.update" }, async (input, { user }) => {
   const supabase = await createClient();
   const { checklist: _ignored, ...rest } = input;
   void _ignored;
-  const res = must(await supabase.from("tasks").update(taskRow({ ...rest, checklist: [] })).eq("id", input.id).select("id")) as { id: string }[];
+  const res = must(await supabase.from("tasks").update(taskRow({ ...rest, checklist: [] })).eq("id", input.id).select("id, owner_id")) as { id: string; owner_id: string | null }[];
   if (!res.length) return fail("forbidden", "Você não pode editar esta tarefa.");
   await syncTaskLinks(input.id, input.tagIds, input.participantIds);
+  syncGoogleLater(res[0].owner_id ?? user.id);
   revalidateWork(input.leadId);
   return ok(null, "Tarefa salva.");
 });
@@ -90,9 +100,10 @@ export const setTaskStatus = defineAction({ schema: taskStatusSchema, permission
       .from("tasks")
       .update({ status: input.status, ...(input.outcome !== undefined ? { outcome: input.outcome || null } : {}) })
       .eq("id", input.id)
-      .select("id, lead_id"),
-  ) as { id: string; lead_id: string | null }[];
+      .select("id, lead_id, owner_id"),
+  ) as { id: string; lead_id: string | null; owner_id: string | null }[];
   if (!res.length) return fail("forbidden", "Você não pode alterar esta tarefa.");
+  syncGoogleLater(res[0].owner_id);
   revalidateWork(res[0].lead_id);
   return ok(null, input.status === "concluida" ? "Tarefa concluída." : "Tarefa atualizada.");
 });
@@ -100,16 +111,18 @@ export const setTaskStatus = defineAction({ schema: taskStatusSchema, permission
 export const moveTask = defineAction({ schema: taskMoveSchema, permission: "tasks.update" }, async (input) => {
   const supabase = await createClient();
   // O status acompanha a coluna (trigger tasks_column_sync no banco).
-  const changed = must(await supabase.from("tasks").update({ column_id: input.columnId, position: input.position }).eq("id", input.id).select("id, lead_id")) as { id: string; lead_id: string | null }[];
+  const changed = must(await supabase.from("tasks").update({ column_id: input.columnId, position: input.position }).eq("id", input.id).select("id, lead_id, owner_id")) as { id: string; lead_id: string | null; owner_id: string | null }[];
   if (!changed.length) return fail("forbidden", "Você não pode mover esta tarefa.");
+  syncGoogleLater(changed[0].owner_id);
   revalidateWork(changed[0].lead_id);
   return ok(null);
 });
 
 export const deleteTask = defineAction({ schema: idSchema, permission: "tasks.delete" }, async ({ id }) => {
   const supabase = await createClient();
-  const res = must(await supabase.from("tasks").update({ deleted_at: new Date().toISOString() }).eq("id", id).select("id, lead_id")) as { lead_id: string | null }[];
+  const res = must(await supabase.from("tasks").update({ deleted_at: new Date().toISOString() }).eq("id", id).select("id, lead_id, owner_id")) as { lead_id: string | null; owner_id: string | null }[];
   if (!res.length) return fail("forbidden", "Você não pode excluir esta tarefa.");
+  syncGoogleLater(res[0].owner_id);
   revalidateWork(res[0].lead_id);
   return ok(null, "Tarefa excluída.");
 });
@@ -171,6 +184,7 @@ function eventRow(input: z.output<typeof eventFormSchema>) {
     meet_url: input.meetUrl || null,
     lead_id: input.leadId ?? null,
     reminder_minutes: input.reminderMinutes != null ? [input.reminderMinutes] : [],
+    send_updates: input.sendUpdates,
     ...(input.ownerId ? { owner_id: input.ownerId } : {}),
   };
 }
@@ -181,10 +195,28 @@ async function syncAttendees(eventId: string, ids: string[]) {
   if (ids.length) must(await supabase.from("event_attendees").insert(ids.map((user_id) => ({ event_id: eventId, user_id }))));
 }
 
-export const createEvent = defineAction({ schema: eventFormSchema, permission: "calendar.manage" }, async (input) => {
+/** Convidados por e-mail: mantém quem continua (e a resposta já dada), remove quem saiu. */
+async function syncGuests(eventId: string, guests: z.output<typeof eventFormSchema>["guests"]) {
+  const supabase = await createClient();
+  const unique = [...new Map(guests.map((g) => [g.email, g])).values()];
+  const { data: current } = await supabase.from("event_guests").select("id, email").eq("event_id", eventId);
+  const removed = (current ?? []).filter((c) => !unique.some((g) => g.email === c.email)).map((c) => c.id);
+  if (removed.length) must(await supabase.from("event_guests").delete().in("id", removed));
+  if (unique.length) {
+    must(
+      await supabase
+        .from("event_guests")
+        .upsert(unique.map((g) => ({ event_id: eventId, email: g.email, name: g.name, optional: g.optional })), { onConflict: "event_id,email" }),
+    );
+  }
+}
+
+export const createEvent = defineAction({ schema: eventFormSchema, permission: "calendar.manage" }, async (input, { user }) => {
   const supabase = await createClient();
   const ev = must(await supabase.from("calendar_events").insert(eventRow(input)).select("id").single()) as { id: string };
   await syncAttendees(ev.id, input.attendeeIds);
+  await syncGuests(ev.id, input.guests);
+  syncGoogleLater(input.ownerId ?? user.id);
   if (input.leadId) {
     must(
       await supabase.from("activities").insert({
@@ -200,19 +232,22 @@ export const createEvent = defineAction({ schema: eventFormSchema, permission: "
   return ok({ id: ev.id }, "Evento criado.");
 });
 
-export const updateEvent = defineAction({ schema: eventFormSchema.and(z.object({ id: z.uuid() })), permission: "calendar.manage" }, async (input) => {
+export const updateEvent = defineAction({ schema: eventFormSchema.and(z.object({ id: z.uuid() })), permission: "calendar.manage" }, async (input, { user }) => {
   const supabase = await createClient();
-  const res = must(await supabase.from("calendar_events").update(eventRow(input)).eq("id", input.id).select("id")) as { id: string }[];
+  const res = must(await supabase.from("calendar_events").update(eventRow(input)).eq("id", input.id).select("id, owner_id")) as { id: string; owner_id: string | null }[];
   if (!res.length) return fail("forbidden", "Você não pode editar este evento.");
   await syncAttendees(input.id, input.attendeeIds);
+  await syncGuests(input.id, input.guests);
+  syncGoogleLater(res[0].owner_id ?? user.id);
   revalidateWork(input.leadId);
   return ok(null, "Evento salvo.");
 });
 
 export const deleteEvent = defineAction({ schema: idSchema, permission: "calendar.manage" }, async ({ id }) => {
   const supabase = await createClient();
-  const res = must(await supabase.from("calendar_events").update({ deleted_at: new Date().toISOString() }).eq("id", id).select("id, lead_id")) as { lead_id: string | null }[];
+  const res = must(await supabase.from("calendar_events").update({ deleted_at: new Date().toISOString() }).eq("id", id).select("id, lead_id, owner_id")) as { lead_id: string | null; owner_id: string | null }[];
   if (!res.length) return fail("forbidden", "Você não pode excluir este evento.");
+  syncGoogleLater(res[0].owner_id);
   revalidateWork(res[0].lead_id);
   return ok(null, "Evento excluído.");
 });
@@ -340,4 +375,42 @@ export const getTaskHistory = defineAction({ schema: idSchema, permission: "task
   const supabase = await createClient();
   const rows = must(await supabase.rpc("task_history", { p_task: id })) as TaskHistoryEntry[];
   return ok(rows ?? []);
+});
+
+// --- Disponibilidade ---------------------------------------------------------------
+
+export type Availability = { busy: Interval[]; free: Interval[]; source: "google" | "interno"; workHours: WorkHours };
+
+/**
+ * Horários ocupados e livres de um dia (expediente da pessoa, fuso de São Paulo).
+ * Usa o Google (FreeBusy: só livre/ocupado, sem títulos) e a agenda interna.
+ */
+export const getAvailability = defineAction({ schema: availabilitySchema, permission: "calendar.read" }, async (input, { user }) => {
+  const supabase = await createClient();
+  const ownerId = input.ownerId ?? user.id;
+  const start = zonedIso(input.date, "00:00");
+  const end = zonedIso(input.date, "23:59");
+  const [events, tasks, profile] = await Promise.all([
+    supabase.from("calendar_events").select("starts_at, ends_at").eq("owner_id", ownerId).is("deleted_at", null).eq("all_day", false).lt("starts_at", end).gt("ends_at", start),
+    supabase
+      .from("tasks")
+      .select("due_at, duration_minutes")
+      .eq("owner_id", ownerId)
+      .is("deleted_at", null)
+      .eq("has_time", true)
+      .in("status", ["a_fazer", "em_andamento"])
+      .gte("due_at", start)
+      .lte("due_at", end),
+    supabase.from("profiles").select("preferences").eq("id", ownerId).maybeSingle(),
+  ]);
+  const internal: Interval[] = [
+    ...(events.data ?? []).map((e) => ({ start: e.starts_at, end: e.ends_at })),
+    ...(tasks.data ?? []).map((t) => ({ start: t.due_at, end: new Date(new Date(t.due_at).getTime() + (t.duration_minutes ?? 30) * 60_000).toISOString() })),
+  ];
+  // O Google só é consultado para a própria agenda (cada pessoa conecta a sua).
+  const google = ownerId === user.id ? await googleBusy(ownerId, start, end).catch(() => null) : null;
+  const prefs = (profile.data?.preferences ?? {}) as { work_hours?: WorkHours };
+  const workHours = prefs.work_hours ?? DEFAULT_WORK_HOURS;
+  const busy = mergeIntervals([...internal, ...(google ?? [])]);
+  return ok<Availability>({ busy, free: freeSlots(input.date, busy, workHours, input.minutes), source: google ? "google" : "interno", workHours });
 });

@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Controller, useForm, useWatch } from "react-hook-form";
-import { LoaderCircle, Trash2 } from "lucide-react";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { AlertTriangle, CalendarSearch, LoaderCircle, Mail, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,8 +14,8 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { LeadPicker, type LeadOption } from "@/features/crm/components/lead-picker";
-import { dayKey, minutesOfDay } from "@/domain/calendar";
-import { createEvent, deleteEvent, restoreEvent, updateEvent } from "../actions";
+import { dayKey, minutesOfDay, overlapsBusy, zonedIso, type Interval } from "@/domain/calendar";
+import { createEvent, deleteEvent, getAvailability, restoreEvent, updateEvent, type Availability } from "../actions";
 import { eventFormSchema, type EventFormValues } from "../schemas";
 import type { CalendarEvent } from "../queries";
 
@@ -34,6 +34,8 @@ function plus30(time: string) {
 }
 
 export type EventDraft = { date: string; time?: string; lead?: LeadOption | null };
+
+const RESPONSE_LABEL: Record<string, string> = { accepted: "Confirmou", declined: "Recusou", tentative: "Talvez" };
 
 export function EventDialog({
   open,
@@ -72,6 +74,8 @@ export function EventDialog({
           meetUrl: event.meet_url ?? "",
           ownerId: event.owner_id,
           attendeeIds: event.attendees,
+          guests: event.guests.map((g) => ({ email: g.email, name: g.name, optional: g.optional })),
+          sendUpdates: event.send_updates,
           reminderMinutes: event.reminder_minutes[0] ?? null,
         }
       : {
@@ -86,11 +90,57 @@ export function EventDialog({
           meetUrl: "",
           ownerId: null,
           attendeeIds: [],
+          guests: [],
+          sendUpdates: true,
           reminderMinutes: 30,
         },
   });
   const allDay = useWatch({ control: form.control, name: "allDay" });
+  const [date, startTime, endTime, ownerId] = useWatch({ control: form.control, name: ["date", "startTime", "endTime", "ownerId"] });
+  const guests = useFieldArray({ control: form.control, name: "guests" });
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [guestError, setGuestError] = useState<string | null>(null);
+  const [avail, setAvail] = useState<(Availability & { date: string }) | null>(null);
+  const [loadingAvail, startAvail] = useTransition();
   const { errors } = form.formState;
+  const responses = new Map(event?.guests.map((g) => [g.email, g.response_status]) ?? []);
+
+  function addGuest() {
+    const email = guestEmail.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setGuestError("Informe um e-mail válido.");
+    if (guests.fields.some((g) => g.email === email)) return setGuestError("Este convidado já está na lista.");
+    guests.append({ email, name: guestName.trim(), optional: false });
+    setGuestEmail("");
+    setGuestName("");
+    setGuestError(null);
+  }
+
+  function loadAvailability() {
+    if (!date) return;
+    startAvail(async () => {
+      const res = await getAvailability({ date, ownerId: ownerId ?? null });
+      if (res.ok) setAvail({ ...(res.data as Availability), date });
+      else toast.error(res.message);
+    });
+  }
+
+  // Conflito com horários ocupados (exceto o próprio evento sendo editado).
+  const ownSlot: Interval | null = event ? { start: event.starts_at, end: event.ends_at } : null;
+  const busyOthers = avail ? avail.busy.filter((b) => !ownSlot || b.start !== ownSlot.start || b.end !== ownSlot.end) : [];
+  const conflict =
+    avail && avail.date === date && !allDay && startTime && endTime && endTime > startTime
+      ? overlapsBusy({ start: zonedIso(date, startTime), end: zonedIso(date, endTime) }, busyOthers)
+      : false;
+
+  function pickSlot(slot: Interval) {
+    const dur = startTime && endTime && endTime > startTime ? minutesOfDay(zonedIso(date, endTime)) - minutesOfDay(zonedIso(date, startTime)) : 60;
+    const s0 = minutesOfDay(slot.start);
+    const e0 = Math.min(s0 + dur, minutesOfDay(slot.end));
+    const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    form.setValue("startTime", fmt(s0));
+    form.setValue("endTime", fmt(e0));
+  }
 
   const submit = form.handleSubmit((values) => {
     setError(null);
@@ -163,6 +213,46 @@ export function EventDialog({
               </>
             )}
           </div>
+          {!allDay && (
+            <div className="grid gap-2 rounded-lg border bg-muted/30 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium">Horários livres</p>
+                <Button type="button" variant="outline" size="sm" onClick={loadAvailability} disabled={loadingAvail || !date}>
+                  {loadingAvail ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <CalendarSearch aria-hidden="true" />}
+                  {avail?.date === date ? "Atualizar" : "Ver horários livres"}
+                </Button>
+              </div>
+              {conflict && (
+                <p role="alert" className="flex items-center gap-2 text-sm text-warning">
+                  <AlertTriangle className="size-4 shrink-0" aria-hidden="true" /> Este horário conflita com outro compromisso.
+                </p>
+              )}
+              {avail?.date === date &&
+                (avail.free.length ? (
+                  <ul className="flex flex-wrap gap-1.5" aria-label="Faixas livres">
+                    {avail.free.map((f) => (
+                      <li key={f.start}>
+                        <button
+                          type="button"
+                          onClick={() => pickSlot(f)}
+                          className="rounded-md border bg-surface px-2 py-1 text-xs tabular hover:border-primary hover:bg-accent"
+                        >
+                          {hhmm(f.start)}–{hhmm(f.end)}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sem horários livres neste dia dentro do expediente.</p>
+                ))}
+              {avail?.date === date && (
+                <p className="text-xs text-muted-foreground">
+                  {avail.source === "google" ? "Inclui sua agenda do Google (apenas livre/ocupado)." : "Com base na agenda do Hub System."} Expediente {avail.workHours.start}–
+                  {avail.workHours.end}.
+                </p>
+              )}
+            </div>
+          )}
           <FormField label="Lead relacionado" optional>
             <LeadPicker value={lead} onChange={setLead} />
           </FormField>
@@ -243,6 +333,69 @@ export function EventDialog({
               />
             </fieldset>
           )}
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-sm font-medium">Convidados por e-mail (opcional)</legend>
+            {guests.fields.length > 0 && (
+              <ul className="grid gap-1">
+                {guests.fields.map((g, i) => (
+                  <li key={g.id} className="flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 text-sm">
+                    <Mail className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {g.name ? `${g.name} · ` : ""}
+                      {g.email}
+                    </span>
+                    {responses.get(g.email) && responses.get(g.email) !== "needsAction" && (
+                      <span className="text-xs text-muted-foreground">{RESPONSE_LABEL[responses.get(g.email)!] ?? ""}</span>
+                    )}
+                    <label className="flex items-center gap-1 text-xs">
+                      <Controller
+                        control={form.control}
+                        name={`guests.${i}.optional`}
+                        render={({ field }) => <Checkbox checked={field.value ?? false} onCheckedChange={(v) => field.onChange(Boolean(v))} />}
+                      />
+                      Opcional
+                    </label>
+                    <Button type="button" variant="ghost" size="icon-xs" onClick={() => guests.remove(i)} aria-label={`Remover ${g.email}`}>
+                      <X aria-hidden="true" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <Input value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="Nome" aria-label="Nome do convidado" autoComplete="off" />
+              <Input
+                type="email"
+                inputMode="email"
+                spellCheck={false}
+                value={guestEmail}
+                onChange={(e) => setGuestEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addGuest();
+                  }
+                }}
+                placeholder="email@exemplo.com"
+                aria-label="E-mail do convidado"
+                autoComplete="off"
+              />
+              <Button type="button" variant="outline" onClick={addGuest}>
+                <Plus aria-hidden="true" /> Adicionar
+              </Button>
+            </div>
+            {guestError && (
+              <p role="alert" className="text-sm text-danger">
+                {guestError}
+              </p>
+            )}
+            {guests.fields.length > 0 && (
+              <label className="flex items-center gap-2 text-sm">
+                <Controller control={form.control} name="sendUpdates" render={({ field }) => <Switch checked={field.value ?? true} onCheckedChange={field.onChange} />} />
+                Enviar convite e atualizações por e-mail (pelo Google Agenda)
+              </label>
+            )}
+          </fieldset>
           <FormField label="Descrição" optional>
             <Textarea rows={3} {...form.register("description")} />
           </FormField>

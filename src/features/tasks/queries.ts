@@ -149,6 +149,8 @@ export type CalendarEvent = {
   reminder_minutes: number[];
   lead: { id: string; name: string } | null;
   attendees: string[];
+  send_updates: boolean;
+  guests: { email: string; name: string; optional: boolean; response_status: string }[];
 };
 
 export async function listAgenda(range: { start: Date; end: Date }, filters: { responsavel?: string; tipo?: string }) {
@@ -158,7 +160,7 @@ export async function listAgenda(range: { start: Date; end: Date }, filters: { r
 
   let ev = supabase
     .from("calendar_events")
-    .select("id, title, description, kind, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, reminder_minutes, lead:leads(id, name), event_attendees(user_id)")
+    .select("id, title, description, kind, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, reminder_minutes, send_updates, lead:leads(id, name), event_attendees(user_id), event_guests(email, name, optional, response_status)")
     .is("deleted_at", null)
     .lt("starts_at", endIso)
     .gt("ends_at", startIso)
@@ -221,6 +223,7 @@ export async function getEvent(id: string): Promise<CalendarEvent | null> {
     ...(e as unknown as CalendarEvent),
     lead: (Array.isArray(e.lead) ? e.lead[0] : e.lead) as CalendarEvent["lead"],
     attendees: ((e.event_attendees as { user_id: string }[] | null) ?? []).map((a) => a.user_id),
+    guests: (e.event_guests as CalendarEvent["guests"] | null) ?? [],
   };
 }
 

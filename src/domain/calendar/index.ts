@@ -119,3 +119,55 @@ export function zonedIso(day: string, time: string): string {
   // Sempre em UTC ("Z"): o TZDate serializa com offset e quebraria comparações de texto.
   return new Date(new TZDate(y, mo - 1, d, h, m, 0, APP_TIMEZONE).getTime()).toISOString();
 }
+
+// --- Disponibilidade -------------------------------------------------------------
+
+export type Interval = { start: string; end: string };
+/** Expediente: horários "HH:mm" e dias da semana (0 = domingo). */
+export type WorkHours = { start: string; end: string; days: number[] };
+export const DEFAULT_WORK_HOURS: WorkHours = { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] };
+
+/** Une intervalos sobrepostos ou encostados. */
+export function mergeIntervals(items: Interval[]): Interval[] {
+  const sorted = items
+    .map((i) => ({ s: new Date(i.start).getTime(), e: new Date(i.end).getTime() }))
+    .filter((i) => i.e > i.s)
+    .sort((a, b) => a.s - b.s);
+  const out: { s: number; e: number }[] = [];
+  for (const i of sorted) {
+    const last = out[out.length - 1];
+    if (last && i.s <= last.e) last.e = Math.max(last.e, i.e);
+    else out.push({ ...i });
+  }
+  return out.map((i) => ({ start: new Date(i.s).toISOString(), end: new Date(i.e).toISOString() }));
+}
+
+/**
+ * Faixas livres de um dia dentro do expediente (fuso de São Paulo), com pelo
+ * menos `minMinutes`. Horários que já passaram não contam.
+ */
+export function freeSlots(day: string, busy: Interval[], work: WorkHours = DEFAULT_WORK_HOURS, minMinutes = 30, now = new Date()): Interval[] {
+  if (!work.days.includes(zonedDay(day).getDay())) return [];
+  const startMs = Math.max(new Date(zonedIso(day, work.start)).getTime(), Math.ceil(now.getTime() / 900_000) * 900_000);
+  const endMs = new Date(zonedIso(day, work.end)).getTime();
+  if (endMs <= startMs) return [];
+  const out: Interval[] = [];
+  let cursor = startMs;
+  for (const b of mergeIntervals(busy)) {
+    const bs = new Date(b.start).getTime();
+    const be = new Date(b.end).getTime();
+    if (be <= cursor) continue;
+    if (bs >= endMs) break;
+    if (bs > cursor) out.push({ start: new Date(cursor).toISOString(), end: new Date(Math.min(bs, endMs)).toISOString() });
+    cursor = Math.max(cursor, be);
+  }
+  if (cursor < endMs) out.push({ start: new Date(cursor).toISOString(), end: new Date(endMs).toISOString() });
+  return out.filter((i) => new Date(i.end).getTime() - new Date(i.start).getTime() >= minMinutes * 60_000);
+}
+
+/** O intervalo pedido colide com algum horário ocupado? */
+export function overlapsBusy(slot: Interval, busy: Interval[]): boolean {
+  const s = new Date(slot.start).getTime();
+  const e = new Date(slot.end).getTime();
+  return busy.some((b) => new Date(b.start).getTime() < e && s < new Date(b.end).getTime());
+}
