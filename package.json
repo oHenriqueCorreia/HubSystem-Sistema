@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "db:migrate": "node scripts/db.mjs migrate",
+    "db:test": "node scripts/db.mjs test",
+    "db:status": "node scripts/db.mjs status"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
@@ -46,6 +52,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "jsdom": "^29.1.1",
+    "postgres": "^4.0.0",
     "prettier": "^3.9.10",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "supabase": "^2.122.0",
