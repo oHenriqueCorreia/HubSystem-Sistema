@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
-import { ChevronDown, LoaderCircle, Plus, X } from "lucide-react";
+import { ChevronDown, LoaderCircle, Plus, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -13,6 +13,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { LeadPicker, type LeadOption } from "@/features/crm/components/lead-picker";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { TagPicker } from "@/features/tags/components/tag-picker";
+import { listActiveTags } from "@/features/tags/actions";
+import type { Tag } from "@/features/crm/types";
 import { dayKey, minutesOfDay } from "@/domain/calendar";
 import { createTask, updateTask } from "../actions";
 import { taskFormSchema } from "../schemas";
@@ -41,7 +46,7 @@ export function TaskFormDialog({
   task?: Task;
   owners: Owner[];
   canAssign: boolean;
-  defaults?: { lead?: LeadOption | null; dueDate?: string; dueTime?: string; status?: Task["status"] };
+  defaults?: { lead?: LeadOption | null; dueDate?: string; dueTime?: string; status?: Task["status"]; columnId?: string };
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
 }) {
@@ -52,6 +57,21 @@ export function TaskFormDialog({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [lead, setLead] = useState<LeadOption | null>(task?.lead ? { id: task.lead.id, name: task.lead.name } : (defaults?.lead ?? null));
+  const [tagIds, setTagIds] = useState<string[]>(() => task?.tags.map((t) => t.id) ?? []);
+  const [tagOptions, setTagOptions] = useState<Tag[]>(() => (task?.tags ?? []) as Tag[]);
+  const [participantIds, setParticipantIds] = useState<string[]>(() => task?.participant_ids ?? []);
+
+  // Etiquetas ativas carregam quando o formulário abre (ficam sempre atualizadas).
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    listActiveTags({}).then((res) => {
+      if (alive && res.ok) setTagOptions((cur) => [...(res.data as Tag[]), ...cur.filter((c) => !(res.data as Tag[]).some((t) => t.id === c.id))]);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   const form = useForm<FormValues>({
     defaultValues: {
@@ -75,7 +95,14 @@ export function TaskFormDialog({
   const onSubmit = form.handleSubmit((values) => {
     setError(null);
     const { checklistItems, ...rest } = values;
-    const payload = { ...rest, leadId: lead?.id ?? null, checklist: checklistItems.map((c) => c.title) };
+    const payload = {
+      ...rest,
+      leadId: lead?.id ?? null,
+      checklist: checklistItems.map((c) => c.title),
+      tagIds,
+      participantIds,
+      columnId: task ? undefined : (defaults?.columnId ?? undefined),
+    };
     const parsed = taskFormSchema.safeParse(payload);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) form.setError(issue.path.join(".") as keyof FormValues, { message: issue.message });
@@ -89,7 +116,11 @@ export function TaskFormDialog({
       }
       toast.success(res.message);
       setOpen(false);
-      if (!task) form.reset();
+      if (!task) {
+        form.reset();
+        setTagIds([]);
+        setParticipantIds([]);
+      }
       router.refresh();
     });
   });
@@ -108,6 +139,10 @@ export function TaskFormDialog({
           <FormAlert>{error}</FormAlert>
           <FormField label="Título" error={errors.title?.message} required>
             <Input autoFocus {...form.register("title", { required: "Informe o título." })} />
+          </FormField>
+
+          <FormField label="Etiquetas" hint="Ex.: Copy, Criação de site, Design, Tráfego pago, Reunião." optional>
+            <TagPicker value={tagIds} onChange={setTagIds} options={tagOptions} disabled={pending} triggerLabel="Adicionar etiqueta" />
           </FormField>
 
           <div className="grid gap-3 sm:grid-cols-3">
@@ -266,6 +301,11 @@ export function TaskFormDialog({
                   )}
                 />
               </FormField>
+              {owners.length > 1 && (
+                <FormField label="Participantes" optional className="sm:col-span-2">
+                  <ParticipantsPicker owners={owners} value={participantIds} onChange={setParticipantIds} />
+                </FormField>
+              )}
               <FormField label="Categoria" optional className="sm:col-span-2">
                 <Input placeholder="Ex.: Produção de site, Financeiro, Suporte…" {...form.register("category")} />
               </FormField>
@@ -283,5 +323,30 @@ export function TaskFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ParticipantsPicker({ owners, value, onChange }: { owners: Owner[]; value: string[]; onChange: (v: string[]) => void }) {
+  const names = owners.filter((o) => value.includes(o.id)).map((o) => o.full_name || o.email);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className="w-full justify-start font-normal">
+          <Users aria-hidden="true" />
+          <span className="truncate">{names.length ? names.join(", ") : "Ninguém além do responsável"}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="grid max-h-64 w-72 gap-1 overflow-y-auto" align="start">
+        {owners.map((o) => (
+          <label key={o.id} className="flex min-h-8 cursor-pointer items-center gap-2 rounded px-1 text-sm hover:bg-accent">
+            <Checkbox
+              checked={value.includes(o.id)}
+              onCheckedChange={(v) => onChange(v ? [...value, o.id] : value.filter((id) => id !== o.id))}
+            />
+            {o.full_name || o.email}
+          </label>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 }

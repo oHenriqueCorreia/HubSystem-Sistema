@@ -1,14 +1,32 @@
 import { z } from "zod";
-import { emailSchema } from "@/features/auth/schemas";
+import { emailSchema, passwordSchema } from "@/features/auth/schemas";
 import { PERMISSION_KEYS } from "@/domain/permissions";
 
 export const uuid = z.uuid("Identificador inválido.");
 export const scopeSchema = z.enum(["own", "team", "all"]);
 
-export const inviteSchema = z.object({
-  email: emailSchema,
-  fullName: z.string().trim().min(2, "Informe o nome.").max(120),
-  roleId: uuid,
+export const inviteSchema = z
+  .object({
+    email: emailSchema,
+    fullName: z.string().trim().min(2, "Informe o nome.").max(120),
+    // equipe = entra nesta organização; ambiente = ganha uma organização própria e vazia
+    mode: z.enum(["equipe", "ambiente"]).default("equipe"),
+    roleId: uuid.nullable().default(null),
+    workspaceName: z.string().trim().max(120).default(""),
+    overrides: z
+      .array(z.object({ key: z.enum(PERMISSION_KEYS), effect: z.enum(["grant", "deny"]), scope: scopeSchema.default("all") }))
+      .max(PERMISSION_KEYS.length)
+      .default([]),
+  })
+  .refine((v) => v.mode === "ambiente" || v.roleId, { path: ["roleId"], message: "Escolha o papel." })
+  .refine((v) => v.mode === "equipe" || v.workspaceName.length >= 2, { path: ["workspaceName"], message: "Informe o nome da empresa." });
+
+export const invitationIdSchema = z.object({ id: uuid });
+
+export const acceptInvitationSchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{40,60}$/, "Convite inválido."),
+  fullName: z.string().trim().min(2, "Informe seu nome.").max(120),
+  password: passwordSchema,
 });
 
 export const setActiveSchema = z.object({ userId: uuid, active: z.boolean() });

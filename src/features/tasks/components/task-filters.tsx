@@ -11,7 +11,15 @@ import { cn } from "cn";
 const ALL = "__todos__";
 const STORAGE = "hub:tarefas-filtros";
 
-export function TaskFilters({ owners, canSeeOthers }: { owners: { id: string; full_name: string; email: string }[]; canSeeOthers: boolean }) {
+export function TaskFilters({
+  owners,
+  canSeeOthers,
+  tags = [],
+}: {
+  owners: { id: string; full_name: string; email: string }[];
+  canSeeOthers: boolean;
+  tags?: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -25,7 +33,7 @@ export function TaskFilters({ owners, canSeeOthers }: { owners: { id: string; fu
     else next.delete(key);
     try {
       const keep: Record<string, string> = {};
-      for (const k of ["responsavel", "status", "prioridade", "periodo", "modo"]) {
+      for (const k of ["responsavel", "status", "prioridade", "periodo", "modo", "etiqueta"]) {
         const v = next.get(k);
         if (v) keep[k] = v;
       }
@@ -123,6 +131,21 @@ export function TaskFilters({ owners, canSeeOthers }: { owners: { id: string; fu
           <SelectItem value="baixa">Baixa</SelectItem>
         </SelectContent>
       </Select>
+      {tags.length > 0 && (
+        <Select value={params.get("etiqueta") ?? ALL} onValueChange={(v) => update("etiqueta", v)}>
+          <SelectTrigger className="w-44" aria-label="Etiqueta">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Qualquer etiqueta</SelectItem>
+            {tags.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {t.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <Select value={params.get("status") ?? "abertas"} onValueChange={(v) => update("status", v === "abertas" ? null : v)}>
         <SelectTrigger className="w-36" aria-label="Situação">
           <SelectValue />

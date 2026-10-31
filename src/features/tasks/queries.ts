@@ -2,14 +2,15 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { todayLocal } from "@/domain/shared/dates";
 import type { CalItem } from "@/domain/calendar";
-import type { Task, TaskComment } from "./types";
+import type { Task, TaskColumn, TaskComment } from "./types";
 
 const TASK_COLUMNS = `
   id, title, description, owner_id, priority, status, start_date, due_at, has_time, duration_minutes, category,
-  position, lead_id, deal_id, channel, suggested_message, outcome, completed_at, created_by, created_at, cadence_enrollment_id,
+  position, lead_id, deal_id, channel, suggested_message, outcome, completed_at, created_by, created_at, cadence_enrollment_id, column_id,
   lead:leads(id, name, whatsapp_e164),
   checklist:task_checklist_items(id, title, position, done_at),
-  task_tags(tag:tags(id, name, color))
+  task_tags(tag:tags(id, name, color)),
+  task_participants(user_id)
 `;
 
 type Row = Record<string, unknown>;
@@ -22,10 +23,20 @@ function toTask(r: Row): Task {
     lead: (lead as Task["lead"]) ?? null,
     checklist: ((r.checklist as Task["checklist"]) ?? []).sort((a, b) => a.position - b.position),
     tags,
+    participant_ids: ((r.task_participants as { user_id: string }[] | null) ?? []).map((p) => p.user_id),
   };
 }
 
+/** Colunas ativas do quadro, na ordem definida pela organização. */
+export async function listTaskColumns(): Promise<TaskColumn[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("task_columns").select("id, name, color, kind, position, archived_at").is("archived_at", null).order("position");
+  if (error) throw error;
+  return (data ?? []) as TaskColumn[];
+}
+
 export type TaskFilters = {
+  tag?: string;
   responsavel?: string;
   status?: "abertas" | "concluidas" | "todas";
   prioridade?: string;
@@ -36,7 +47,9 @@ export type TaskFilters = {
 
 export async function listTasks(filters: TaskFilters, limit = 500): Promise<Task[]> {
   const supabase = await createClient();
-  let q = supabase.from("tasks").select(TASK_COLUMNS).is("deleted_at", null);
+  // Filtro por etiqueta: junção interna só quando pedido.
+  const columns = filters.tag ? `${TASK_COLUMNS}, tag_filter:task_tags!inner(tag_id)` : TASK_COLUMNS;
+  let q = supabase.from("tasks").select(columns).is("deleted_at", null);
 
   const status = filters.status ?? "abertas";
   if (status === "abertas") q = q.in("status", ["a_fazer", "em_andamento"]);
@@ -47,6 +60,7 @@ export async function listTasks(filters: TaskFilters, limit = 500): Promise<Task
   } else if (filters.responsavel) q = q.eq("owner_id", filters.responsavel);
   if (filters.prioridade) q = q.eq("priority", filters.prioridade);
   if (filters.lead) q = q.eq("lead_id", filters.lead);
+  if (filters.tag) q = q.eq("tag_filter.tag_id", filters.tag);
   if (filters.q) q = q.ilike("title", `%${filters.q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
 
   const now = new Date();
@@ -58,7 +72,7 @@ export async function listTasks(filters: TaskFilters, limit = 500): Promise<Task
 
   const { data, error } = await q.order("due_at", { ascending: true, nullsFirst: false }).order("position").limit(limit);
   if (error) throw error;
-  return ((data ?? []) as Row[]).map(toTask);
+  return ((data ?? []) as unknown as Row[]).map(toTask);
 }
 
 /** "Meu dia": atrasadas + de hoje (abertas) e concluídas hoje, do usuário atual. */

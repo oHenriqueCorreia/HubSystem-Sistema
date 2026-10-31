@@ -18,7 +18,6 @@ import {
   moveDealSchema,
   nextContactSchema,
   saveMappingSchema,
-  tagSchema,
 } from "./schemas";
 import { z } from "zod";
 
@@ -209,15 +208,6 @@ export const startDealInPipeline = defineAction(
     return ok(null, "Lead adicionado ao funil.");
   },
 );
-
-export const createTag = defineAction({ schema: tagSchema, permission: "crm.leads.update" }, async (input) => {
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("tags").insert(input).select("id, name, color").single();
-  if (error?.code === "23505") return fail("conflict", "Já existe uma etiqueta com esse nome.");
-  if (error) throw error;
-  revalidatePath("/crm", "layout");
-  return ok(data as { id: string; name: string; color: string }, "Etiqueta criada.");
-});
 
 export const setLeadTags = defineAction({ schema: leadTagsSchema, permission: "crm.leads.update" }, async (input) => {
   const supabase = await createClient();

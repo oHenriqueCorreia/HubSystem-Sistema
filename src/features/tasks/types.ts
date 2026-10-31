@@ -28,10 +28,14 @@ export type Task = {
   created_by: string | null;
   created_at: string;
   cadence_enrollment_id: string | null;
+  column_id: string | null;
+  participant_ids: string[];
   lead: { id: string; name: string; whatsapp_e164: string | null } | null;
   checklist: ChecklistItem[];
   tags: { id: string; name: string; color: string }[];
 };
+
+export type TaskColumn = { id: string; name: string; color: string; kind: TaskStatus; position: number; archived_at: string | null };
 
 export type TaskComment = { id: string; author_id: string; body: string; created_at: string };
 

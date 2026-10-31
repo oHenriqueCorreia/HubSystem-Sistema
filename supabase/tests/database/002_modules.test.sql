@@ -1,12 +1,15 @@
 begin;
 create extension if not exists pgtap with schema extensions;
+
+-- Organização isolada do teste (o trigger de bootstrap cria papéis, funis etc.).
+insert into public.organizations (id, name) values ('c0000000-0000-0000-0000-00000000000b', 'Org de teste');
 select plan(18);
 
 create or replace function pg_temp.mk_user(p_id uuid, p_email text, p_role text default null)
 returns void language sql as $$
   insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
   values (p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', p_email,
-          case when p_role is null then '{}'::jsonb else jsonb_build_object('role_key', p_role) end, now(), now());
+          jsonb_build_object('organization_id', 'c0000000-0000-0000-0000-00000000000b') || case when p_role is null then '{}'::jsonb else jsonb_build_object('role_key', p_role) end, now(), now());
 $$;
 create or replace function pg_temp.login(p_id uuid) returns void language sql as $$
   select set_config('role', 'authenticated', true),

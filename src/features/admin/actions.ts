@@ -9,7 +9,6 @@ import { fail, ok } from "@/domain/shared/result";
 import { normalizePhone } from "@/domain/shared/phone";
 import {
   createRoleSchema,
-  inviteSchema,
   orgSettingsSchema,
   overrideSchema,
   profileSchema,
@@ -24,32 +23,6 @@ function hasSecretKey() {
 
 const SECRET_MISSING =
   "Convites ainda não estão configurados no servidor (falta SUPABASE_SECRET_KEY). Avise o responsável técnico.";
-
-export const inviteUser = defineAction({ schema: inviteSchema, permission: "admin.users" }, async (input, { user }) => {
-  if (!hasSecretKey()) return fail("business_rule", SECRET_MISSING);
-
-  const supabase = await createClient();
-  // Confirma pela RLS que o papel pertence à organização do administrador.
-  const role = must(await supabase.from("roles").select("key").eq("id", input.roleId).single());
-
-  const admin = createAdminClient();
-  const { error } = await admin.auth.admin.inviteUserByEmail(input.email, {
-    data: { organization_id: user.organizationId, role_key: role.key, full_name: input.fullName },
-    redirectTo: `${publicEnv.NEXT_PUBLIC_SITE_URL}/auth/confirm?next=/definir-senha`,
-  });
-
-  if (error) {
-    if (error.code === "email_exists" || /already been registered/i.test(error.message)) {
-      return fail("conflict", "Já existe um usuário com este e-mail.");
-    }
-    if (error.status === 429) return fail("business_rule", "Limite de e-mails atingido. Tente novamente em alguns minutos.");
-    console.error("[inviteUser]", error.code ?? error.status);
-    return fail("unknown", "Não foi possível enviar o convite agora.");
-  }
-
-  revalidatePath("/configuracoes/usuarios");
-  return ok(null, `Convite enviado para ${input.email}.`);
-});
 
 /** Gera um link de acesso para o admin copiar (quando o e-mail não chega). */
 export const generateAccessLink = defineAction(

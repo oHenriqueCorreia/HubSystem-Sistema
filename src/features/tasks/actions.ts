@@ -15,6 +15,11 @@ import {
   eventFormSchema,
   idSchema,
   taskFormSchema,
+  taskColumnDeleteSchema,
+  taskColumnMoveSchema,
+  taskColumnSchema,
+  taskColumnUpdateSchema,
+  taskDependencySchema,
   taskMoveSchema,
   taskStatusSchema,
 } from "./schemas";
@@ -41,7 +46,19 @@ function taskRow(input: z.output<typeof taskFormSchema>) {
     lead_id: input.leadId ?? null,
     channel: input.channel ?? null,
     ...(input.ownerId ? { owner_id: input.ownerId } : {}),
+    ...(input.columnId ? { column_id: input.columnId } : {}),
   };
+}
+
+/** Substitui etiquetas e participantes da tarefa pelos informados. */
+async function syncTaskLinks(taskId: string, tagIds: string[], participantIds: string[]) {
+  const supabase = await createClient();
+  must(await supabase.from("task_tags").delete().eq("task_id", taskId));
+  if (tagIds.length) must(await supabase.from("task_tags").insert([...new Set(tagIds)].map((tag_id) => ({ task_id: taskId, tag_id }))));
+  must(await supabase.from("task_participants").delete().eq("task_id", taskId));
+  if (participantIds.length) {
+    must(await supabase.from("task_participants").insert([...new Set(participantIds)].map((user_id) => ({ task_id: taskId, user_id }))));
+  }
 }
 
 export const createTask = defineAction({ schema: taskFormSchema, permission: "tasks.create" }, async (input) => {
@@ -50,6 +67,7 @@ export const createTask = defineAction({ schema: taskFormSchema, permission: "ta
   if (input.checklist.length) {
     must(await supabase.from("task_checklist_items").insert(input.checklist.map((title, i) => ({ task_id: task.id, title, position: i * 1024 }))));
   }
+  await syncTaskLinks(task.id, input.tagIds, input.participantIds);
   revalidateWork(input.leadId);
   return ok({ id: task.id }, "Tarefa criada.");
 });
@@ -60,6 +78,7 @@ export const updateTask = defineAction({ schema: taskFormSchema.and(z.object({ i
   void _ignored;
   const res = must(await supabase.from("tasks").update(taskRow({ ...rest, checklist: [] })).eq("id", input.id).select("id")) as { id: string }[];
   if (!res.length) return fail("forbidden", "Você não pode editar esta tarefa.");
+  await syncTaskLinks(input.id, input.tagIds, input.participantIds);
   revalidateWork(input.leadId);
   return ok(null, "Tarefa salva.");
 });
@@ -80,7 +99,8 @@ export const setTaskStatus = defineAction({ schema: taskStatusSchema, permission
 
 export const moveTask = defineAction({ schema: taskMoveSchema, permission: "tasks.update" }, async (input) => {
   const supabase = await createClient();
-  const changed = must(await supabase.from("tasks").update({ status: input.status, position: input.position }).eq("id", input.id).select("id, lead_id")) as { id: string; lead_id: string | null }[];
+  // O status acompanha a coluna (trigger tasks_column_sync no banco).
+  const changed = must(await supabase.from("tasks").update({ column_id: input.columnId, position: input.position }).eq("id", input.id).select("id, lead_id")) as { id: string; lead_id: string | null }[];
   if (!changed.length) return fail("forbidden", "Você não pode mover esta tarefa.");
   revalidateWork(changed[0].lead_id);
   return ok(null);
@@ -247,4 +267,77 @@ export const cancelEnrollment = defineAction({ schema: idSchema.extend({ leadId:
   must(await supabase.rpc("cancel_enrollment", { p_enrollment: input.id }));
   revalidateWork(input.leadId);
   return ok(null, "Cadência cancelada. As tarefas pendentes foram canceladas.");
+});
+
+// --- Quadro: colunas -------------------------------------------------------------
+
+export const createTaskColumn = defineAction({ schema: taskColumnSchema, permission: "tasks.board.configure" }, async (input) => {
+  const supabase = await createClient();
+  const { data: last } = await supabase.from("task_columns").select("position").order("position", { ascending: false }).limit(1).maybeSingle();
+  must(await supabase.from("task_columns").insert({ ...input, position: (last?.position ?? 0) + 1024 }));
+  revalidatePath("/tarefas");
+  return ok(null, "Coluna criada.");
+});
+
+export const updateTaskColumn = defineAction({ schema: taskColumnUpdateSchema, permission: "tasks.board.configure" }, async ({ id, ...input }) => {
+  const supabase = await createClient();
+  const res = must(await supabase.from("task_columns").update(input).eq("id", id).select("id")) as { id: string }[];
+  if (!res.length) return fail("forbidden", "Você não pode editar esta coluna.");
+  // Tarefas da coluna passam a seguir o novo status-base.
+  must(await supabase.from("tasks").update({ status: input.kind }).eq("column_id", id).neq("status", input.kind).is("deleted_at", null));
+  revalidateWork();
+  return ok(null, "Coluna salva.");
+});
+
+export const moveTaskColumn = defineAction({ schema: taskColumnMoveSchema, permission: "tasks.board.configure" }, async (input) => {
+  const supabase = await createClient();
+  must(await supabase.from("task_columns").update({ position: input.position }).eq("id", input.id));
+  revalidatePath("/tarefas");
+  return ok(null);
+});
+
+export const archiveTaskColumn = defineAction({ schema: idSchema, permission: "tasks.board.configure" }, async ({ id }) => {
+  const supabase = await createClient();
+  const { count } = await supabase.from("tasks").select("id", { count: "exact", head: true }).eq("column_id", id).is("deleted_at", null);
+  if (count) return fail("business_rule", "Mova as tarefas desta coluna antes de arquivá-la.");
+  must(await supabase.from("task_columns").update({ archived_at: new Date().toISOString() }).eq("id", id));
+  revalidatePath("/tarefas");
+  return ok(null, "Coluna arquivada.");
+});
+
+export const deleteTaskColumn = defineAction({ schema: taskColumnDeleteSchema, permission: "tasks.board.configure" }, async (input) => {
+  const supabase = await createClient();
+  const moved = must(
+    await supabase.rpc("delete_task_column", { p_column: input.id, p_target: input.targetId, p_archive_tasks: input.archiveTasks }),
+  ) as number;
+  revalidateWork();
+  if (!moved) return ok(null, "Coluna excluída.");
+  return ok(null, input.targetId ? `Coluna excluída. ${moved} tarefa(s) transferida(s).` : `Coluna excluída. ${moved} tarefa(s) foram para a lixeira.`);
+});
+
+// --- Dependências e histórico ---------------------------------------------------
+
+export const addTaskDependency = defineAction({ schema: taskDependencySchema, permission: "tasks.update" }, async (input) => {
+  if (input.taskId === input.dependsOnId) return fail("validation", "Uma tarefa não pode depender dela mesma.");
+  const supabase = await createClient();
+  const { error } = await supabase.from("task_dependencies").insert({ task_id: input.taskId, depends_on_id: input.dependsOnId });
+  if (error?.code === "23505") return fail("conflict", "Esta dependência já existe.");
+  if (error) throw error;
+  revalidateWork();
+  return ok(null, "Dependência adicionada.");
+});
+
+export const removeTaskDependency = defineAction({ schema: taskDependencySchema, permission: "tasks.update" }, async (input) => {
+  const supabase = await createClient();
+  must(await supabase.from("task_dependencies").delete().eq("task_id", input.taskId).eq("depends_on_id", input.dependsOnId));
+  revalidateWork();
+  return ok(null, "Dependência removida.");
+});
+
+export type TaskHistoryEntry = { created_at: string; action: string; actor_name: string; changes: Record<string, unknown> };
+
+export const getTaskHistory = defineAction({ schema: idSchema, permission: "tasks.read" }, async ({ id }) => {
+  const supabase = await createClient();
+  const rows = must(await supabase.rpc("task_history", { p_task: id })) as TaskHistoryEntry[];
+  return ok(rows ?? []);
 });

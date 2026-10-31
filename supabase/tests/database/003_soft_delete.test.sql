@@ -6,8 +6,6 @@ select plan(14);
 insert into public.organizations (id, name) values
   ('b0000000-0000-0000-0000-00000000000a', 'Org A teste'),
   ('b0000000-0000-0000-0000-00000000000b', 'Org B teste');
-select private.seed_default_roles('b0000000-0000-0000-0000-00000000000a');
-select private.seed_default_roles('b0000000-0000-0000-0000-00000000000b');
 
 create or replace function pg_temp.mk_user(p_id uuid, p_email text, p_org uuid, p_role text default null)
 returns void language sql as $$

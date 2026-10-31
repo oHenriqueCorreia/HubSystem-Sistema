@@ -14,6 +14,7 @@ export const PERMISSION_KEYS = [
   "crm.pipeline.configure",
   "crm.cadences.read",
   "crm.cadences.manage",
+  "tags.manage",
   "clients.read",
   "clients.create",
   "clients.update",
@@ -26,6 +27,7 @@ export const PERMISSION_KEYS = [
   "tasks.create",
   "tasks.update",
   "tasks.delete",
+  "tasks.board.configure",
   "calendar.read",
   "calendar.manage",
   "finance.company.read",
@@ -80,5 +82,5 @@ export function canOnRecord(
   return ownerId === userId;
 }
 
-export const ROLE_KEYS = ["admin", "gestor", "vendedor", "financeiro", "colaborador"] as const;
+export const ROLE_KEYS = ["admin", "gestor", "vendedor", "financeiro", "colaborador", "atendente", "leitura"] as const;
 export type RoleKey = (typeof ROLE_KEYS)[number];

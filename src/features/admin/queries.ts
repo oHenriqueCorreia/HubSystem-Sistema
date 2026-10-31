@@ -130,3 +130,46 @@ export async function getMyProfile(userId: string) {
   if (error) throw error;
   return data as { full_name: string; email: string; job_title: string | null; phone_e164: string | null };
 }
+
+export type InvitationState = "pendente" | "aceito" | "expirado" | "cancelado";
+export type InvitationListRow = {
+  id: string;
+  email: string;
+  full_name: string;
+  mode: "equipe" | "ambiente";
+  workspace_name: string | null;
+  role_name: string | null;
+  state: InvitationState;
+  expires_at: string;
+  last_sent_at: string;
+  send_count: number;
+  accepted_at: string | null;
+};
+
+/** Convites da organização. "Expirado" é derivado do prazo, nunca gravado. */
+export async function listInvitations(): Promise<InvitationListRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("invitations")
+    .select("id, email, full_name, mode, workspace_name, status, expires_at, last_sent_at, send_count, accepted_at, roles(name)")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  const now = Date.now();
+  return (data ?? []).map((r) => {
+    const role = r.roles as unknown as { name: string } | { name: string }[] | null;
+    return {
+      id: r.id,
+      email: r.email,
+      full_name: r.full_name,
+      mode: r.mode,
+      workspace_name: r.workspace_name,
+      role_name: (Array.isArray(role) ? role[0]?.name : role?.name) ?? null,
+      state: r.status === "pendente" && new Date(r.expires_at).getTime() < now ? "expirado" : r.status,
+      expires_at: r.expires_at,
+      last_sent_at: r.last_sent_at,
+      send_count: r.send_count,
+      accepted_at: r.accepted_at,
+    };
+  });
+}

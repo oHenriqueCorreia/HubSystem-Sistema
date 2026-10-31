@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Convite para o Hub System</title>
+</head>
+<!--
+  Template do convite (Supabase → Authentication → Email Templates → Invite user).
+  Assunto sugerido: {{ .Data.inviter_name }} convidou você para o Hub System
+  Os campos .Data.* são enviados pelo servidor (src/features/admin/invitations.ts).
+  O link principal é o do próprio Hub System (token de uso único, 7 dias);
+  .ConfirmationURL fica como reserva caso o template antigo esteja em uso.
+-->
+<body style="margin:0;padding:0;background:#eef3f9;font-family:'IBM Plex Sans',Segoe UI,Helvetica,Arial,sans-serif;color:#1c2420;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    {{ .Data.inviter_name }} convidou você para {{ .Data.organization_name }} no Hub System. O convite vale até {{ .Data.expires_label }}.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef3f9;padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #dbe4ef;">
+          <tr>
+            <td style="background:#0b1f3a;padding:28px 32px;" align="left">
+              <img src="{{ .SiteURL }}/brand/logo-dark.png" width="160" alt="Hub System" style="display:block;width:160px;max-width:60%;height:auto;border:0;">
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 32px 8px;">
+              <p style="margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#0969da;font-weight:600;">Convite</p>
+              <h1 style="margin:0 0 16px;font-size:24px;line-height:1.3;color:#0b1f3a;">
+                Olá{{ if .Data.full_name }}, {{ .Data.full_name }}{{ end }}! Você foi convidado para o Hub System.
+              </h1>
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#3d4a44;">
+                <strong>{{ .Data.inviter_name }}</strong> convidou você para acessar
+                <strong>{{ .Data.organization_name }}</strong>{{ if .Data.role_name }} como <strong>{{ .Data.role_name }}</strong>{{ end }}.
+                No Hub System você organiza comercial, tarefas, agenda e finanças em um só lugar.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 32px 8px;" align="left">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px;background:#0969da;">
+                    <a href="{{ if .Data.invite_url }}{{ .Data.invite_url }}{{ else }}{{ .ConfirmationURL }}{{ end }}"
+                       style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Aceitar convite
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 32px 8px;">
+              <p style="margin:0;font-size:14px;line-height:1.6;color:#3d4a44;">
+                O convite vale até <strong>{{ .Data.expires_label }}</strong> (horário de Brasília) e funciona uma única vez.
+              </p>
+              <p style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#5b6660;">
+                Se o botão não funcionar, copie e cole este endereço no navegador:<br>
+                <span style="word-break:break-all;color:#0969da;">{{ if .Data.invite_url }}{{ .Data.invite_url }}{{ else }}{{ .ConfirmationURL }}{{ end }}</span>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 32px 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f7fa;border-radius:10px;">
+                <tr>
+                  <td style="padding:16px 18px;font-size:13px;line-height:1.6;color:#5b6660;">
+                    <strong style="color:#1c2420;">Aviso de segurança:</strong> o Hub System nunca pede sua senha por e-mail.
+                    Este link é pessoal; não o encaminhe. Se você não esperava este convite, ignore esta mensagem —
+                    nenhuma conta será ativada sem a sua confirmação.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px;border-top:1px solid #e6ecf3;font-size:12px;line-height:1.5;color:#8a948f;">
+              Hub System · Um centro. Todas as conexões.<br>
+              Você recebeu este e-mail porque {{ .Data.inviter_name }} informou o endereço {{ .Email }}.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

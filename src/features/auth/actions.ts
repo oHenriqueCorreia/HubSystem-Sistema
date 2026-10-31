@@ -3,12 +3,18 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { publicEnv } from "@/lib/env";
+import { clientIp, RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
 import { fail, ok, type ActionResult } from "@/domain/shared/result";
 import { newPasswordSchema, resetRequestSchema, safeNext, signInSchema } from "./schemas";
 
 export async function signIn(raw: unknown): Promise<ActionResult<never>> {
   const parsed = signInSchema.safeParse(raw);
   if (!parsed.success) return fail("validation", "Revise os campos destacados.");
+
+  const ip = await clientIp();
+  const allowed =
+    (await withinRateLimit(`login:ip:${ip}`, 20, 600)) && (await withinRateLimit(`login:email:${parsed.data.email.toLowerCase()}`, 8, 600));
+  if (!allowed) return fail("business_rule", RATE_LIMIT_MESSAGE);
 
   const supabase = await createClient();
   const { data: auth, error } = await supabase.auth.signInWithPassword({
@@ -45,6 +51,8 @@ export async function signOut(): Promise<void> {
 export async function requestPasswordReset(raw: unknown): Promise<ActionResult<null>> {
   const parsed = resetRequestSchema.safeParse(raw);
   if (!parsed.success) return fail("validation", "Informe um e-mail válido.");
+
+  if (!(await withinRateLimit(`reset:ip:${await clientIp()}`, 5, 900))) return fail("business_rule", RATE_LIMIT_MESSAGE);
 
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {

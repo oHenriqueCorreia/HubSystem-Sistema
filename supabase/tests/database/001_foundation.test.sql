@@ -1,14 +1,17 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(24);
+-- Organização isolada do teste (o trigger de bootstrap cria papéis, funis etc.).
+insert into public.organizations (id, name) values ('c0000000-0000-0000-0000-00000000000a', 'Org de teste');
+
+select plan(28);
 
 -- Helpers de teste --------------------------------------------------------
 create or replace function pg_temp.mk_user(p_id uuid, p_email text, p_role text default null)
 returns void language sql as $$
   insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
   values (p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', p_email,
-          case when p_role is null then '{}'::jsonb else jsonb_build_object('role_key', p_role, 'full_name', p_email) end,
+          jsonb_build_object('organization_id', 'c0000000-0000-0000-0000-00000000000a') || case when p_role is null then '{}'::jsonb else jsonb_build_object('role_key', p_role, 'full_name', p_email) end,
           now(), now());
 $$;
 
@@ -114,6 +117,20 @@ select throws_ok(
       where user_id = '11111111-1111-1111-1111-111111111111'
         and role_id = (select id from public.roles where key = 'admin') $$,
   'P0001', 'É necessário manter ao menos um administrador ativo.', 'não é possível remover o último administrador');
+
+-- Usuário sem organização definida ganha ambiente próprio e vazio -------------
+reset role;
+select set_config('request.jwt.claims', '', true);
+insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
+values ('44444444-4444-4444-4444-444444444444', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+        'novo@teste.com', '{"full_name":"Novo","workspace_name":"Empresa Nova"}', now(), now());
+select pg_temp.login('44444444-4444-4444-4444-444444444444');
+select is((select name from public.organizations), 'Empresa Nova', 'usuário novo ganha a própria organização');
+select is(private.perm_scope('admin.users')::text, 'all', 'usuário novo administra a própria organização');
+select is((select count(*)::int from public.profiles), 1, 'usuário novo não vê pessoas de outras organizações');
+reset role;
+select ok(public.rate_limit_hit('teste:1', 2, 60) and public.rate_limit_hit('teste:1', 2, 60) and not public.rate_limit_hit('teste:1', 2, 60),
+  'rate limit bloqueia a partir do limite');
 
 -- Anônimo
 reset role;

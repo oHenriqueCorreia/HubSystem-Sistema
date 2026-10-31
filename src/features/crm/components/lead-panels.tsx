@@ -2,24 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarPlus, Check, LoaderCircle, Plus, Tags, Trash2 } from "lucide-react";
+import { CalendarPlus, Check, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { formatBRL, parseBRL } from "@/domain/shared/money";
-import { cn } from "cn";
 import {
   addActivity,
   assignLead,
-  createTag,
   deleteLead,
   moveDeal,
   restoreLead,
@@ -28,8 +25,9 @@ import {
   startDealInPipeline,
   updateDealValue,
 } from "../actions";
-import { NextContactBadge, StageLabel, TAG_COLOR_LABEL, TagChip } from "./chips";
-import type { CrmLookups, Deal, Tag, TagColor } from "../types";
+import { TagPicker } from "@/features/tags/components/tag-picker";
+import { NextContactBadge, StageLabel, TagChip } from "./chips";
+import type { CrmLookups, Deal, Tag } from "../types";
 
 function toLocalInput(iso: string | null) {
   if (!iso) return "";
@@ -416,108 +414,33 @@ export function OwnerSelect({ leadId, ownerId, lookups }: { leadId: string; owne
   );
 }
 
-const COLORS: TagColor[] = ["slate", "teal", "blue", "violet", "rose", "amber", "green", "orange"];
-
 export function TagEditor({ leadId, current, all, canEdit }: { leadId: string; current: Tag[]; all: Tag[]; canEdit: boolean }) {
   const router = useRouter();
-  const [selected, setSelected] = useState(new Set(current.map((t) => t.id)));
-  const [tags, setTags] = useState(all);
-  const [newName, setNewName] = useState("");
-  const [newColor, setNewColor] = useState<TagColor>("teal");
+  const [selected, setSelected] = useState(() => current.map((t) => t.id));
   const [pending, startTransition] = useTransition();
+  // Etiquetas arquivadas que o lead já tem continuam visíveis.
+  const options = [...all, ...current.filter((c) => !all.some((t) => t.id === c.id))];
 
-  function save(next: Set<string>) {
+  function save(next: string[]) {
     setSelected(next);
     startTransition(async () => {
-      const res = await setLeadTags({ leadId, tagIds: [...next] });
+      const res = await setLeadTags({ leadId, tagIds: next });
       if (!res.ok) toast.error(res.message);
       router.refresh();
     });
   }
 
-  function create() {
-    if (!newName.trim()) return;
-    startTransition(async () => {
-      const res = await createTag({ name: newName, color: newColor });
-      if (!res.ok) {
-        toast.error(res.message);
-        return;
-      }
-      const tag = res.data as Tag;
-      setTags((t) => [...t, tag]);
-      setNewName("");
-      const next = new Set(selected).add(tag.id);
-      setSelected(next);
-      const r2 = await setLeadTags({ leadId, tagIds: [...next] });
-      if (!r2.ok) toast.error(r2.message);
-      router.refresh();
-    });
+  if (!canEdit) {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {current.map((t) => (
+          <TagChip key={t.id} name={t.name} color={t.color} />
+        ))}
+        {current.length === 0 && <span className="text-sm text-muted-foreground">Sem etiquetas</span>}
+      </div>
+    );
   }
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {current.map((t) => (
-        <TagChip key={t.id} name={t.name} color={t.color} />
-      ))}
-      {current.length === 0 && <span className="text-sm text-muted-foreground">Sem etiquetas</span>}
-      {canEdit && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button size="xs" variant="ghost">
-              <Tags aria-hidden="true" /> Editar etiquetas
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="grid w-72 gap-3">
-            <fieldset className="grid max-h-52 gap-1 overflow-y-auto">
-              <legend className="mb-1 text-xs font-medium text-muted-foreground">Etiquetas</legend>
-              {tags.length === 0 && <p className="text-sm text-muted-foreground">Crie a primeira etiqueta abaixo.</p>}
-              {tags.map((t) => (
-                <label key={t.id} className="flex min-h-8 items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={selected.has(t.id)}
-                    disabled={pending}
-                    onCheckedChange={(v) => {
-                      const next = new Set(selected);
-                      if (v) next.add(t.id);
-                      else next.delete(t.id);
-                      save(next);
-                    }}
-                  />
-                  <TagChip name={t.name} color={t.color} />
-                </label>
-              ))}
-            </fieldset>
-            <div className="grid gap-2 border-t pt-3">
-              <Label htmlFor="new-tag" className="text-xs">
-                Nova etiqueta
-              </Label>
-              <div className="flex gap-2">
-                <Input id="new-tag" value={newName} maxLength={40} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), create())} />
-                <Button size="sm" onClick={create} disabled={!newName.trim() || pending}>
-                  Criar
-                </Button>
-              </div>
-              <div role="radiogroup" aria-label="Cor da etiqueta" className="flex flex-wrap gap-1">
-                {COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    aria-checked={newColor === c}
-                    aria-label={TAG_COLOR_LABEL[c]}
-                    onClick={() => setNewColor(c)}
-                    className={cn("rounded p-0.5", newColor === c && "ring-2 ring-ring")}
-                  >
-                    <TagChip name="Aa" color={c} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-      )}
-    </div>
-  );
+  return <TagPicker value={selected} onChange={save} options={options} disabled={pending} />;
 }
 
 export function DeleteLeadButton({ leadId, name }: { leadId: string; name: string }) {

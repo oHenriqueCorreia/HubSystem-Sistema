@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Copy, KeyRound, LoaderCircle, SlidersHorizontal, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -14,11 +14,13 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { formatDateTime } from "@/domain/shared/dates";
-import { generateAccessLink, inviteUser, setUserActive, setUserRole } from "../actions";
+import { generateAccessLink, setUserActive, setUserRole } from "../actions";
+import { inviteUser } from "../invitations";
 import { inviteSchema } from "../schemas";
 import type { RoleRow, UserRow } from "../queries";
 
@@ -29,8 +31,16 @@ export function InviteUserDialog({ roles }: { roles: RoleRow[] }) {
   const [pending, startTransition] = useTransition();
   const form = useForm<z.input<typeof inviteSchema>>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: "", fullName: "", roleId: roles.find((r) => r.key === "colaborador")?.id ?? roles[0]?.id ?? "" },
+    defaultValues: {
+      email: "",
+      fullName: "",
+      mode: "equipe",
+      workspaceName: "",
+      overrides: [],
+      roleId: roles.find((r) => r.key === "colaborador")?.id ?? roles[0]?.id ?? null,
+    },
   });
+  const mode = useWatch({ control: form.control, name: "mode" });
 
   const onSubmit = form.handleSubmit((values) => {
     setError(null);
@@ -57,36 +67,72 @@ export function InviteUserDialog({ roles }: { roles: RoleRow[] }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Convidar usuário</DialogTitle>
-          <DialogDescription>A pessoa recebe um e-mail com o link para definir a senha.</DialogDescription>
+          <DialogDescription>A pessoa recebe um e-mail com um link pessoal, válido por 7 dias e de uso único.</DialogDescription>
         </DialogHeader>
         <form id="invite-form" onSubmit={onSubmit} noValidate className="grid gap-3">
           <FormAlert>{error}</FormAlert>
-          <FormField label="Nome" error={form.formState.errors.fullName?.message} required>
-            <Input autoFocus {...form.register("fullName")} />
-          </FormField>
-          <FormField label="E-mail" error={form.formState.errors.email?.message} required>
-            <Input type="email" spellCheck={false} inputMode="email" {...form.register("email")} />
-          </FormField>
-          <FormField label="Papel" error={form.formState.errors.roleId?.message} required>
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-sm font-medium">Tipo de acesso</legend>
             <Controller
               control={form.control}
-              name="roleId"
+              name="mode"
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <RadioGroup value={field.value} onValueChange={field.onChange} className="grid gap-2 sm:grid-cols-2">
+                  <label className="flex cursor-pointer gap-2 rounded-md border p-3 text-sm has-[[data-state=checked]]:border-primary">
+                    <RadioGroupItem value="equipe" className="mt-0.5" />
+                    <span>
+                      <span className="font-medium">Entrar na minha equipe</span>
+                      <span className="block text-xs text-muted-foreground">Vê os dados da organização conforme o papel.</span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer gap-2 rounded-md border p-3 text-sm has-[[data-state=checked]]:border-primary">
+                    <RadioGroupItem value="ambiente" className="mt-0.5" />
+                    <span>
+                      <span className="font-medium">Ambiente próprio</span>
+                      <span className="block text-xs text-muted-foreground">Começa vazio, como uma empresa separada. Não vê seus dados.</span>
+                    </span>
+                  </label>
+                </RadioGroup>
               )}
             />
+          </fieldset>
+          <FormField label="Nome" error={form.formState.errors.fullName?.message} required>
+            <Input autoFocus autoComplete="off" {...form.register("fullName")} />
           </FormField>
+          <FormField label="E-mail" error={form.formState.errors.email?.message} required>
+            <Input type="email" spellCheck={false} inputMode="email" autoComplete="off" {...form.register("email")} />
+          </FormField>
+          {mode === "ambiente" ? (
+            <FormField label="Nome da empresa dessa pessoa" error={form.formState.errors.workspaceName?.message} required>
+              <Input {...form.register("workspaceName")} />
+            </FormField>
+          ) : (
+            <FormField
+              label="Papel"
+              hint="Permissões finas podem ser ajustadas depois, em Usuários → Permissões."
+              error={form.formState.errors.roleId?.message}
+              required
+            >
+              <Controller
+                control={form.control}
+                name="roleId"
+                render={({ field }) => (
+                  <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+          )}
         </form>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>

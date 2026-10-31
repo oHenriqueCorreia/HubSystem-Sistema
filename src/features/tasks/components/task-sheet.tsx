@@ -17,6 +17,9 @@ import { formatDate, formatDateTime, formatRelative } from "@/domain/shared/date
 import { addChecklistItem, addComment, deleteChecklistItem, deleteTask, restoreTask, setTaskStatus, toggleChecklistItem } from "../actions";
 import { CHANNEL_LABEL, checklistProgress, PRIORITY_LABEL, STATUS_LABEL, type ChecklistItem, type Task, type TaskComment } from "../types";
 import { TaskFormDialog } from "./task-form-dialog";
+import { TaskHistory } from "./task-history";
+import { TagChip } from "@/features/crm/components/chips";
+import type { TagColor } from "@/features/crm/types";
 import { getTaskDetails } from "../actions-read";
 
 type Owner = { id: string; full_name: string; email: string };
@@ -184,6 +187,22 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
               <dd>{task.category}</dd>
             </div>
           )}
+          {task.participant_ids.length > 0 && (
+            <div className="col-span-2">
+              <dt className="text-xs text-muted-foreground">Participantes</dt>
+              <dd>{task.participant_ids.map((id) => names.get(id) ?? "Usuário").join(", ")}</dd>
+            </div>
+          )}
+          {task.tags.length > 0 && (
+            <div className="col-span-2">
+              <dt className="text-xs text-muted-foreground">Etiquetas</dt>
+              <dd className="mt-1 flex flex-wrap gap-1">
+                {task.tags.map((t) => (
+                  <TagChip key={t.id} name={t.name} color={t.color as TagColor} />
+                ))}
+              </dd>
+            </div>
+          )}
         </dl>
 
         {task.description && <p className="text-sm whitespace-pre-wrap">{task.description}</p>}
@@ -311,6 +330,8 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
             </Button>
           </form>
         </section>
+
+        <TaskHistory key={task.id} taskId={task.id} />
       </div>
     </>
   );

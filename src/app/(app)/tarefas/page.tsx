@@ -6,7 +6,7 @@ import { PageBody, PageHeader } from "@/components/app/page-header";
 import { EmptyState, NoResults } from "@/components/app/states";
 import { Button } from "@/components/ui/button";
 import { getCrmLookups } from "@/features/crm/queries";
-import { listTasks, type TaskFilters as Filters } from "@/features/tasks/queries";
+import { listTaskColumns, listTasks, type TaskFilters as Filters } from "@/features/tasks/queries";
 import { TasksView } from "@/features/tasks/components/tasks-view";
 import { TaskFilters } from "@/features/tasks/components/task-filters";
 import { TaskFormDialog } from "@/features/tasks/components/task-form-dialog";
@@ -27,12 +27,17 @@ export default async function TarefasPage({ searchParams }: PageProps<"/tarefas"
     status: (str(sp.status) as Filters["status"]) ?? "abertas",
     prioridade: str(sp.prioridade),
     periodo: str(sp.periodo) as Filters["periodo"],
+    tag: str(sp.etiqueta),
   };
   const mode = str(sp.modo) === "quadro" ? "quadro" : "lista";
   // No quadro mostramos também as concluídas para permitir arrastar entre colunas.
-  const [tasks, lookups] = await Promise.all([listTasks(mode === "quadro" && !sp.status ? { ...filters, status: "todas" } : filters), getCrmLookups()]);
+  const [tasks, lookups, columns] = await Promise.all([
+    listTasks(mode === "quadro" && !sp.status ? { ...filters, status: "todas" } : filters),
+    getCrmLookups(),
+    mode === "quadro" ? listTaskColumns() : Promise.resolve([]),
+  ]);
   const canAssign = scope === "team" || scope === "all";
-  const hasFilters = Boolean(filters.q || filters.responsavel || filters.prioridade || filters.periodo || sp.status);
+  const hasFilters = Boolean(filters.q || filters.responsavel || filters.prioridade || filters.periodo || filters.tag || sp.status);
 
   const newTask = user.permissions["tasks.create"] ? (
     <TaskFormDialog
@@ -51,7 +56,7 @@ export default async function TarefasPage({ searchParams }: PageProps<"/tarefas"
       <PageHeader breadcrumbs={[{ label: "Trabalho" }, { label: "Tarefas" }]} title="Tarefas" description={`${tasks.length} tarefa(s).`} actions={newTask} />
       <PageBody className="grid gap-4">
         <Suspense>
-          <TaskFilters owners={lookups.owners} canSeeOthers={canAssign} />
+          <TaskFilters owners={lookups.owners} canSeeOthers={canAssign} tags={lookups.tags} />
         </Suspense>
         {tasks.length === 0 && mode !== "quadro" ? (
           hasFilters ? (
@@ -60,7 +65,11 @@ export default async function TarefasPage({ searchParams }: PageProps<"/tarefas"
             <EmptyState icon={ListChecks} title="Nenhuma tarefa em aberto" description="Crie uma tarefa ou inicie uma cadência em um lead para gerar as próximas ações." action={newTask} />
           )
         ) : (
-          <TasksView tasks={tasks} owners={lookups.owners} canAssign={canAssign} canCreate={Boolean(user.permissions["tasks.create"])} canDelete={Boolean(user.permissions["tasks.delete"])} mode={mode} />
+          <TasksView tasks={tasks} owners={lookups.owners} canAssign={canAssign} canCreate={Boolean(user.permissions["tasks.create"])} canDelete={Boolean(user.permissions["tasks.delete"])}
+            canConfigure={Boolean(user.permissions["tasks.board.configure"])}
+            columns={columns}
+            mode={mode}
+          />
         )}
       </PageBody>
     </>

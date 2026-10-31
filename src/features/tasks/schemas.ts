@@ -19,6 +19,9 @@ export const taskFormSchema = z
     leadId: z.uuid().nullable().optional(),
     channel: z.enum(["whatsapp", "ligacao", "email", "reuniao", "outro"]).nullable().optional(),
     checklist: z.array(z.string().trim().min(1).max(200)).max(50).default([]),
+    tagIds: z.array(z.uuid()).max(20, "Use no máximo 20 etiquetas.").default([]),
+    participantIds: z.array(z.uuid()).max(20).default([]),
+    columnId: z.uuid().nullable().optional(),
   })
   .refine((v) => !v.dueTime || v.dueDate, { path: ["dueDate"], message: "Informe a data para usar horário." })
   .refine((v) => !v.startDate || !v.dueDate || v.startDate <= v.dueDate, { path: ["startDate"], message: "O início não pode ser depois do prazo." });
@@ -27,7 +30,18 @@ export type TaskFormValues = z.input<typeof taskFormSchema>;
 
 export const idSchema = z.object({ id: z.uuid() });
 export const taskStatusSchema = z.object({ id: z.uuid(), status: z.enum(["a_fazer", "em_andamento", "concluida", "cancelada"]), outcome: z.string().max(2000).optional() });
-export const taskMoveSchema = z.object({ id: z.uuid(), status: z.enum(["a_fazer", "em_andamento", "concluida", "cancelada"]), position: z.number().finite() });
+export const taskMoveSchema = z.object({ id: z.uuid(), columnId: z.uuid(), position: z.number().finite() });
+
+const COLUMN_COLORS = ["slate", "teal", "blue", "violet", "rose", "amber", "green", "orange"] as const;
+export const taskColumnSchema = z.object({
+  name: z.string().trim().min(1, "Informe o nome.").max(40, "Use no máximo 40 caracteres."),
+  color: z.enum(COLUMN_COLORS).default("slate"),
+  kind: z.enum(["a_fazer", "em_andamento", "concluida", "cancelada"]),
+});
+export const taskColumnUpdateSchema = taskColumnSchema.extend({ id: z.uuid() });
+export const taskColumnMoveSchema = z.object({ id: z.uuid(), position: z.number().finite() });
+export const taskColumnDeleteSchema = z.object({ id: z.uuid(), targetId: z.uuid().nullable().default(null), archiveTasks: z.boolean().default(false) });
+export const taskDependencySchema = z.object({ taskId: z.uuid(), dependsOnId: z.uuid() });
 export const checklistAddSchema = z.object({ taskId: z.uuid(), title: z.string().trim().min(1, "Escreva o item.").max(200) });
 export const checklistToggleSchema = z.object({ id: z.uuid(), done: z.boolean() });
 export const commentSchema = z.object({ taskId: z.uuid(), body: z.string().trim().min(1, "Escreva o comentário.").max(5000) });

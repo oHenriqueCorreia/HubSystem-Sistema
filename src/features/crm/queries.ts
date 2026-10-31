@@ -129,7 +129,7 @@ export const getCrmLookups = cache(async (): Promise<CrmLookups> => {
     supabase.from("pipelines").select("id, name, position").eq("is_active", true).order("position"),
     supabase.from("stages").select("id, pipeline_id, name, position, color, kind, sla_days").order("position"),
     supabase.from("segments").select("id, name").order("name"),
-    supabase.from("tags").select("id, name, color").order("name"),
+    supabase.from("tags").select("id, name, color").is("archived_at", null).order("name"),
     supabase.from("profiles").select("id, full_name, email").eq("is_active", true).order("full_name"),
     supabase.from("lost_reasons").select("id, name").order("position"),
     supabase.from("message_templates").select("id, name, body, stage_id").order("position"),
