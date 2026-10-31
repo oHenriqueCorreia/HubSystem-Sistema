@@ -47,3 +47,26 @@ export function fillTemplate(template: string, vars: Record<string, string | nul
     return value == null || value === "" ? match : value;
   });
 }
+
+/**
+ * Formas equivalentes de um celular brasileiro em E.164. O WhatsApp costuma
+ * informar números sem o 9º dígito (ex.: +55 48 8812-3456 para 98812-3456);
+ * comparamos as duas formas para achar o lead e evitar duplicados.
+ */
+export function brPhoneVariants(e164: string): string[] {
+  const m = e164.match(/^\+55(\d{2})(\d{8,9})$/);
+  if (!m) return [e164];
+  const [, ddd, num] = m;
+  if (num.length === 9 && num.startsWith("9")) return [e164, `+55${ddd}${num.slice(1)}`];
+  if (num.length === 8 && /^[6-9]/.test(num)) return [e164, `+55${ddd}9${num}`];
+  return [e164];
+}
+
+/** wa_id do WhatsApp (só dígitos, com DDI) → E.164 normalizado (com o 9º dígito no Brasil). */
+export function waIdToE164(waId: string): string | null {
+  const digits = waId.replace(/\D/g, "");
+  if (digits.length < 8 || digits.length > 15) return null;
+  const br = digits.match(/^55(\d{2})(\d{8})$/);
+  if (br && /^[6-9]/.test(br[2])) return `+55${br[1]}9${br[2]}`;
+  return `+${digits}`;
+}

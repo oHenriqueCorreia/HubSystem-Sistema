@@ -411,6 +411,14 @@ function SortableCard({
                     {s.name}
                   </DropdownMenuItem>
                 ))}
+                {(card.lead.whatsapp_e164 || card.lead.phone_e164) && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href={`/atendimento?situacao=todas&q=${encodeURIComponent((card.lead.whatsapp_e164 ?? card.lead.phone_e164 ?? "").replace(/\D/g, "").slice(-8))}`}>Abrir conversa</Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null

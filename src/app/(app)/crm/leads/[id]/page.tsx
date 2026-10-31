@@ -1,3 +1,5 @@
+import { listLeadConversations } from "@/features/inbox/queries";
+import { formatRelative } from "@/domain/shared/dates";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ExternalLink, Globe, Mail, MapPin, Pencil, Phone, Star } from "lucide-react";
@@ -46,6 +48,7 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
     listServices(),
     listAttachments("lead", id),
   ]);
+  const conversations = user.permissions["inbox.read"] ? await listLeadConversations(id) : [];
   if (!data) notFound();
   const { lead, deals } = data;
 
@@ -211,6 +214,27 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
               </h2>
               {canAssign ? <OwnerSelect leadId={lead.id} ownerId={lead.owner_id} lookups={lookups} /> : <p>{ownerName ?? "Sem responsável"}</p>}
             </section>
+
+            {conversations.length > 0 && (
+              <section aria-labelledby="conversas" className="grid gap-2 text-sm">
+                <h2 id="conversas" className="text-sm font-semibold">
+                  Conversas no WhatsApp
+                </h2>
+                <ul className="grid gap-1">
+                  {conversations.map((c) => (
+                    <li key={c.id}>
+                      <Link href={`/atendimento?conversa=${c.id}`} className="flex justify-between gap-2 text-primary hover:underline">
+                        <span>
+                          {c.status === "aberta" ? (c.waiting_reply ? "Aguardando resposta" : "Aberta") : "Encerrada"}
+                          {c.unread_count ? ` · ${c.unread_count} não lida(s)` : ""}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{c.last_message_at ? formatRelative(c.last_message_at) : ""}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             <section aria-labelledby="etiquetas" className="grid gap-2 text-sm">
               <h2 id="etiquetas" className="text-sm font-semibold">

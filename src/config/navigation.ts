@@ -13,6 +13,7 @@ export type NavIcon =
   | "finance-personal"
   | "dashboard"
   | "ads"
+  | "inbox"
   | "settings";
 
 export type NavItem = {
@@ -42,6 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/crm/leads", label: "Leads", icon: "leads", anyOf: ["crm.leads.read"], mobile: true },
       { href: "/crm/funil", label: "Funil", icon: "funnel", anyOf: ["crm.leads.read"] },
+      { href: "/atendimento", label: "Atendimento", icon: "inbox", anyOf: ["inbox.read"] },
       { href: "/crm/cadencias", label: "Cadências", icon: "cadence", anyOf: ["crm.cadences.read"] },
       { href: "/clientes", label: "Clientes", icon: "clients", anyOf: ["clients.read"] },
       { href: "/contratos", label: "Contratos", icon: "contracts", anyOf: ["contracts.read"] },
