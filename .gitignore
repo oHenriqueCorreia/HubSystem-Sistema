@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# HubSystem
+# Planilhas com dados de leads (telefones/endereços) não vão para o repositório.
+/csv leads/
+# Supabase CLI
+/supabase/.temp/
+/supabase/.branches/
+# Testes
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/coverage/
+
+!.env.example

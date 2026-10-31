@@ -1,26 +1,216 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  /* Tokens próprios do HubSystem */
+  --color-surface: var(--surface);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ctx-company: var(--ctx-company);
+  --color-ctx-personal: var(--ctx-personal);
+  /* Hierarquia por raio: controles 6px, painéis 10px */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 14px;
+  --radius-3xl: 18px;
+  --radius-4xl: 22px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --radius: 0.5rem;
+  --background: #f5f6f3;
+  --surface: #ffffff;
+  --foreground: #1c2420;
+  --card: #ffffff;
+  --card-foreground: #1c2420;
+  --popover: #ffffff;
+  --popover-foreground: #1c2420;
+  --primary: #0e5e59;
+  --primary-foreground: #ffffff;
+  --secondary: #e9ece7;
+  --secondary-foreground: #1c2420;
+  --muted: #eceee9;
+  --muted-foreground: #5b6660;
+  --accent: #e3ece9;
+  --accent-foreground: #0b3f3c;
+  --destructive: #b42318;
+  --border: #dde1dc;
+  --input: #cfd5cf;
+  --ring: #0e5e59;
+
+  --signal: #b5530a;
+  --signal-soft: #fbeee3;
+  --success: #1f7a4d;
+  --success-soft: #e5f3ec;
+  --warning: #9a6700;
+  --warning-soft: #fdf3dc;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --info: #1d5fa8;
+  --info-soft: #e8f0fa;
+  --ctx-company: #0e5e59;
+  --ctx-personal: #6b3f7a;
+
+  --chart-1: #0e5e59;
+  --chart-2: #b5530a;
+  --chart-3: #1d5fa8;
+  --chart-4: #6b3f7a;
+  --chart-5: #7a8a3a;
+
+  --sidebar: #eef0ec;
+  --sidebar-foreground: #1c2420;
+  --sidebar-primary: #0e5e59;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e1e6e0;
+  --sidebar-accent-foreground: #0b3f3c;
+  --sidebar-border: #dde1dc;
+  --sidebar-ring: #0e5e59;
+}
+
+.dark {
+  --background: #121614;
+  --surface: #1a1f1c;
+  --foreground: #e6eae7;
+  --card: #1a1f1c;
+  --card-foreground: #e6eae7;
+  --popover: #1d2320;
+  --popover-foreground: #e6eae7;
+  --primary: #4fb3a9;
+  --primary-foreground: #08201d;
+  --secondary: #252c28;
+  --secondary-foreground: #e6eae7;
+  --muted: #222925;
+  --muted-foreground: #9aa59f;
+  --accent: #1f3330;
+  --accent-foreground: #cdeae6;
+  --destructive: #f2867c;
+  --border: #2c3430;
+  --input: #36403b;
+  --ring: #4fb3a9;
+
+  --signal: #f0a35e;
+  --signal-soft: #3a2615;
+  --success: #5cc392;
+  --success-soft: #16301f;
+  --warning: #e8b74a;
+  --warning-soft: #33280f;
+  --danger: #f2867c;
+  --danger-soft: #3a1b18;
+  --info: #7fb2ec;
+  --info-soft: #172739;
+  --ctx-company: #4fb3a9;
+  --ctx-personal: #c69ad6;
+
+  --chart-1: #4fb3a9;
+  --chart-2: #f0a35e;
+  --chart-3: #7fb2ec;
+  --chart-4: #c69ad6;
+  --chart-5: #b8c46a;
+
+  --sidebar: #161b18;
+  --sidebar-foreground: #e6eae7;
+  --sidebar-primary: #4fb3a9;
+  --sidebar-primary-foreground: #08201d;
+  --sidebar-accent: #222a26;
+  --sidebar-accent-foreground: #e6eae7;
+  --sidebar-border: #2c3430;
+  --sidebar-ring: #4fb3a9;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  html {
+    @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "kern";
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  /* Valores e datas alinham em colunas */
+  .tabular,
+  td,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Foco sempre visível para teclado */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Alvos de toque confortáveis em telas de toque (WCAG 2.5.8) */
+  @media (pointer: coarse) {
+    [data-slot="button"],
+    [data-slot="select-trigger"],
+    [data-slot="input"],
+    [data-slot="toggle-group-item"] {
+      min-height: 44px;
+    }
+    [data-slot="checkbox"] {
+      min-width: 22px;
+      min-height: 22px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
