@@ -2,7 +2,7 @@
 
 Gestão comercial, operacional e financeira para agência de sites e tráfego pago: CRM com funil Kanban e importação de planilhas, cadências de prospecção, tarefas, agenda (com Google Calendar), clientes e contratos, financeiro pessoal e empresarial, e dashboards.
 
-- **Produção:** https://hubsystem.vercel.app
+- **Produção:** https://hubsystem-phi.vercel.app (o domínio `hubsystem.vercel.app` está em outra conta da Vercel; ao liberá-lo, aponte-o para este projeto e atualize `NEXT_PUBLIC_SITE_URL`)
 - **Stack:** Next.js 16 (App Router) · React 19 · TypeScript estrito · Tailwind CSS 4 · shadcn/ui (Radix) · Supabase (Postgres 17, Auth, Storage, RLS) · React Hook Form + Zod · TanStack Query · dnd-kit · Recharts · Vitest · pgTAP
 - **Arquitetura e decisões:** [docs/fase-0-arquitetura.md](docs/fase-0-arquitetura.md) e [docs/adr/](docs/adr/README.md)
 
@@ -51,7 +51,7 @@ As migrations ficam em `supabase/migrations/` (versionadas, nunca editadas depoi
 3. Ferramenta MCP do Supabase.
 
 Depois de aplicar, configure em **Authentication**:
-- **URL Configuration:** Site URL `https://hubsystem.vercel.app`; Redirect URLs `https://hubsystem.vercel.app/**` e `http://localhost:3000/**`.
+- **URL Configuration:** Site URL `https://hubsystem-phi.vercel.app`; Redirect URLs `https://hubsystem-phi.vercel.app/**`, `https://hubsystem.vercel.app/**` e `http://localhost:3000/**`.
 - **Sign In / Providers:** desligue *Allow new users to sign up* (acesso só por convite).
 - **Primeiro acesso:** Authentication → Users → *Invite user* com o seu e-mail. O primeiro usuário vira **Administrador** automaticamente.
 
