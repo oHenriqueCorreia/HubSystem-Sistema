@@ -53,3 +53,6 @@ next-env.d.ts
 /coverage/
 
 !.env.example
+
+.vercel
+.env*
