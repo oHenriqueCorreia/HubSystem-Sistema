@@ -97,7 +97,12 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
       }
       const from = stageById.get(card.stage_id)?.name;
       const to = stageById.get(stageId)?.name;
-      if (from !== to) {
+      if (from !== to && stageById.get(stageId)?.kind === "won") {
+        toast.success(`${card.lead.name}: negócio fechado!`, {
+          duration: 10000,
+          action: { label: "Converter em cliente", onClick: () => router.push(`/crm/leads/${card.lead.id}`) },
+        });
+      } else if (from !== to) {
         toast.success(`${card.lead.name} movido para ${to}.`, {
           action: {
             label: "Desfazer",

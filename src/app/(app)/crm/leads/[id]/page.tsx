@@ -20,6 +20,11 @@ import {
   TagEditor,
 } from "@/features/crm/components/lead-panels";
 import { LeadExtraSections } from "@/features/crm/components/lead-extra-sections";
+import { getClientByLead, listAttachments, listServices } from "@/features/clients/queries";
+import { ConvertDialog } from "@/features/clients/components/convert-dialog";
+import { Attachments } from "@/features/clients/components/attachments";
+import Link from "next/link";
+import { BriefcaseBusiness } from "lucide-react";
 
 export async function generateMetadata({ params }: PageProps<"/crm/leads/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -32,7 +37,14 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
-  const [data, lookups, activities] = await Promise.all([getLead(id), getCrmLookups(), getLeadActivities(id)]);
+  const [data, lookups, activities, client, services, attachments] = await Promise.all([
+    getLead(id),
+    getCrmLookups(),
+    getLeadActivities(id),
+    getClientByLead(id),
+    listServices(),
+    listAttachments("lead", id),
+  ]);
   if (!data) notFound();
   const { lead, deals } = data;
 
@@ -74,6 +86,22 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
                 }
               />
             )}
+            {client ? (
+              <Button asChild variant="outline">
+                <Link href={`/clientes/${client.id}`}>
+                  <BriefcaseBusiness aria-hidden="true" /> Ver cliente
+                </Link>
+              </Button>
+            ) : (
+              user.permissions["clients.create"] && (
+                <ConvertDialog
+                  lead={{ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone_e164 }}
+                  dealId={deals[0]?.id ?? null}
+                  services={services}
+                  interest={lead.services_interest}
+                />
+              )
+            )}
             {canDelete && <DeleteLeadButton leadId={lead.id} name={lead.name} />}
           </>
         }
@@ -84,6 +112,8 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
             <NextActionPanel leadId={lead.id} at={lead.next_contact_at} canEdit={canEdit} />
 
             <LeadExtraSections lead={{ id: lead.id, name: lead.name }} user={user} owners={lookups.owners} />
+
+            <Attachments entityType="lead" entityId={lead.id} initial={attachments} canUpload={canEdit} />
 
             <section aria-labelledby="linha-do-tempo" className="grid gap-3">
               <h2 id="linha-do-tempo" className="text-sm font-semibold">

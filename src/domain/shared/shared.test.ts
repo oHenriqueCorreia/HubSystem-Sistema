@@ -4,6 +4,7 @@ import { fillTemplate, normalizePhone, whatsappLink } from "./phone";
 import { formatDate, parseBrDate, todayLocal } from "./dates";
 import { canOnRecord } from "@/domain/permissions";
 import { safeNext } from "@/features/auth/schemas";
+import { formatDocument, isValidDocument } from "./document";
 
 describe("dinheiro", () => {
   it("formata centavos em BRL", () => {
@@ -74,5 +75,21 @@ describe("permissões", () => {
     expect(safeNext("//evil.com")).toBe("/inicio");
     expect(safeNext("https://evil.com")).toBe("/inicio");
     expect(safeNext("/\\evil.com")).toBe("/inicio");
+  });
+});
+
+
+describe("CPF e CNPJ", () => {
+  it("valida dígitos verificadores", () => {
+    expect(isValidDocument("529.982.247-25")).toBe(true);
+    expect(isValidDocument("529.982.247-24")).toBe(false);
+    expect(isValidDocument("111.111.111-11")).toBe(false);
+    expect(isValidDocument("11.222.333/0001-81")).toBe(true);
+    expect(isValidDocument("11.222.333/0001-80")).toBe(false);
+    expect(isValidDocument("123")).toBe(false);
+  });
+  it("formata", () => {
+    expect(formatDocument("52998224725")).toBe("529.982.247-25");
+    expect(formatDocument("11222333000181")).toBe("11.222.333/0001-81");
   });
 });
