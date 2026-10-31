@@ -2,12 +2,11 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import { publicEnv } from "@/lib/env";
-import type { Database } from "@/lib/supabase/database.types";
 
-let client: ReturnType<typeof createBrowserClient<Database>> | undefined;
+let client: ReturnType<typeof createBrowserClient> | undefined;
 
 export function createClient() {
-  client ??= createBrowserClient<Database>(
+  client ??= createBrowserClient(
     publicEnv.NEXT_PUBLIC_SUPABASE_URL,
     publicEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   );

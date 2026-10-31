@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { isPermissionKey, type PermissionKey, type PermissionMap } from "@/domain/permissions";
+import { isPermissionKey, type PermissionKey, type PermissionMap, type PermissionScope } from "@/domain/permissions";
 
 export type CurrentUser = {
   id: string;
@@ -40,7 +40,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!profile || !profile.is_active) return null;
 
   const permissions: PermissionMap = {};
-  for (const row of permsRes.data ?? []) {
+  for (const row of (permsRes.data ?? []) as { permission_key: string; scope: PermissionScope }[]) {
     if (isPermissionKey(row.permission_key)) permissions[row.permission_key] = row.scope;
   }
 
@@ -55,7 +55,10 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     organizationId: profile.organization_id,
     organizationName,
     roles: (rolesRes.data ?? [])
-      .map((r) => r.roles as { key: string; name: string } | null)
+      .map((r) => {
+        const role = r.roles as unknown as { key: string; name: string } | { key: string; name: string }[] | null;
+        return Array.isArray(role) ? (role[0] ?? null) : role;
+      })
       .filter((r): r is { key: string; name: string } => Boolean(r)),
     permissions,
     preferences: (profile.preferences as Record<string, unknown>) ?? {},
