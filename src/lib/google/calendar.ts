@@ -100,6 +100,18 @@ async function accessToken(conn: Connection): Promise<string> {
       .from("google_calendar_connections")
       .update({ status: code === "invalid_grant" ? "revogada" : "erro", last_error: code === "invalid_grant" ? "Acesso revogado no Google. Conecte novamente." : "Falha ao renovar o acesso." })
       .eq("user_id", conn.user_id);
+    // Um aviso por dia na central de notificações (a chave evita repetição).
+    await admin.from("notifications").upsert(
+      {
+        organization_id: conn.organization_id,
+        user_id: conn.user_id,
+        kind: "google_desconectado",
+        title: code === "invalid_grant" ? "Reconecte o Google Agenda" : "Falha na sincronização com o Google Agenda",
+        href: "/configuracoes/integracoes",
+        dedupe_key: `google:${code ?? "erro"}:${new Date().toISOString().slice(0, 10)}`,
+      },
+      { onConflict: "user_id,dedupe_key", ignoreDuplicates: true },
+    );
     throw e;
   }
 }

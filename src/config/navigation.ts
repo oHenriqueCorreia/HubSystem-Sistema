@@ -12,6 +12,7 @@ export type NavIcon =
   | "finance-company"
   | "finance-personal"
   | "dashboard"
+  | "ads"
   | "settings";
 
 export type NavItem = {
@@ -33,6 +34,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/inicio", label: "Início", icon: "home", mobile: true },
       { href: "/tarefas", label: "Tarefas", icon: "tasks", anyOf: ["tasks.read"], mobile: true },
       { href: "/agenda", label: "Agenda", icon: "calendar", anyOf: ["calendar.read"], mobile: true },
+      { href: "/anuncios", label: "Anúncios", icon: "ads", anyOf: ["ads.read"] },
     ],
   },
   {

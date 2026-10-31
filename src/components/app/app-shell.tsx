@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -140,8 +141,11 @@ export function AppShell({
       </Sidebar>
 
       <SidebarInset className="min-w-0">
-        <div className="sticky top-0 z-20 hidden h-12 items-center border-b bg-background/95 px-3 backdrop-blur md:flex">
-          <SidebarTrigger aria-label="Recolher ou expandir menu" />
+        <div className="sticky top-0 z-20 flex h-12 items-center border-b bg-background/95 px-3 backdrop-blur">
+          <SidebarTrigger aria-label="Recolher ou expandir menu" className="hidden md:inline-flex" />
+          <div className="ml-auto">
+            <NotificationBell />
+          </div>
         </div>
         <div id="conteudo" tabIndex={-1} className="flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom))] outline-none md:pb-0">
           {children}

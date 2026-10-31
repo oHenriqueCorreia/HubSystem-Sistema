@@ -40,6 +40,8 @@ export const PERMISSION_KEYS = [
   "finance.personal.admin_read",
   "dashboards.commercial",
   "dashboards.financial",
+  "ads.read",
+  "ads.manage",
   "admin.users",
   "admin.roles",
   "admin.settings",
