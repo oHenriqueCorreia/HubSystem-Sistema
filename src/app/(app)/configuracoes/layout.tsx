@@ -7,6 +7,7 @@ const ITEMS: { href: string; label: string; perm?: PermissionKey }[] = [
   { href: "/configuracoes/geral", label: "Empresa", perm: "admin.settings" },
   { href: "/configuracoes/usuarios", label: "Usuários", perm: "admin.users" },
   { href: "/configuracoes/papeis", label: "Papéis e permissões", perm: "admin.roles" },
+  { href: "/configuracoes/integracoes", label: "Integrações" },
   { href: "/configuracoes/auditoria", label: "Auditoria", perm: "admin.audit" },
 ];
 
