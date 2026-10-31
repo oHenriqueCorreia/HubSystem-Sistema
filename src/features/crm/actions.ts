@@ -281,3 +281,14 @@ export const getImportMapping = defineAction({ schema: saveMappingSchema.pick({ 
   const { data } = await supabase.from("import_mappings").select("mapping").eq("signature", input.signature).maybeSingle();
   return ok((data?.mapping as Record<string, string> | undefined) ?? null);
 });
+
+export const searchLeads = defineAction(
+  { schema: z.object({ q: z.string().trim().max(100) }), permission: "crm.leads.read" },
+  async ({ q }) => {
+    const supabase = await createClient();
+    let query = supabase.from("leads").select("id, name, city").is("deleted_at", null).order("name").limit(12);
+    if (q) query = query.ilike("name", `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
+    const data = must(await query) as { id: string; name: string; city: string | null }[];
+    return ok(data ?? []);
+  },
+);

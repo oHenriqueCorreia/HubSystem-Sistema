@@ -83,7 +83,7 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
           <div className="grid content-start gap-6">
             <NextActionPanel leadId={lead.id} at={lead.next_contact_at} canEdit={canEdit} />
 
-            <LeadExtraSections leadId={lead.id} />
+            <LeadExtraSections lead={{ id: lead.id, name: lead.name }} user={user} owners={lookups.owners} />
 
             <section aria-labelledby="linha-do-tempo" className="grid gap-3">
               <h2 id="linha-do-tempo" className="text-sm font-semibold">
