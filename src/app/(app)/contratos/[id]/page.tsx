@@ -15,6 +15,8 @@ import { CONTRACT_STATUS_LABEL, PAYMENT_LABEL, RECURRENCE_LABEL, monthlyValue } 
 import { ContractDialog } from "@/features/clients/components/contract-dialog";
 import { DeleteContractButton } from "@/features/clients/components/delete-contract-button";
 import { Attachments } from "@/features/clients/components/attachments";
+import { getContractReceivables, getLookups } from "@/features/finance/queries";
+import { ReceivablesDialog } from "@/features/finance/components/receivables-dialog";
 
 export const metadata: Metadata = { title: "Contrato" };
 
@@ -28,6 +30,8 @@ export default async function ContratoPage({ params }: PageProps<"/contratos/[id
   const canEdit = canOnRecord(user.permissions, "contracts.update", contract.owner_id, user.id);
   const canDelete = canOnRecord(user.permissions, "contracts.delete", contract.owner_id, user.id);
   const owner = lookups.owners.find((o) => o.id === contract.owner_id);
+  const canFinance = Boolean(user.permissions["finance.company.read"]);
+  const [receivables, finLookups] = canFinance ? await Promise.all([getContractReceivables(id), getLookups("empresa")]) : [[], null];
 
   return (
     <>
@@ -96,6 +100,31 @@ export default async function ContratoPage({ params }: PageProps<"/contratos/[id
           <section className="grid gap-1">
             <h2 className="text-sm font-semibold">Observações</h2>
             <p className="max-w-prose text-sm whitespace-pre-wrap text-muted-foreground">{contract.notes}</p>
+          </section>
+        )}
+        {canFinance && (
+          <section aria-labelledby="cobrancas" className="grid gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="cobrancas" className="text-sm font-semibold">
+                Cobranças no financeiro
+              </h2>
+              {user.permissions["finance.company.create"] && finLookups && receivables.length === 0 && contract.status === "ativo" && (
+                <ReceivablesDialog contracts={[{ id, title: contract.title, clientName: contract.client?.lead?.name ?? "" }]} lookups={finLookups} defaultContract={id} />
+              )}
+            </div>
+            {receivables.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma cobrança gerada para este contrato.</p>
+            ) : (
+              <ul className="grid gap-1 text-sm">
+                {receivables.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border bg-surface px-3 py-2">
+                    <span>{formatDate(r.due_date)}</span>
+                    <span className="tabular">{formatBRL(r.amount_cents)}</span>
+                    <span className={r.status === "pago" ? "text-success" : "text-muted-foreground"}>{r.status === "pago" ? `Recebido ${r.paid_at ? formatDate(r.paid_at) : ""}` : r.status === "cancelado" ? "Cancelado" : "Em aberto"}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
         <Attachments entityType="contract" entityId={id} initial={attachments} title="Documentos do contrato" canUpload={canEdit} />

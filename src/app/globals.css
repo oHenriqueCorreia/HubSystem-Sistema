@@ -97,11 +97,14 @@
   --ctx-company: #0e5e59;
   --ctx-personal: #6b3f7a;
 
-  --chart-1: #0e5e59;
-  --chart-2: #b5530a;
-  --chart-3: #1d5fa8;
-  --chart-4: #6b3f7a;
-  --chart-5: #7a8a3a;
+  /* Paleta de séries validada (dataviz validate_palette.js): ordem fixa, nunca cíclica */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-grid: #e1e0d9;
+  --chart-axis: #c3c2b7;
 
   --sidebar: #eef0ec;
   --sidebar-foreground: #1c2420;
@@ -147,11 +150,13 @@
   --ctx-company: #4fb3a9;
   --ctx-personal: #c69ad6;
 
-  --chart-1: #4fb3a9;
-  --chart-2: #f0a35e;
-  --chart-3: #7fb2ec;
-  --chart-4: #c69ad6;
-  --chart-5: #b8c46a;
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-grid: #2c2c2a;
+  --chart-axis: #383835;
 
   --sidebar: #161b18;
   --sidebar-foreground: #e6eae7;

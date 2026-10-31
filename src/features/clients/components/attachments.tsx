@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Download, FileText, LoaderCircle, Paperclip, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,21 @@ function size(bytes: number) {
 }
 
 /** Anexos privados: upload por URL assinada; download por link de 60 segundos. */
-export function Attachments({ entityType, entityId, initial, canUpload = true, title = "Anexos" }: { entityType: EntityType; entityId: string; initial: Attachment[]; canUpload?: boolean; title?: string }) {
+export function Attachments({ entityType, entityId, initial, canUpload = true, title = "Anexos" }: { entityType: EntityType; entityId: string; initial?: Attachment[]; canUpload?: boolean; title?: string }) {
   const input = useRef<HTMLInputElement>(null);
-  const [items, setItems] = useState(initial);
+  const [items, setItems] = useState<Attachment[]>(initial ?? []);
+
+  // Sem lista inicial (ex.: dentro de um diálogo), carrega sob demanda.
+  useEffect(() => {
+    if (initial) return;
+    let alive = true;
+    void listEntityAttachments({ entityType, entityId }).then((res) => {
+      if (alive && res.ok) setItems(res.data as Attachment[]);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [initial, entityType, entityId]);
   const [pending, startTransition] = useTransition();
   const [progress, setProgress] = useState<string | null>(null);
 
