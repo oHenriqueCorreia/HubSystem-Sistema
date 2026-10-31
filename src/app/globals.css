@@ -63,6 +63,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.5rem;
   --background: #f5f6f3;
   --surface: #ffffff;
@@ -117,6 +118,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #121614;
   --surface: #1a1f1c;
   --foreground: #e6eae7;
@@ -183,6 +185,32 @@
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+  h1,
+  h2 {
+    text-wrap: balance;
+  }
+  a,
+  button,
+  [role="button"],
+  label,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+  html {
+    -webkit-tap-highlight-color: color-mix(in oklab, var(--primary) 15%, transparent);
+  }
+  select {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  /* Modais e painéis não "puxam" a página de trás ao rolar */
+  [data-slot="dialog-content"],
+  [data-slot="sheet-content"],
+  [data-slot="alert-dialog-content"] {
+    overscroll-behavior: contain;
   }
   /* Valores e datas alinham em colunas */
   .tabular,

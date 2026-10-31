@@ -88,7 +88,7 @@ export function AppShell({
           <Link href="/inicio" className="flex items-center gap-2 rounded-md p-1.5 outline-none">
             <BrandMark className="size-7 shrink-0" />
             <span className="grid leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="font-semibold">HubSystem</span>
+              <span className="font-semibold" translate="no">HubSystem</span>
               <span className="truncate text-xs text-muted-foreground">{organizationName}</span>
             </span>
           </Link>

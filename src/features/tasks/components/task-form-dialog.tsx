@@ -188,7 +188,7 @@ export function TaskFormDialog({
                 <Input
                   value={newItem}
                   onChange={(e) => setNewItem(e.target.value)}
-                  placeholder="Adicionar item"
+                  placeholder="Adicionar item…"
                   aria-label="Novo item do checklist"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -267,7 +267,7 @@ export function TaskFormDialog({
                 />
               </FormField>
               <FormField label="Categoria" optional className="sm:col-span-2">
-                <Input placeholder="Ex.: Produção de site, Financeiro, Suporte" {...form.register("category")} />
+                <Input placeholder="Ex.: Produção de site, Financeiro, Suporte…" {...form.register("category")} />
               </FormField>
             </CollapsibleContent>
           </Collapsible>

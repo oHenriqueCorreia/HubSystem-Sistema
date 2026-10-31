@@ -22,6 +22,7 @@ import {
 import { LeadExtraSections } from "@/features/crm/components/lead-extra-sections";
 import { getClientByLead, listAttachments, listServices } from "@/features/clients/queries";
 import { ConvertDialog } from "@/features/clients/components/convert-dialog";
+import { LgpdMenu } from "@/features/crm/components/lgpd-menu";
 import { Attachments } from "@/features/clients/components/attachments";
 import Link from "next/link";
 import { BriefcaseBusiness } from "lucide-react";
@@ -103,6 +104,7 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
               )
             )}
             {canDelete && <DeleteLeadButton leadId={lead.id} name={lead.name} />}
+            {user.permissions["admin.data_export"] && <LgpdMenu leadId={lead.id} name={lead.name} />}
           </>
         }
       />

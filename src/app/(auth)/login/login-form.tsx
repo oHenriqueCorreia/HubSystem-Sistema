@@ -52,7 +52,7 @@ export function LoginForm({ next, reason }: { next?: string; reason?: string }) 
       <FormAlert>{serverError}</FormAlert>
 
       <FormField label="E-mail" error={errors.email?.message} required>
-        <Input type="email" autoComplete="email" inputMode="email" autoFocus {...form.register("email")} />
+        <Input type="email" spellCheck={false} autoComplete="email" inputMode="email" autoFocus {...form.register("email")} />
       </FormField>
 
       <FormField label="Senha" error={errors.password?.message} required>

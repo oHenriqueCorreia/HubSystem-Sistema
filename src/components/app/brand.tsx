@@ -22,7 +22,7 @@ export function Brand({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2 font-semibold tracking-tight", className)}>
       <BrandMark className="size-7" />
-      <span>HubSystem</span>
+      <span translate="no">HubSystem</span>
     </span>
   );
 }

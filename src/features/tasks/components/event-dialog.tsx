@@ -122,7 +122,7 @@ export function EventDialog({
         <form id="event-form" onSubmit={submit} noValidate className="grid gap-4">
           <FormAlert>{error}</FormAlert>
           <FormField label="Título" error={errors.title?.message} required>
-            <Input autoFocus placeholder="Ex.: Apresentação do site" {...form.register("title")} />
+            <Input autoFocus placeholder="Ex.: Apresentação do site…" {...form.register("title")} />
           </FormField>
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <FormField label="Tipo">

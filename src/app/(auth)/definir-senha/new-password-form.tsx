@@ -38,7 +38,7 @@ export function NewPasswordForm({ email }: { email: string }) {
   return (
     <form onSubmit={onSubmit} noValidate className="grid gap-4">
       {/* Ajuda gerenciadores de senha a associar a conta. */}
-      <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
+      <input type="email" spellCheck={false} name="username" autoComplete="username" value={email} readOnly hidden />
       <FormAlert>{serverError}</FormAlert>
       <FormField label="Nova senha" error={form.formState.errors.password?.message} required>
         <PasswordInput autoComplete="new-password" autoFocus {...form.register("password")} />

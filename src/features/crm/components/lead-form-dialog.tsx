@@ -108,7 +108,7 @@ export function LeadFormDialog({
               <Input type="tel" inputMode="tel" autoComplete="off" placeholder="(11) 99999-0000" {...form.register("whatsapp")} />
             </FormField>
             <FormField label="E-mail" error={errors.email?.message} optional className="sm:col-span-2">
-              <Input type="email" inputMode="email" autoComplete="off" {...form.register("email")} />
+              <Input type="email" spellCheck={false} inputMode="email" autoComplete="off" {...form.register("email")} />
             </FormField>
           </fieldset>
 

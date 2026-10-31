@@ -39,7 +39,7 @@ export function AccountsEditor({ scope, accounts, canEdit }: { scope: FinanceSco
 
   const form = (id?: string) => (
     <li className="grid gap-2 rounded-lg border bg-surface p-3 sm:grid-cols-[1fr_11rem_10rem_auto_auto] sm:items-center">
-      <Input aria-label="Nome da conta" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Nome da conta" autoFocus />
+      <Input aria-label="Nome da conta" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Nome da conta…" autoFocus />
       <Select value={draft.type} onValueChange={(t) => setDraft({ ...draft, type: t })}>
         <SelectTrigger aria-label="Tipo de conta" className="w-full">
           <SelectValue />
@@ -161,7 +161,7 @@ export function CategoriesEditor({ scope, categories, canEdit }: { scope: Financ
       </h2>
       {canEdit && (
         <div className="flex flex-wrap gap-2">
-          <Input aria-label="Nome da nova categoria" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nova categoria" className="w-56" />
+          <Input aria-label="Nome da nova categoria" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nova categoria…" className="w-56" />
           <Select value={kind} onValueChange={(k) => setKind(k as "receita" | "despesa")}>
             <SelectTrigger className="w-32" aria-label="Tipo da categoria">
               <SelectValue />
@@ -194,7 +194,7 @@ export function CostCentersEditor({ centers, canEdit }: { centers: CostCenter[];
       </h2>
       {canEdit && (
         <div className="flex gap-2">
-          <Input aria-label="Novo centro de custo" value={name} onChange={(e) => setName(e.target.value)} placeholder="Novo centro de custo" className="w-56" />
+          <Input aria-label="Novo centro de custo" value={name} onChange={(e) => setName(e.target.value)} placeholder="Novo centro de custo…" className="w-56" />
           <Button variant="outline" disabled={pending || name.trim().length < 2} onClick={() => run(() => saveCostCenter({ name, isActive: true }), () => setName(""))}>
             <Plus aria-hidden="true" /> Adicionar
           </Button>

@@ -73,7 +73,7 @@ export function NextContactBadge({ at, compact }: { at: string | null; compact?:
       title={at ? formatDateTime(at) : undefined}
     >
       <map.Icon className="size-3.5" aria-hidden="true" />
-      <span>{state === "none" ? map.label : `${map.label}${when ? ` · ${when}` : ""}`}</span>
+      <span suppressHydrationWarning>{state === "none" ? map.label : `${map.label}${when ? ` · ${when}` : ""}`}</span>
     </span>
   );
 }

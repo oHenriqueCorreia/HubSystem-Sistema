@@ -65,7 +65,7 @@ export function InviteUserDialog({ roles }: { roles: RoleRow[] }) {
             <Input autoFocus {...form.register("fullName")} />
           </FormField>
           <FormField label="E-mail" error={form.formState.errors.email?.message} required>
-            <Input type="email" inputMode="email" {...form.register("email")} />
+            <Input type="email" spellCheck={false} inputMode="email" {...form.register("email")} />
           </FormField>
           <FormField label="Papel" error={form.formState.errors.roleId?.message} required>
             <Controller

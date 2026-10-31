@@ -35,7 +35,7 @@ export function ResetRequestForm() {
     <form onSubmit={onSubmit} noValidate className="grid gap-4">
       {result && !result.ok && <FormAlert>{result.message}</FormAlert>}
       <FormField label="E-mail" error={form.formState.errors.email?.message} required>
-        <Input type="email" autoComplete="email" inputMode="email" autoFocus {...form.register("email")} />
+        <Input type="email" spellCheck={false} autoComplete="email" inputMode="email" autoFocus {...form.register("email")} />
       </FormField>
       <Button type="submit" size="lg" disabled={pending} className="w-full">
         {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />}

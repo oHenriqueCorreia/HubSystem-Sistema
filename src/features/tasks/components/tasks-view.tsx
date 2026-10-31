@@ -64,6 +64,8 @@ export function TasksView({
 }) {
   const [now] = useState(() => Date.now());
   const [open, setOpen] = useState<Task | null>(null);
+  // Listas longas carregam aos poucos (50 por grupo) para manter a tela leve.
+  const [limits, setLimits] = useState<Record<string, number>>({});
   const names = useMemo(() => new Map(owners.map((o) => [o.id, o.full_name || o.email])), [owners]);
   // Mantém o painel com os dados mais recentes após cada refresh.
   const openTask = open ? (tasks.find((t) => t.id === open.id) ?? open) : null;
@@ -78,10 +80,15 @@ export function TasksView({
                 {g.label} <span className="tabular font-normal text-muted-foreground">({g.items.length})</span>
               </h2>
               <ul className="grid gap-2">
-                {g.items.map((t) => (
+                {g.items.slice(0, limits[g.key] ?? 50).map((t) => (
                   <TaskItem key={t.id} task={t} now={now} ownerName={canAssign && t.owner_id ? names.get(t.owner_id) : undefined} onOpen={setOpen} />
                 ))}
               </ul>
+              {g.items.length > (limits[g.key] ?? 50) && (
+                <button type="button" className="justify-self-start text-sm text-primary hover:underline" onClick={() => setLimits((l) => ({ ...l, [g.key]: (l[g.key] ?? 50) + 50 }))}>
+                  Mostrar mais {Math.min(50, g.items.length - (limits[g.key] ?? 50))} de {g.items.length - (limits[g.key] ?? 50)}
+                </button>
+              )}
             </section>
           ))}
         </div>

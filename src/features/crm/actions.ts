@@ -292,3 +292,13 @@ export const searchLeads = defineAction(
     return ok(data ?? []);
   },
 );
+
+export const lgpdAnonymize = defineAction(
+  { schema: z.object({ leadId: z.uuid(), reason: z.string().trim().min(5, "Informe o motivo.").max(300) }), permission: "admin.data_export" },
+  async (input) => {
+    const supabase = await createClient();
+    must(await supabase.rpc("lgpd_anonymize_lead", { p_lead: input.leadId, p_reason: input.reason }));
+    revalidateCrm(input.leadId);
+    return ok(null, "Dados pessoais anonimizados.");
+  },
+);

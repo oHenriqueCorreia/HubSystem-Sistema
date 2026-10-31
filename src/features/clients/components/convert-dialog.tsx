@@ -82,7 +82,7 @@ export function ConvertDialog({
               <Input inputMode="numeric" value={document} onChange={(e) => setDocument(e.target.value)} />
             </FormField>
             <FormField label="E-mail de cobrança" error={errors.billingEmail} optional>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input type="email" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} />
             </FormField>
             <FormField label="Telefone de cobrança" error={errors.billingPhone} optional>
               <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />

@@ -77,7 +77,7 @@ export function ContractFields({
         </Select>
       </FormField>
       <FormField label="Título do contrato" error={errors.title} required className="sm:col-span-2">
-        <Input value={value.title} onChange={(e) => set("title", e.target.value)} placeholder="Ex.: Site institucional — Vidraçaria Sol" />
+        <Input value={value.title} onChange={(e) => set("title", e.target.value)} placeholder="Ex.: Site institucional — Vidraçaria Sol…" />
       </FormField>
       <FormField label="Valor" error={errors.amountCents} required>
         <MoneyInput value={value.amountCents} onChange={(c) => set("amountCents", c as number)} />

@@ -238,7 +238,7 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
               value={newItem}
               onChange={(e) => setNewItem(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addItem())}
-              placeholder="Novo item"
+              placeholder="Novo item…"
               aria-label="Novo item do checklist"
             />
             <Button variant="outline" onClick={addItem} disabled={!newItem.trim()}>
@@ -250,7 +250,7 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
         {task.lead_id && task.status !== "concluida" && (
           <div className="grid gap-1.5">
             <Label htmlFor="outcome">Resultado (vai para a linha do tempo ao concluir)</Label>
-            <Textarea id="outcome" rows={2} value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Ex.: Pediu para retornar na sexta." />
+            <Textarea id="outcome" rows={2} value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Ex.: Pediu para retornar na sexta…" />
           </div>
         )}
 
@@ -305,7 +305,7 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
             <Label htmlFor="new-comment" className="sr-only">
               Novo comentário
             </Label>
-            <Textarea id="new-comment" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Escreva um comentário" />
+            <Textarea id="new-comment" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Escreva um comentário…" />
             <Button type="submit" variant="outline" className="justify-self-end" disabled={pending || !comment.trim()}>
               Comentar
             </Button>

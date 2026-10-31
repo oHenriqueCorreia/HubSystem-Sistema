@@ -16,6 +16,7 @@ export const metadata: Metadata = {
   applicationName: "HubSystem",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "HubSystem", statusBarStyle: "default" },
+  icons: { icon: [{ url: "/icons/192", type: "image/png" }], apple: [{ url: "/icons/apple" }] },
   formatDetection: { telephone: false },
 };
 

@@ -66,7 +66,7 @@ export function ClientEditDialog({ client }: { client: ClientRow }) {
             <Input inputMode="numeric" value={v.document} onChange={(e) => setV({ ...v, document: e.target.value })} />
           </FormField>
           <FormField label="E-mail de cobrança" error={errors.billingEmail} optional>
-            <Input type="email" value={v.billingEmail} onChange={(e) => setV({ ...v, billingEmail: e.target.value })} />
+            <Input type="email" spellCheck={false} value={v.billingEmail} onChange={(e) => setV({ ...v, billingEmail: e.target.value })} />
           </FormField>
           <FormField label="Telefone de cobrança" error={errors.billingPhone} optional>
             <Input type="tel" value={v.billingPhone} onChange={(e) => setV({ ...v, billingPhone: e.target.value })} />

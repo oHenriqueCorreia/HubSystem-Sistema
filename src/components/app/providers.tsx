@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ServiceWorkerRegister } from "@/components/app/sw-register";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -23,6 +24,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <TooltipProvider delayDuration={300}>
           {children}
           <Toaster position="bottom-right" closeButton richColors={false} />
+          <ServiceWorkerRegister />
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>
