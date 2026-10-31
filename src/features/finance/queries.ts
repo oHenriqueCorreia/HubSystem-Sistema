@@ -16,7 +16,7 @@ export const getLookups = cache(async (scope: FinanceScope) => {
   const supabase = await createClient();
   const [accounts, categories, centers] = await Promise.all([
     supabase.from("financial_accounts").select("id, name, type, opening_balance_cents, is_active").eq("scope", scope).order("name"),
-    supabase.from("financial_categories").select("id, name, kind, is_active").eq("scope", scope).order("name"),
+    supabase.from("financial_categories").select("id, name, kind, is_active, parent_id").eq("scope", scope).order("name"),
     scope === "empresa" ? supabase.from("cost_centers").select("id, name, is_active").order("name") : Promise.resolve({ data: [] as CostCenter[], error: null }),
   ]);
   if (accounts.error) throw accounts.error;
@@ -139,4 +139,84 @@ export async function getContractReceivables(contractId: string) {
     .order("due_date")
     .limit(60);
   return (data ?? []) as { id: string; description: string; amount_cents: number; due_date: string; status: string; paid_at: string | null }[];
+}
+
+export type RecurrenceRow = {
+  id: string;
+  kind: "receita" | "despesa" | "transferencia";
+  description: string;
+  amount_cents: number;
+  frequency: "semanal" | "mensal" | "trimestral" | "semestral" | "anual";
+  start_date: string;
+  end_date: string | null;
+  state: "ativa" | "pausada" | "encerrada";
+  category_id: string | null;
+  next_due: string | null;
+  monthly_cents: number;
+};
+
+// Equivalente mensal de cada periodicidade (para somar fixos de forma comparável).
+const PER_MONTH: Record<RecurrenceRow["frequency"], number> = { semanal: 52 / 12, mensal: 1, trimestral: 1 / 3, semestral: 1 / 6, anual: 1 / 12 };
+
+/** Séries recorrentes (fixos) com próxima ocorrência prevista e valor mensal equivalente. */
+export async function listRecurrences(scope: FinanceScope, today: string): Promise<RecurrenceRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("financial_recurrences")
+    .select("id, frequency, start_date, end_date, template, is_active, paused_at, ended_at, financial_transactions(due_date, status, deleted_at)")
+    .eq("scope", scope)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return (data ?? []).map((r) => {
+    const t = (r.template ?? {}) as Record<string, unknown>;
+    const next = ((r.financial_transactions as { due_date: string; status: string; deleted_at: string | null }[] | null) ?? [])
+      .filter((x) => !x.deleted_at && x.status === "previsto" && x.due_date >= today)
+      .map((x) => x.due_date)
+      .sort()[0] ?? null;
+    const amount = Number(t.amount_cents ?? 0);
+    const frequency = r.frequency as RecurrenceRow["frequency"];
+    return {
+      id: r.id,
+      kind: (t.kind as RecurrenceRow["kind"]) ?? "despesa",
+      description: String(t.description ?? ""),
+      amount_cents: amount,
+      frequency,
+      start_date: r.start_date,
+      end_date: r.end_date,
+      state: r.ended_at ? "encerrada" : r.is_active ? "ativa" : "pausada",
+      category_id: (t.category_id as string | null) ?? null,
+      next_due: next,
+      monthly_cents: Math.round(amount * PER_MONTH[frequency]),
+    };
+  });
+}
+
+/** Mês atual separado em fixo (veio de recorrência) e variável. */
+export async function fixedVsVariable(scope: FinanceScope, from: string, to: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("financial_transactions")
+    .select("kind, amount_cents, recurrence_id, installment_group_id")
+    .eq("scope", scope)
+    .is("deleted_at", null)
+    .neq("status", "cancelado")
+    .neq("kind", "transferencia")
+    .gte("competence_date", from)
+    .lte("competence_date", to)
+    .limit(5000);
+  if (error) throw error;
+  const out = { receitaFixa: 0, receitaVariavel: 0, despesaFixa: 0, despesaVariavel: 0, parcelas: 0 };
+  for (const t of data ?? []) {
+    const v = Number(t.amount_cents);
+    if (t.kind === "receita") {
+      if (t.recurrence_id) out.receitaFixa += v;
+      else out.receitaVariavel += v;
+    } else {
+      if (t.recurrence_id) out.despesaFixa += v;
+      else out.despesaVariavel += v;
+      if (t.installment_group_id) out.parcelas += v;
+    }
+  }
+  return out;
 }

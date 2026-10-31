@@ -4,7 +4,7 @@ import type { PaymentMethod } from "@/features/clients/types";
 export type { FinanceScope, TxnKind, TxnStatus };
 
 export type Account = { id: string; name: string; type: string; opening_balance_cents: number; is_active: boolean };
-export type Category = { id: string; name: string; kind: "receita" | "despesa"; is_active: boolean };
+export type Category = { id: string; name: string; kind: "receita" | "despesa"; is_active: boolean; parent_id?: string | null };
 export type CostCenter = { id: string; name: string; is_active: boolean };
 
 export type Transaction = {

@@ -14,6 +14,7 @@ import {
   idSchema,
   paySchema,
   receivablesSchema,
+  recurrenceStateSchema,
   reconcileSchema,
   txnFormSchema,
   txnUpdateSchema,
@@ -218,7 +219,8 @@ export const saveAccount = defineAction({ schema: accountSchema }, async (input,
 export const saveCategory = defineAction({ schema: categorySchema }, async (input, { user }) => {
   if (!(await requireScopePerm(input.scope, input.id ? "update" : "create", user.permissions))) return fail("forbidden", "Sem permissão.");
   const supabase = await createClient();
-  const row = { name: input.name, kind: input.kind, is_active: input.isActive };
+  if (input.parentId && input.parentId === input.id) return fail("validation", "Uma categoria não pode ser subcategoria dela mesma.");
+  const row = { name: input.name, kind: input.kind, is_active: input.isActive, parent_id: input.parentId };
   if (input.id) must(await supabase.from("financial_categories").update(row).eq("id", input.id));
   else must(await supabase.from("financial_categories").insert({ ...row, scope: input.scope, owner_user_id: input.scope === "pessoal" ? user.id : null }));
   revalidateFinance(input.scope);
@@ -248,4 +250,19 @@ export const adminReadPersonal = defineAction({ schema: adminReadSchema, permiss
     transactions: { id: string; kind: string; description: string; amount_cents: number; status: string; due_date: string; paid_at: string | null; category: string | null; account: string | null }[];
   };
   return ok(data);
+});
+
+const RECURRENCE_MESSAGE = {
+  ativa: "Recorrência retomada. As próximas ocorrências foram geradas.",
+  pausada: "Recorrência pausada. As ocorrências futuras previstas foram para a lixeira.",
+  encerrada: "Recorrência encerrada. O histórico foi mantido.",
+} as const;
+
+/** Pausa, retoma ou encerra uma série sem alterar ocorrências passadas ou pagas. */
+export const setRecurrenceState = defineAction({ schema: recurrenceStateSchema }, async (input) => {
+  const supabase = await createClient();
+  must(await supabase.rpc("set_recurrence_state", { p_id: input.id, p_state: input.state }));
+  if (input.state === "ativa") must(await supabase.rpc("generate_recurrences", { p_until: null }));
+  revalidateFinance();
+  return ok(null, RECURRENCE_MESSAGE[input.state]);
 });

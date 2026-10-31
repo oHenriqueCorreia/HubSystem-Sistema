@@ -73,8 +73,12 @@ export const categorySchema = z.object({
   scope,
   name: z.string().trim().min(2, "Informe o nome.").max(80),
   kind: z.enum(["receita", "despesa"]),
+  // Subcategoria: aponta para a categoria "mãe" do mesmo tipo.
+  parentId: z.uuid().nullable().default(null),
   isActive: z.boolean().default(true),
 });
+
+export const recurrenceStateSchema = z.object({ id: z.uuid(), state: z.enum(["ativa", "pausada", "encerrada"]) });
 
 export const costCenterSchema = z.object({ id: z.uuid().optional(), name: z.string().trim().min(2, "Informe o nome.").max(80), isActive: z.boolean().default(true) });
 

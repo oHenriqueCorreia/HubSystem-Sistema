@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MoneyInput } from "@/components/app/money-input";
 import { formatBRL } from "@/domain/shared/money";
+import { cn } from "cn";
 import { saveAccount, saveCategory, saveCostCenter } from "../actions";
 import { ACCOUNT_TYPE_LABEL, type Account, type Category, type CostCenter, type FinanceScope } from "../types";
 
@@ -112,36 +113,47 @@ export function AccountsEditor({ scope, accounts, canEdit }: { scope: FinanceSco
   );
 }
 
+const NO_PARENT = "__principal__";
+
 export function CategoriesEditor({ scope, categories, canEdit }: { scope: FinanceScope; categories: Category[]; canEdit: boolean }) {
   const { pending, run } = useSave();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"receita" | "despesa">("despesa");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [parentId, setParentId] = useState<string>(NO_PARENT);
+  const roots = categories.filter((c) => c.kind === kind && !c.parent_id && c.is_active);
+  // Ordem em árvore: cada categoria seguida das suas subcategorias.
+  const tree = (k: "receita" | "despesa") => {
+    const ofKind = categories.filter((c) => c.kind === k);
+    const top = ofKind.filter((c) => !c.parent_id || !ofKind.some((p) => p.id === c.parent_id));
+    return top.flatMap((p) => [p, ...ofKind.filter((c) => c.parent_id === p.id)]);
+  };
 
   const list = (k: "receita" | "despesa") => (
     <div className="grid gap-1">
       <h3 className="text-xs font-medium text-muted-foreground">{k === "receita" ? "Receitas" : "Despesas"}</h3>
       <ul className="grid gap-1">
-        {categories
-          .filter((c) => c.kind === k)
-          .map((c) => (
-            <li key={c.id} className="flex min-h-9 items-center justify-between gap-2 rounded-md border bg-surface px-3 text-sm">
+        {tree(k).map((c) => (
+            <li key={c.id} className={cn("flex min-h-9 items-center justify-between gap-2 rounded-md border bg-surface px-3 text-sm", c.parent_id && "ml-5")}>
               {renaming?.id === c.id ? (
                 <span className="flex flex-1 gap-1 py-1">
                   <Input aria-label="Novo nome" value={renaming.name} onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} autoFocus />
-                  <Button size="icon-sm" aria-label="Salvar" disabled={pending} onClick={() => run(() => saveCategory({ id: c.id, scope, name: renaming.name, kind: c.kind, isActive: c.is_active }), () => setRenaming(null))}>
+                  <Button size="icon-sm" aria-label="Salvar" disabled={pending} onClick={() => run(() => saveCategory({ id: c.id, scope, name: renaming.name, kind: c.kind, parentId: c.parent_id ?? null, isActive: c.is_active }), () => setRenaming(null))}>
                     <Check aria-hidden="true" />
                   </Button>
                 </span>
               ) : (
-                <span className={c.is_active ? "" : "text-muted-foreground line-through"}>{c.name}</span>
+                <span className={c.is_active ? "" : "text-muted-foreground line-through"}>
+                  {c.parent_id && <span className="sr-only">Subcategoria: </span>}
+                  {c.name}
+                </span>
               )}
               {canEdit && renaming?.id !== c.id && (
                 <span className="flex items-center gap-1">
                   <Switch
                     checked={c.is_active}
                     aria-label={c.is_active ? `Desativar ${c.name}` : `Ativar ${c.name}`}
-                    onCheckedChange={(v) => run(() => saveCategory({ id: c.id, scope, name: c.name, kind: c.kind, isActive: v }))}
+                    onCheckedChange={(v) => run(() => saveCategory({ id: c.id, scope, name: c.name, kind: c.kind, parentId: c.parent_id ?? null, isActive: v }))}
                   />
                   <Button size="icon-sm" variant="ghost" aria-label={`Renomear ${c.name}`} onClick={() => setRenaming({ id: c.id, name: c.name })}>
                     <Pencil aria-hidden="true" />
@@ -162,7 +174,13 @@ export function CategoriesEditor({ scope, categories, canEdit }: { scope: Financ
       {canEdit && (
         <div className="flex flex-wrap gap-2">
           <Input aria-label="Nome da nova categoria" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nova categoria…" className="w-56" />
-          <Select value={kind} onValueChange={(k) => setKind(k as "receita" | "despesa")}>
+          <Select
+            value={kind}
+            onValueChange={(k) => {
+              setKind(k as "receita" | "despesa");
+              setParentId(NO_PARENT);
+            }}
+          >
             <SelectTrigger className="w-32" aria-label="Tipo da categoria">
               <SelectValue />
             </SelectTrigger>
@@ -171,7 +189,26 @@ export function CategoriesEditor({ scope, categories, canEdit }: { scope: Financ
               <SelectItem value="receita">Receita</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" disabled={pending || name.trim().length < 2} onClick={() => run(() => saveCategory({ scope, name, kind, isActive: true }), () => setName(""))}>
+          {roots.length > 0 && (
+            <Select value={parentId} onValueChange={setParentId}>
+              <SelectTrigger className="w-48" aria-label="Categoria mãe">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_PARENT}>Categoria principal</SelectItem>
+                {roots.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    Dentro de {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button
+            variant="outline"
+            disabled={pending || name.trim().length < 2}
+            onClick={() => run(() => saveCategory({ scope, name, kind, parentId: parentId === NO_PARENT ? null : parentId, isActive: true }), () => setName(""))}
+          >
             <Plus aria-hidden="true" /> Adicionar
           </Button>
         </div>

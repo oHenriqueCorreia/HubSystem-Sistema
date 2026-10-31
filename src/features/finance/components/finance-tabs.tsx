@@ -11,6 +11,7 @@ export function FinanceTabs({ scope, showAdminRead }: { scope: FinanceScope; sho
   const tabs = [
     { href: base, label: "Visão geral" },
     { href: `${base}/lancamentos`, label: "Lançamentos" },
+    { href: `${base}/recorrentes`, label: "Fixos e recorrentes" },
     { href: `${base}/fluxo-de-caixa`, label: "Fluxo de caixa" },
     { href: `${base}/cadastros`, label: "Contas e categorias" },
     ...(showAdminRead ? [{ href: `${base}/consulta`, label: "Consultar usuário" }] : []),
