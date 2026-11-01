@@ -3,8 +3,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { formatBRL } from "@/domain/shared/money";
 import { todayLocal } from "@/domain/shared/dates";
-import { metaAccounts, metaCampaigns, metaDailyInsights, type DailyMetric } from "./meta";
-import { googleAdsAccessibleCustomers, googleAdsCampaigns, googleAdsCustomer, googleAdsDailyInsights, googleAdsRefresh } from "./google-ads";
+import { metaAccounts, metaAdDailyInsights, metaAds, metaAdSets, metaCampaigns, metaDailyInsights, type AdDailyMetric, type AdInfo, type AdSetInfo, type DailyMetric } from "./meta";
+import {
+  googleAdsAccessibleCustomers,
+  googleAdsAdDailyInsights,
+  googleAdsAdGroups,
+  googleAdsAds,
+  googleAdsCampaigns,
+  googleAdsCustomer,
+  googleAdsDailyInsights,
+  googleAdsRefresh,
+} from "./google-ads";
 
 export type AdProvider = "meta_ads" | "google_ads";
 
@@ -28,6 +37,89 @@ async function googleAccessToken(conn: Connection) {
     .update({ token_enc: encrypt(t.access_token), expires_at: new Date(Date.now() + t.expires_in * 1000).toISOString() })
     .eq("id", conn.id);
   return t.access_token;
+}
+
+type Admin = ReturnType<typeof createAdminClient>;
+type Account = { id: string; external_id: string };
+
+/**
+ * Conjuntos/grupos, anúncios (com criativo) e métricas diárias por anúncio.
+ * Conta sem métricas por anúncio ainda: traz 90 dias; depois, os últimos 7.
+ */
+async function syncAdLevel(admin: Admin, organizationId: string, provider: AdProvider, token: string, acc: Account, campaignIds: Map<string, string>, until: string) {
+  const now = new Date().toISOString();
+  const [sets, ads]: [AdSetInfo[], AdInfo[]] =
+    provider === "meta_ads"
+      ? await Promise.all([metaAdSets(token, acc.external_id), metaAds(token, acc.external_id)])
+      : await Promise.all([googleAdsAdGroups(token, acc.external_id), googleAdsAds(token, acc.external_id)]);
+
+  const setIds = new Map<string, string>();
+  const setRows = sets
+    .filter((s) => campaignIds.has(s.campaignExternalId))
+    .map((s) => ({
+      organization_id: organizationId,
+      account_id: acc.id,
+      campaign_id: campaignIds.get(s.campaignExternalId)!,
+      external_id: s.externalId,
+      name: s.name,
+      status: s.status,
+      optimization_goal: s.optimizationGoal,
+      daily_budget_cents: s.dailyBudgetCents,
+      updated_at: now,
+    }));
+  for (let i = 0; i < setRows.length; i += 500) {
+    const { data, error } = await admin.from("ad_sets").upsert(setRows.slice(i, i + 500), { onConflict: "account_id,external_id" }).select("id, external_id");
+    if (error) throw error;
+    for (const r of data ?? []) setIds.set(r.external_id, r.id);
+  }
+
+  const adIds = new Map<string, string>();
+  const adRows = ads
+    .filter((a) => campaignIds.has(a.campaignExternalId))
+    .map((a) => ({
+      organization_id: organizationId,
+      account_id: acc.id,
+      campaign_id: campaignIds.get(a.campaignExternalId)!,
+      ad_set_id: a.adSetExternalId ? (setIds.get(a.adSetExternalId) ?? null) : null,
+      external_id: a.externalId,
+      name: a.name,
+      status: a.status,
+      format: a.format,
+      headline: a.headline,
+      body: a.body,
+      image_url: a.imageUrl,
+      link_url: a.linkUrl,
+      updated_at: now,
+    }));
+  for (let i = 0; i < adRows.length; i += 500) {
+    const { data, error } = await admin.from("ads").upsert(adRows.slice(i, i + 500), { onConflict: "account_id,external_id" }).select("id, external_id");
+    if (error) throw error;
+    for (const r of data ?? []) adIds.set(r.external_id, r.id);
+  }
+
+  const { count } = await admin.from("ad_insights_ad_daily").select("id", { count: "exact", head: true }).eq("account_id", acc.id);
+  const since = daysAgo(count ? 7 : 90);
+  const daily: AdDailyMetric[] =
+    provider === "meta_ads" ? await metaAdDailyInsights(token, acc.external_id, since, until) : await googleAdsAdDailyInsights(token, acc.external_id, since, until);
+  const rows = daily
+    .filter((d) => adIds.has(d.adExternalId) && /^\d{4}-\d{2}-\d{2}$/.test(d.day))
+    .map((d) => ({
+      organization_id: organizationId,
+      account_id: acc.id,
+      ad_id: adIds.get(d.adExternalId)!,
+      day: d.day,
+      impressions: d.impressions,
+      reach: d.reach,
+      clicks: d.clicks,
+      spend_cents: d.spendCents,
+      conversions: d.conversions,
+      conversion_value_cents: d.conversionValueCents,
+    }));
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await admin.from("ad_insights_ad_daily").upsert(rows.slice(i, i + 500), { onConflict: "ad_id,day" });
+    if (error) throw error;
+  }
+  return rows.length;
 }
 
 /**
@@ -88,6 +180,7 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
     const since = daysAgo(conn.last_synced_at ? 7 : 90);
     const until = todayLocal();
     let metrics = 0;
+    let adLevelFailed = false;
 
     for (const acc of selected ?? []) {
       const campaigns = provider === "meta_ads" ? await metaCampaigns(token, acc.external_id) : await googleAdsCampaigns(token, acc.external_id);
@@ -128,11 +221,20 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
           clicks: d.clicks,
           spend_cents: d.spendCents,
           conversions: d.conversions,
+          conversion_value_cents: d.conversionValueCents,
         }));
       for (let i = 0; i < rows.length; i += 500) {
         await admin.from("ad_insights_daily").upsert(rows.slice(i, i + 500), { onConflict: "account_id,campaign_id,day" });
       }
       metrics += rows.length;
+
+      // Conjuntos, anúncios e criativos. Uma falha aqui não perde as campanhas já gravadas.
+      try {
+        metrics += await syncAdLevel(admin, organizationId, provider, token, acc, ids, until);
+      } catch (e) {
+        adLevelFailed = true;
+        console.error("[ads-sync] anúncios", provider, (e as { code?: unknown; status?: unknown }).code ?? (e as { status?: unknown }).status ?? "erro");
+      }
 
       // 3) Alertas (um por conta por dia, sem repetição).
       const todaySpend = rows.filter((r) => r.day === until).reduce((s, r) => s + r.spend_cents, 0);
@@ -143,7 +245,7 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
           p_kind: "anuncio_gasto",
           p_title: `Gasto de hoje acima do limite em ${acc.name}`,
           p_body: `${formatBRL(todaySpend)} gastos hoje (limite ${formatBRL(acc.alert_daily_spend_above_cents)}).`,
-          p_href: "/anuncios",
+          p_href: "/anuncios/contas",
           p_key: `ads_spend:${acc.id}:${until}`,
         });
       }
@@ -155,13 +257,21 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
           p_kind: "anuncio_saldo",
           p_title: `Saldo baixo na conta ${acc.name}`,
           p_body: `Saldo informado: ${formatBRL(fresh.balance_cents)} (alerta abaixo de ${formatBRL(acc.alert_balance_below_cents)}).`,
-          p_href: "/anuncios",
+          p_href: "/anuncios/contas",
           p_key: `ads_balance:${acc.id}:${until}`,
         });
       }
     }
 
-    await admin.from("integration_connections").update({ status: "ativa", last_error: null, last_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", conn.id);
+    await admin
+      .from("integration_connections")
+      .update({
+        status: "ativa",
+        last_error: adLevelFailed ? "Campanhas atualizadas, mas conjuntos e anúncios não puderam ser sincronizados. Tente novamente mais tarde." : null,
+        last_synced_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", conn.id);
     return { accounts: accounts.length, metrics };
   } catch (e) {
     const err = e as { code?: number | string; status?: number };
@@ -178,7 +288,7 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
         p_kind: "token_expirado",
         p_title: provider === "meta_ads" ? "Reconecte a conta da Meta" : "Reconecte a conta do Google Ads",
         p_body: "O acesso às contas de anúncios expirou.",
-        p_href: "/anuncios",
+        p_href: "/anuncios/contas",
         p_key: `ads_expired:${provider}:${todayLocal()}`,
       });
     }

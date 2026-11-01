@@ -1,5 +1,6 @@
 import "server-only";
 import { publicEnv } from "@/lib/env";
+import { sumConversionActions, type MetaAction } from "@/domain/ads/conversions";
 
 // Marketing API oficial da Meta (Graph API). Somente leitura de anúncios.
 export const META_SCOPES = ["ads_read", "business_management"];
@@ -102,34 +103,115 @@ export async function metaCampaigns(token: string, accountId: string): Promise<M
   }));
 }
 
-export type DailyMetric = { campaignExternalId: string; day: string; impressions: number; reach: number | null; clicks: number; spendCents: number; conversions: number | null };
+export type DailyMetric = {
+  campaignExternalId: string;
+  day: string;
+  impressions: number;
+  reach: number | null;
+  clicks: number;
+  spendCents: number;
+  conversions: number | null;
+  conversionValueCents: number | null;
+};
 
-const CONVERSION_ACTIONS = new Set(["offsite_conversion.fb_pixel_purchase", "purchase", "lead", "onsite_conversion.lead_grouped", "complete_registration", "onsite_conversion.messaging_conversation_started_7d"]);
+type InsightRow = { date_start: string; impressions?: string; reach?: string; clicks?: string; spend?: string; actions?: MetaAction[]; action_values?: MetaAction[] };
 
-export async function metaDailyInsights(token: string, accountId: string, since: string, until: string): Promise<DailyMetric[]> {
+function toMetric(r: InsightRow) {
+  return {
+    day: r.date_start,
+    impressions: Number(r.impressions ?? 0),
+    reach: r.reach ? Number(r.reach) : null,
+    clicks: Number(r.clicks ?? 0),
+    // "spend" e "action_values" vêm na moeda da conta como decimal (ex.: "12.34").
+    spendCents: Math.round(Number(r.spend ?? 0) * 100),
+    conversions: r.actions ? sumConversionActions(r.actions) : null,
+    conversionValueCents: r.action_values ? Math.round(sumConversionActions(r.action_values) * 100) : null,
+  };
+}
+
+function insightsUrl(token: string, accountId: string, level: "campaign" | "ad", since: string, until: string) {
   const q = new URLSearchParams({
-    level: "campaign",
-    fields: "campaign_id,impressions,reach,clicks,spend,actions",
+    level,
+    fields: `${level}_id,impressions,reach,clicks,spend,actions,action_values`,
     time_increment: "1",
     time_range: JSON.stringify({ since, until }),
     limit: "500",
     access_token: token,
   });
-  const rows = await all<{ campaign_id: string; date_start: string; impressions?: string; reach?: string; clicks?: string; spend?: string; actions?: { action_type: string; value: string }[] }>(
-    graph(`/${accountId}/insights?${q.toString()}`),
-    20000,
+  return graph(`/${accountId}/insights?${q.toString()}`);
+}
+
+export async function metaDailyInsights(token: string, accountId: string, since: string, until: string): Promise<DailyMetric[]> {
+  const rows = await all<InsightRow & { campaign_id: string }>(insightsUrl(token, accountId, "campaign", since, until), 20000);
+  return rows.map((r) => ({ campaignExternalId: r.campaign_id, ...toMetric(r) }));
+}
+
+export type AdDailyMetric = Omit<DailyMetric, "campaignExternalId"> & { adExternalId: string };
+
+export async function metaAdDailyInsights(token: string, accountId: string, since: string, until: string): Promise<AdDailyMetric[]> {
+  const rows = await all<InsightRow & { ad_id: string }>(insightsUrl(token, accountId, "ad", since, until), 50000);
+  return rows.map((r) => ({ adExternalId: r.ad_id, ...toMetric(r) }));
+}
+
+export type AdSetInfo = { externalId: string; campaignExternalId: string; name: string; status: string; optimizationGoal: string | null; dailyBudgetCents: number | null };
+
+export async function metaAdSets(token: string, accountId: string): Promise<AdSetInfo[]> {
+  const rows = await all<{ id: string; name: string; campaign_id: string; effective_status: string; optimization_goal?: string; daily_budget?: string }>(
+    graph(`/${accountId}/adsets?fields=id,name,campaign_id,effective_status,optimization_goal,daily_budget&limit=200&access_token=${encodeURIComponent(token)}`),
+    5000,
   );
-  return rows.map((r) => {
-    const conv = r.actions?.filter((a) => CONVERSION_ACTIONS.has(a.action_type)).reduce((s, a) => s + Number(a.value), 0);
+  return rows.map((a) => ({
+    externalId: a.id,
+    campaignExternalId: a.campaign_id,
+    name: a.name,
+    status: a.effective_status,
+    optimizationGoal: a.optimization_goal ?? null,
+    dailyBudgetCents: cents(a.daily_budget),
+  }));
+}
+
+export type AdInfo = {
+  externalId: string;
+  campaignExternalId: string;
+  adSetExternalId: string | null;
+  name: string;
+  status: string;
+  format: string | null;
+  headline: string | null;
+  body: string | null;
+  imageUrl: string | null;
+  linkUrl: string | null;
+};
+
+// Só guardamos URLs https (a tabela também recusa outras).
+export const httpsOnly = (u: string | null | undefined) => (u && /^https:\/\//.test(u) ? u : null);
+export const clip = (v: string | null | undefined, max: number) => (v ? v.slice(0, max) : null);
+
+type StoryData = { name?: string; title?: string; message?: string; picture?: string; image_url?: string };
+type MetaCreative = { title?: string; body?: string; image_url?: string; thumbnail_url?: string; object_type?: string; object_story_spec?: { link_data?: StoryData; video_data?: StoryData } };
+
+export async function metaAds(token: string, accountId: string): Promise<AdInfo[]> {
+  const fields = "id,name,campaign_id,adset_id,effective_status,preview_shareable_link,creative{title,body,image_url,thumbnail_url,object_type,object_story_spec}";
+  const rows = await all<{ id: string; name: string; campaign_id: string; adset_id?: string; effective_status: string; preview_shareable_link?: string; creative?: MetaCreative }>(
+    graph(`/${accountId}/ads?${new URLSearchParams({ fields, thumbnail_width: "320", thumbnail_height: "320", limit: "100", access_token: token })}`),
+    5000,
+  );
+  return rows.map((a) => {
+    const c = a.creative ?? {};
+    // Criativos de link/vídeo guardam título e texto no object_story_spec.
+    const story = c.object_story_spec?.link_data ?? c.object_story_spec?.video_data;
     return {
-      campaignExternalId: r.campaign_id,
-      day: r.date_start,
-      impressions: Number(r.impressions ?? 0),
-      reach: r.reach ? Number(r.reach) : null,
-      clicks: Number(r.clicks ?? 0),
-      // "spend" vem na moeda da conta como decimal (ex.: "12.34").
-      spendCents: Math.round(Number(r.spend ?? 0) * 100),
-      conversions: r.actions ? (conv ?? 0) : null,
+      externalId: a.id,
+      campaignExternalId: a.campaign_id,
+      adSetExternalId: a.adset_id ?? null,
+      name: a.name,
+      status: a.effective_status,
+      format: c.object_type ?? null,
+      headline: clip(c.title ?? story?.name ?? story?.title, 500),
+      body: clip(c.body ?? story?.message, 2000),
+      // A URL da miniatura da Meta expira; a sincronização diária a renova.
+      imageUrl: httpsOnly(c.thumbnail_url ?? c.image_url ?? story?.picture ?? story?.image_url),
+      linkUrl: httpsOnly(a.preview_shareable_link),
     };
   });
 }

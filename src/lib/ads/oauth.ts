@@ -9,7 +9,7 @@ const COOKIE = "ads_oauth_state";
 export async function startOAuth(request: NextRequest, configured: boolean, authUrl: (state: string) => string, path: string) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.redirect(new URL("/login", request.url));
-  if (!user.permissions["ads.manage"] || !configured) return NextResponse.redirect(new URL("/anuncios?erro=indisponivel", request.url));
+  if (!user.permissions["ads.manage"] || !configured) return NextResponse.redirect(new URL("/anuncios/contas?erro=indisponivel", request.url));
   const state = randomBytes(24).toString("base64url");
   const res = NextResponse.redirect(authUrl(state));
   res.cookies.set(COOKIE, state, { httpOnly: true, secure: true, sameSite: "lax", path, maxAge: 600 });
@@ -19,7 +19,7 @@ export async function startOAuth(request: NextRequest, configured: boolean, auth
 /** Retorno do OAuth: valida sessão, permissão e state (tempo constante). */
 export async function checkCallback(request: NextRequest, path: string) {
   const back = (q: string) => {
-    const res = NextResponse.redirect(new URL(`/anuncios?${q}`, request.url));
+    const res = NextResponse.redirect(new URL(`/anuncios/contas?${q}`, request.url));
     res.cookies.delete({ name: COOKIE, path });
     return res;
   };

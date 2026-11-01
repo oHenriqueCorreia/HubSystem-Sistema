@@ -117,20 +117,109 @@ export async function googleAdsCampaigns(accessToken: string, customerId: string
   }));
 }
 
-export async function googleAdsDailyInsights(accessToken: string, customerId: string, since: string, until: string) {
-  const rows = await search<{ campaign: { id: string }; segments: { date: string }; metrics: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number } }>(
-    accessToken,
-    customerId,
-    `SELECT campaign.id, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${since}' AND '${until}'`,
-  );
-  return rows.map((r) => ({
-    campaignExternalId: r.campaign.id,
+type MetricsRow = { segments: { date: string }; metrics: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number; conversionsValue?: number } };
+const METRICS = "segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value";
+
+function toMetric(r: MetricsRow) {
+  return {
     day: r.segments.date,
     impressions: Number(r.metrics.impressions ?? 0),
-    // O Google Ads não informa alcance por campanha/dia nesta consulta.
+    // O Google Ads não informa alcance por campanha/anúncio por dia.
     reach: null,
     clicks: Number(r.metrics.clicks ?? 0),
     spendCents: microsToCents(r.metrics.costMicros) ?? 0,
     conversions: r.metrics.conversions ?? 0,
+    // conversions_value vem na moeda da conta (não em micros).
+    conversionValueCents: Math.round(Number(r.metrics.conversionsValue ?? 0) * 100),
+  };
+}
+
+export async function googleAdsDailyInsights(accessToken: string, customerId: string, since: string, until: string) {
+  const rows = await search<MetricsRow & { campaign: { id: string } }>(
+    accessToken,
+    customerId,
+    `SELECT campaign.id, ${METRICS} FROM campaign WHERE segments.date BETWEEN '${since}' AND '${until}'`,
+  );
+  return rows.map((r) => ({ campaignExternalId: r.campaign.id, ...toMetric(r) }));
+}
+
+export async function googleAdsAdGroups(accessToken: string, customerId: string) {
+  const rows = await search<{ adGroup: { id: string; name: string; status: string; type?: string }; campaign: { id: string } }>(
+    accessToken,
+    customerId,
+    "SELECT ad_group.id, ad_group.name, ad_group.status, ad_group.type, campaign.id FROM ad_group WHERE ad_group.status != 'REMOVED'",
+  );
+  return rows.map((r) => ({
+    externalId: r.adGroup.id,
+    campaignExternalId: r.campaign.id,
+    name: r.adGroup.name,
+    status: r.adGroup.status,
+    optimizationGoal: r.adGroup.type ?? null,
+    // O orçamento no Google fica na campanha, não no grupo.
+    dailyBudgetCents: null,
   }));
+}
+
+// O anúncio é identificado pelo par grupo~anúncio (como no próprio Google Ads).
+const adKey = (adGroupId: string, adId: string) => `${adGroupId}~${adId}`;
+
+type TextAsset = { text?: string };
+type GoogleAd = {
+  id: string;
+  name?: string;
+  type?: string;
+  finalUrls?: string[];
+  responsiveSearchAd?: { headlines?: TextAsset[]; descriptions?: TextAsset[] };
+  responsiveDisplayAd?: { headlines?: TextAsset[]; longHeadline?: TextAsset; descriptions?: TextAsset[] };
+  expandedTextAd?: { headlinePart1?: string; headlinePart2?: string; description?: string };
+};
+
+const AD_TYPE: Record<string, string> = { RESPONSIVE_SEARCH_AD: "Pesquisa responsivo", RESPONSIVE_DISPLAY_AD: "Display responsivo", EXPANDED_TEXT_AD: "Texto expandido", VIDEO_RESPONSIVE_AD: "Vídeo" };
+
+export async function googleAdsAds(accessToken: string, customerId: string) {
+  const rows = await search<{ adGroupAd: { status: string; ad: GoogleAd }; adGroup: { id: string }; campaign: { id: string } }>(
+    accessToken,
+    customerId,
+    `SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group_ad.ad.final_urls, ad_group_ad.status,
+       ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.ad.responsive_search_ad.descriptions,
+       ad_group_ad.ad.responsive_display_ad.headlines, ad_group_ad.ad.responsive_display_ad.long_headline, ad_group_ad.ad.responsive_display_ad.descriptions,
+       ad_group_ad.ad.expanded_text_ad.headline_part1, ad_group_ad.ad.expanded_text_ad.headline_part2, ad_group_ad.ad.expanded_text_ad.description,
+       ad_group.id, campaign.id
+     FROM ad_group_ad WHERE ad_group_ad.status != 'REMOVED'`,
+  );
+  const texts = (list?: TextAsset[]) => (list ?? []).map((t) => t.text).filter(Boolean) as string[];
+  return rows.map((r) => {
+    const ad = r.adGroupAd.ad;
+    const headlines = [
+      ...texts(ad.responsiveSearchAd?.headlines),
+      ...texts(ad.responsiveDisplayAd?.longHeadline ? [ad.responsiveDisplayAd.longHeadline] : []),
+      ...texts(ad.responsiveDisplayAd?.headlines),
+      ...[ad.expandedTextAd?.headlinePart1, ad.expandedTextAd?.headlinePart2].filter(Boolean) as string[],
+    ];
+    const descriptions = [...texts(ad.responsiveSearchAd?.descriptions), ...texts(ad.responsiveDisplayAd?.descriptions), ...(ad.expandedTextAd?.description ? [ad.expandedTextAd.description] : [])];
+    const url = ad.finalUrls?.[0];
+    return {
+      externalId: adKey(r.adGroup.id, ad.id),
+      campaignExternalId: r.campaign.id,
+      adSetExternalId: r.adGroup.id,
+      name: ad.name || headlines[0] || `Anúncio ${ad.id}`,
+      status: r.adGroupAd.status,
+      format: ad.type ? (AD_TYPE[ad.type] ?? ad.type) : null,
+      // Anúncios responsivos têm vários títulos; mostramos os três primeiros.
+      headline: headlines.length ? headlines.slice(0, 3).join(" | ").slice(0, 500) : null,
+      body: descriptions.length ? descriptions.slice(0, 2).join(" ").slice(0, 2000) : null,
+      // A Google Ads API não entrega miniatura pronta do anúncio.
+      imageUrl: null,
+      linkUrl: url && /^https?:\/\//.test(url) ? url : null,
+    };
+  });
+}
+
+export async function googleAdsAdDailyInsights(accessToken: string, customerId: string, since: string, until: string) {
+  const rows = await search<MetricsRow & { adGroupAd: { ad: { id: string } }; adGroup: { id: string } }>(
+    accessToken,
+    customerId,
+    `SELECT ad_group_ad.ad.id, ad_group.id, ${METRICS} FROM ad_group_ad WHERE segments.date BETWEEN '${since}' AND '${until}'`,
+  );
+  return rows.map((r) => ({ adExternalId: adKey(r.adGroup.id, r.adGroupAd.ad.id), ...toMetric(r) }));
 }

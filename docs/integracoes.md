@@ -47,9 +47,17 @@ Em developers.facebook.com, crie um app do tipo **Empresa** e preencha `META_APP
 1. Adicione o produto **Marketing API** e o **Facebook Login para Empresas**.
 2. URI de redirecionamento OAuth válida: `https://SEU-DOMINIO/api/ads/meta/callback`.
 3. Permissões solicitadas: `ads_read` e `business_management` (somente leitura). Para uso por contas de terceiros, essas permissões passam pela **análise do app** da Meta.
-4. Em **Trabalho → Anúncios**, clique em Conectar, escolha as contas que entram nos relatórios e crie alertas de saldo/gasto.
+4. Em **Trabalho → Anúncios → Contas e alertas**, clique em Conectar, escolha as contas que entram nos relatórios e crie alertas de saldo/gasto.
 
 O token da Meta dura cerca de 60 dias; antes de expirar, o sistema avisa na central de notificações para reconectar.
+
+### Área de Anúncios (Meta e Google)
+- **Visão geral:** investimento, impressões, cliques, conversões, valor das conversões, CTR, CPC, CPM, custo por conversão e ROAS, comparados ao período anterior; gráfico por dia/semana/mês e comparativo Meta × Google.
+- **Campanhas:** tabela com métricas e exportação CSV. Clicar numa campanha abre o detalhe com gráfico diário, conjuntos/grupos e os anúncios de cada um.
+- **Conjuntos e grupos:** conjuntos de anúncios (Meta) e grupos de anúncios (Google), com a soma dos seus anúncios.
+- **Anúncios:** cada anúncio com o criativo e suas métricas. A Meta fornece a miniatura; o Google Ads não fornece miniatura pela API, então mostramos títulos, descrições e o link de destino.
+- **ROAS** depende de valor de conversão configurado na plataforma (valor no pixel/API de Conversões da Meta ou valor nas ações de conversão do Google). Sem isso, aparece “—”.
+- Na primeira sincronização de cada conta são trazidos 90 dias; depois, os últimos 7 (as plataformas ajustam dias recentes).
 
 ### WhatsApp (Cloud API oficial)
 1. Adicione o produto **WhatsApp** ao app e vincule a conta do WhatsApp Business (WABA) e o número.

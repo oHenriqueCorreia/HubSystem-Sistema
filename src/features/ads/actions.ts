@@ -17,10 +17,10 @@ export const syncAdsNow = defineAction({ schema: z.object({ provider }), permiss
   if (!(await withinRateLimit(`ads-sync:${user.organizationId}:${input.provider}`, 6, 3600))) return fail("business_rule", RATE_LIMIT_MESSAGE);
   try {
     const r = await syncAds(user.organizationId, input.provider);
-    revalidatePath("/anuncios");
+    revalidatePath("/anuncios", "layout");
     return ok(r, `Sincronizado: ${r.accounts} conta(s), ${r.metrics} registro(s) de métricas.`);
   } catch {
-    revalidatePath("/anuncios");
+    revalidatePath("/anuncios", "layout");
     return fail("network", "Não foi possível sincronizar agora. Veja a situação da conexão e tente novamente.");
   }
 });
@@ -32,7 +32,7 @@ export const disconnectAds = defineAction({ schema: z.object({ provider }), perm
   await admin.from("integration_connections").delete().eq("organization_id", user.organizationId).eq("provider", input.provider);
   // Métricas já trazidas continuam para consulta; a conta deixa de sincronizar.
   await admin.from("ad_accounts").update({ is_selected: false }).eq("organization_id", user.organizationId).eq("provider", input.provider);
-  revalidatePath("/anuncios");
+  revalidatePath("/anuncios", "layout");
   return ok(null, "Conta desconectada. O acesso foi revogado.");
 });
 
@@ -40,7 +40,7 @@ export const setAdAccountSelected = defineAction({ schema: z.object({ id: z.uuid
   const supabase = await createClient();
   const res = must(await supabase.from("ad_accounts").update({ is_selected: input.selected }).eq("id", input.id).select("id")) as { id: string }[];
   if (!res.length) return fail("forbidden", "Conta não encontrada.");
-  revalidatePath("/anuncios");
+  revalidatePath("/anuncios", "layout");
   return ok(null, input.selected ? "Conta selecionada. Sincronize para trazer as campanhas." : "Conta removida dos relatórios.");
 });
 
@@ -57,7 +57,7 @@ export const setAdAlerts = defineAction(
         .update({ alert_balance_below_cents: input.balanceBelowCents, alert_daily_spend_above_cents: input.dailySpendAboveCents })
         .eq("id", input.id),
     );
-    revalidatePath("/anuncios");
+    revalidatePath("/anuncios", "layout");
     return ok(null, "Alertas salvos. Você será notificado na central de notificações.");
   },
 );
