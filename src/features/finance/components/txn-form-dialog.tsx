@@ -20,6 +20,7 @@ import { PAYMENT_LABEL } from "@/features/clients/types";
 import { issuesToMap } from "@/features/clients/components/contract-fields";
 import { cn } from "cn";
 import { createTransaction, updateTransaction } from "../actions";
+import { NewCategoryInline } from "./new-category-inline";
 import { txnFormSchema, txnUpdateSchema, type TxnFormValues } from "../schemas";
 import { SCOPE_LABEL, type Account, type Category, type CostCenter, type FinanceScope, type Transaction, type TxnKind } from "../types";
 
@@ -155,6 +156,11 @@ export function TxnFormDialog({ scope, lookups, trigger, defaultKind = "despesa"
                 </Select>
               </FormField>
             )}
+            {kind !== "transferencia" && (
+              <div className="sm:col-span-2">
+                <NewCategoryInline scope={scope} kind={kind} onCreated={(id) => set("categoryId", id)} />
+              </div>
+            )}
             <FormField label={kind === "transferencia" ? "De (origem)" : "Conta"} error={errors.accountId}>
               <Select value={v.accountId ?? NONE} onValueChange={(c) => set("accountId", c === NONE ? null : c)}>
                 <SelectTrigger className="w-full">
@@ -225,7 +231,7 @@ export function TxnFormDialog({ scope, lookups, trigger, defaultKind = "despesa"
                   <FormField label="Parcelas" hint="Divide o total em parcelas mensais." error={errors.installments}>
                     <Input type="number" min={1} max={120} value={v.installments} onChange={(e) => set("installments", Math.max(1, Number(e.target.value) || 1))} />
                   </FormField>
-                  <FormField label="Repetir" error={errors.recurrence}>
+                  <FormField label="Repetir" hint="Repete no mesmo dia do vencimento. Para vencer em dia útil (ex.: 5º dia útil), use “Nova recorrência”." error={errors.recurrence}>
                     <Select value={v.recurrence} onValueChange={(r) => set("recurrence", r as TxnFormValues["recurrence"])}>
                       <SelectTrigger className="w-full">
                         <SelectValue />

@@ -232,10 +232,20 @@ export const saveCategory = defineAction({ schema: categorySchema }, async (inpu
   const supabase = await createClient();
   if (input.parentId && input.parentId === input.id) return fail("validation", "Uma categoria não pode ser subcategoria dela mesma.");
   const row = { name: input.name, kind: input.kind, is_active: input.isActive, parent_id: input.parentId };
-  if (input.id) must(await supabase.from("financial_categories").update(row).eq("id", input.id));
-  else must(await supabase.from("financial_categories").insert({ ...row, scope: input.scope, owner_user_id: input.scope === "pessoal" ? user.id : null }));
+  if (input.id) {
+    must(await supabase.from("financial_categories").update(row).eq("id", input.id));
+    revalidateFinance(input.scope);
+    return ok({ id: input.id }, "Categoria salva.");
+  }
+  const created = must(
+    await supabase
+      .from("financial_categories")
+      .insert({ ...row, scope: input.scope, owner_user_id: input.scope === "pessoal" ? user.id : null })
+      .select("id")
+      .single(),
+  ) as { id: string };
   revalidateFinance(input.scope);
-  return ok(null, "Categoria salva.");
+  return ok({ id: created.id }, "Categoria criada.");
 });
 
 export const saveCostCenter = defineAction({ schema: costCenterSchema, permission: "finance.company.update" }, async (input) => {
@@ -304,7 +314,7 @@ export const createRecurrence = defineAction({ schema: recurrenceSchema }, async
   must(await supabase.rpc("generate_recurrences", { p_until: null }));
   revalidateFinance(input.scope);
   revalidatePath("/inicio");
-  return ok(null, "Conta fixa criada. Os próximos vencimentos já aparecem nas contas a pagar e no Início.");
+  return ok(null, "Recorrência criada. As próximas datas já aparecem em Lançamentos, nos painéis e no Início.");
 });
 
 /** Cria tipos (categorias) a partir das etiquetas do sistema. Nomes já existentes são ignorados. */

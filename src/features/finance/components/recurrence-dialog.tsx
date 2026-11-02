@@ -13,7 +13,8 @@ import { FormAlert, FormField } from "@/components/app/form-field";
 import { MoneyInput } from "@/components/app/money-input";
 import { formatDate, todayLocal } from "@/domain/shared/dates";
 import { upcomingDueDates } from "@/domain/finance/business-days";
-import { createRecurrence, saveCategory } from "../actions";
+import { createRecurrence } from "../actions";
+import { NewCategoryInline } from "./new-category-inline";
 import { SCOPE_LABEL, type Account, type Category, type FinanceScope } from "../types";
 
 const NONE = "__nenhum__";
@@ -25,8 +26,8 @@ const FREQ = [
 ] as const;
 type Frequency = (typeof FREQ)[number][0];
 
-/** Nova conta fixa: dia do mês ou N-ésimo dia útil, com prévia dos próximos vencimentos. */
-export function RecurrenceDialog({ scope, accounts, categories }: { scope: FinanceScope; accounts: Account[]; categories: Category[] }) {
+/** Nova recorrência (despesa ou receita): dia do mês ou N-ésimo dia útil, com prévia dos próximos vencimentos. */
+export function RecurrenceDialog({ scope, accounts, categories, variant = "default" }: { scope: FinanceScope; accounts: Account[]; categories: Category[]; variant?: "default" | "outline" }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"despesa" | "receita">("despesa");
@@ -39,7 +40,6 @@ export function RecurrenceDialog({ scope, accounts, categories }: { scope: Finan
   const [day, setDay] = useState(5);
   const [startMonth, setStartMonth] = useState(() => todayLocal().slice(0, 7));
   const [endDate, setEndDate] = useState("");
-  const [newCategory, setNewCategory] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
 
@@ -49,19 +49,6 @@ export function RecurrenceDialog({ scope, accounts, categories }: { scope: Finan
   const today = todayLocal();
   // Vencimentos que já passaram não são criados: a série começa no próximo a partir de hoje.
   const preview = /^\d{4}-\d{2}$/.test(startMonth) && validDay ? upcomingDueDates({ startMonth, frequency, rule, day, count: 16 }).filter((d) => d >= today).slice(0, 4) : [];
-
-  function addCategory() {
-    const name = newCategory.trim();
-    if (name.length < 2) return void setErrors((e) => ({ ...e, newCategory: "Use ao menos 2 letras." }));
-    startTransition(async () => {
-      const res = await saveCategory({ scope, name, kind, parentId: null, isActive: true });
-      if (!res.ok) return void setErrors((e) => ({ ...e, newCategory: res.message }));
-      toast.success(`Tipo “${name}” criado. Escolha-o na lista.`);
-      setNewCategory("");
-      setErrors((e) => ({ ...e, newCategory: "" }));
-      router.refresh();
-    });
-  }
 
   function save() {
     startTransition(async () => {
@@ -95,14 +82,14 @@ export function RecurrenceDialog({ scope, accounts, categories }: { scope: Finan
   return (
     <Dialog open={open} onOpenChange={(v) => !pending && setOpen(v)}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus aria-hidden="true" /> Nova conta fixa
+        <Button variant={variant}>
+          <Plus aria-hidden="true" /> Nova recorrência
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Nova conta fixa ({SCOPE_LABEL[scope].toLowerCase()})</DialogTitle>
-          <DialogDescription>Mensalidades, aluguel, salários, assinaturas: algo que se repete. Os vencimentos dos próximos 12 meses entram nas contas a pagar e no Início.</DialogDescription>
+          <DialogTitle>Nova recorrência · {SCOPE_LABEL[scope]}</DialogTitle>
+          <DialogDescription>Despesas que você paga sempre (aluguel, mensalidades, assinaturas) ou receitas que recebe sempre (salário, contratos). As datas dos próximos 12 meses entram em Lançamentos, nos painéis e no Início.</DialogDescription>
         </DialogHeader>
         <form
           className="grid gap-4"
@@ -127,13 +114,13 @@ export function RecurrenceDialog({ scope, accounts, categories }: { scope: Finan
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label={kind === "despesa" ? "Tipo de despesa" : "Tipo de receita"} optional>
+            <FormField label="Categoria" optional>
               <Select value={categoryId} onValueChange={setCategoryId}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NONE}>Sem tipo</SelectItem>
+                  <SelectItem value={NONE}>Sem categoria</SelectItem>
                   {options.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
@@ -142,18 +129,13 @@ export function RecurrenceDialog({ scope, accounts, categories }: { scope: Finan
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField label="Criar novo tipo" hint="Aparece também em Contas e categorias." error={errors.newCategory || undefined} optional>
-              <div className="flex gap-2">
-                <Input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} maxLength={80} autoComplete="off" placeholder="Ex.: Software…" />
-                <Button type="button" variant="outline" onClick={addCategory} disabled={pending}>
-                  Criar
-                </Button>
-              </div>
-            </FormField>
+            <div className="self-end pb-2">
+              <NewCategoryInline scope={scope} kind={kind} onCreated={setCategoryId} />
+            </div>
           </div>
 
           {accounts.length > 0 && (
-            <FormField label="Conta de pagamento" optional>
+            <FormField label={kind === "despesa" ? "Conta de pagamento" : "Conta de recebimento"} optional>
               <Select value={accountId} onValueChange={setAccountId}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -231,7 +213,7 @@ export function RecurrenceDialog({ scope, accounts, categories }: { scope: Finan
               Cancelar
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Criar conta fixa
+              {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Criar recorrência
             </Button>
           </DialogFooter>
         </form>

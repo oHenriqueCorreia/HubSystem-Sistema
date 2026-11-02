@@ -6,7 +6,6 @@ import { todayLocal } from "@/domain/shared/dates";
 import { monthBounds, requireFinance } from "@/features/finance/server";
 import { fixedVsVariable, getLookups, listRecurrences } from "@/features/finance/queries";
 import { RecurrenceTable } from "@/features/finance/components/recurrence-table";
-import { RecurrenceDialog } from "@/features/finance/components/recurrence-dialog";
 
 export const metadata: Metadata = { title: "Fixos e recorrentes" };
 
@@ -35,10 +34,9 @@ export default async function RecorrentesPage({ params }: { params: Promise<{ co
     <div className="grid gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-prose text-sm text-muted-foreground">
-          Contas que se repetem: mensalidades, aluguel, salários, assinaturas. Escolha o dia do mês ou o dia útil (ex.: 5º dia útil) e os vencimentos aparecem nas contas a pagar, no Início e nas notificações do dia. Aqui você
+          Despesas que você paga sempre e receitas que recebe sempre. Escolha o dia do mês ou o dia útil (ex.: 5º dia útil) e as datas aparecem em Lançamentos, nos painéis, no Início e nas notificações do dia. Aqui você
           também pausa ou encerra cada série sem alterar o que já aconteceu.
         </p>
-        {perms.create && <RecurrenceDialog scope={scope} accounts={lookups.accounts} categories={lookups.categories} />}
       </div>
       <section aria-label="Resumo do mês" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile label="Despesas fixas por mês" value={formatBRL(fixedOut)} hint={`${active.filter((r) => r.kind === "despesa").length} série(s) ativa(s)`} />
@@ -50,7 +48,7 @@ export default async function RecorrentesPage({ params }: { params: Promise<{ co
         <EmptyState
           icon={Repeat}
           title="Nenhum lançamento recorrente"
-          description="Clique em “Nova conta fixa” para cadastrar aluguel, assinaturas, salários ou mensalidades. Os vencimentos aparecem aqui, nas contas a pagar e no Início."
+          description="Clique em “Nova recorrência” (no topo) para cadastrar o que você paga sempre (aluguel, mensalidades, assinaturas) ou recebe sempre (salário, contratos). As datas aparecem aqui, em Lançamentos e no Início."
         />
       ) : (
         <RecurrenceTable rows={rows} categories={categories} canEdit={perms.update} />

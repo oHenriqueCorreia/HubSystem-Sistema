@@ -49,8 +49,8 @@ export type HomeOverview = {
     overduePayable: number;
     monthIn: number;
     monthOut: number;
-    /** Contas a pagar de hoje até 7 dias (inclui contas fixas). */
-    dueSoon: { id: string; description: string; amount_cents: number; due_date: string; recurrence_id: string | null }[];
+    /** A pagar e a receber de hoje até 7 dias (inclui recorrências). */
+    dueSoon: { id: string; kind: "receita" | "despesa"; description: string; amount_cents: number; due_date: string; recurrence_id: string | null }[];
   }[];
   google: { status: string; last_synced_at: string | null; last_error: string | null } | null;
   pendingInvites: number;
@@ -150,15 +150,15 @@ export async function getHomeOverview(user: CurrentUser): Promise<HomeOverview> 
         paid("despesa"),
         supabase
           .from("financial_transactions")
-          .select("id, description, amount_cents, due_date, recurrence_id")
+          .select("id, kind, description, amount_cents, due_date, recurrence_id")
           .is("deleted_at", null)
           .eq("scope", scope)
-          .eq("kind", "despesa")
+          .in("kind", ["despesa", "receita"])
           .eq("status", "previsto")
           .gte("due_date", today)
           .lte("due_date", weekAhead)
           .order("due_date")
-          .limit(8),
+          .limit(16),
       ]);
       return {
         scope,
@@ -168,7 +168,7 @@ export async function getHomeOverview(user: CurrentUser): Promise<HomeOverview> 
         overduePayable: sum(payLate.data),
         monthIn: sum(inPaid.data as { amount_cents: number }[] | null),
         monthOut: sum(outPaid.data as { amount_cents: number }[] | null),
-        dueSoon: (soon.data ?? []) as { id: string; description: string; amount_cents: number; due_date: string; recurrence_id: string | null }[],
+        dueSoon: (soon.data ?? []) as { id: string; kind: "receita" | "despesa"; description: string; amount_cents: number; due_date: string; recurrence_id: string | null }[],
       };
     }),
   );

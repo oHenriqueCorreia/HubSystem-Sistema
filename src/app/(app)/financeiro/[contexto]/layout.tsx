@@ -5,6 +5,7 @@ import { requireFinance } from "@/features/finance/server";
 import { getLookups, listContractsForFinance, prepareScope } from "@/features/finance/queries";
 import { FinanceTabs } from "@/features/finance/components/finance-tabs";
 import { TxnFormDialog } from "@/features/finance/components/txn-form-dialog";
+import { RecurrenceDialog } from "@/features/finance/components/recurrence-dialog";
 import { SCOPE_LABEL } from "@/features/finance/types";
 
 export default async function FinanceLayout({ children, params }: LayoutProps<"/financeiro/[contexto]">) {
@@ -22,15 +23,18 @@ export default async function FinanceLayout({ children, params }: LayoutProps<"/
         description={scope === "pessoal" ? "Separado da empresa. Só você vê; o administrador consulta apenas com registro em auditoria." : undefined}
         actions={
           perms.create ? (
-            <TxnFormDialog
-              scope={scope}
-              lookups={{ ...lookups, contracts }}
-              trigger={
-                <Button>
-                  <Plus aria-hidden="true" /> Novo lançamento
-                </Button>
-              }
-            />
+            <div className="flex flex-wrap gap-2">
+              <RecurrenceDialog scope={scope} accounts={lookups.accounts} categories={lookups.categories} variant="outline" />
+              <TxnFormDialog
+                scope={scope}
+                lookups={{ ...lookups, contracts }}
+                trigger={
+                  <Button>
+                    <Plus aria-hidden="true" /> Novo lançamento
+                  </Button>
+                }
+              />
+            </div>
           ) : null
         }
       />

@@ -131,7 +131,7 @@ export default async function InicioPage() {
   if (o.tasks?.overdue) alerts.push({ text: `${o.tasks.overdue} tarefa(s) atrasada(s)`, href: "/tarefas?periodo=atrasadas", tone: "danger" });
   if (o.commercial?.waiting) alerts.push({ text: `${o.commercial.waiting} lead(s) com contato atrasado`, href: "/crm/leads", tone: "warning" });
   for (const f of o.finance) {
-    const dueToday = f.dueSoon.filter((t) => t.due_date === today);
+    const dueToday = f.dueSoon.filter((t) => t.kind === "despesa" && t.due_date === today);
     if (dueToday.length)
       alerts.push({
         text: `${dueToday.length} conta(s) vencem hoje (${f.scope}): ${formatBRL(dueToday.reduce((s, t) => s + t.amount_cents, 0))}`,
@@ -236,27 +236,32 @@ export default async function InicioPage() {
                 <Stat label="Pago no mês" value={formatBRL(f.monthOut)} />
               </div>
               <p className="text-xs text-muted-foreground">Saldo realizado no mês: {formatBRL(f.monthIn - f.monthOut)}</p>
-              <div className="grid gap-1.5 border-t pt-2">
-                <h4 className="text-xs font-medium">A pagar nos próximos 7 dias</h4>
-                {f.dueSoon.length ? (
-                  <ul className="grid gap-1 text-sm">
-                    {f.dueSoon.map((t) => (
-                      <li key={t.id} className="flex items-baseline justify-between gap-3">
-                        <span className="min-w-0 truncate">
-                          <span className={cn("tabular mr-2 text-xs", t.due_date === today ? "font-semibold text-danger" : "text-muted-foreground")}>
-                            {t.due_date === today ? "Hoje" : DAY_MONTH.format(new Date(`${t.due_date}T12:00:00Z`))}
-                          </span>
-                          {t.description}
-                          {t.recurrence_id && <span className="sr-only"> (conta fixa)</span>}
-                        </span>
-                        <span className="tabular shrink-0">{formatBRL(t.amount_cents)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Nada vence nos próximos 7 dias.</p>
-                )}
-              </div>
+              {(["despesa", "receita"] as const).map((k) => {
+                const items = f.dueSoon.filter((t) => t.kind === k).slice(0, 8);
+                return (
+                  <div key={k} className="grid gap-1.5 border-t pt-2">
+                    <h4 className="text-xs font-medium">{k === "despesa" ? "A pagar nos próximos 7 dias" : "A receber nos próximos 7 dias"}</h4>
+                    {items.length ? (
+                      <ul className="grid gap-1 text-sm">
+                        {items.map((t) => (
+                          <li key={t.id} className="flex items-baseline justify-between gap-3">
+                            <span className="min-w-0 truncate">
+                              <span className={cn("tabular mr-2 text-xs", t.due_date === today ? cn("font-semibold", k === "despesa" ? "text-danger" : "text-success") : "text-muted-foreground")}>
+                                {t.due_date === today ? "Hoje" : DAY_MONTH.format(new Date(`${t.due_date}T12:00:00Z`))}
+                              </span>
+                              {t.description}
+                              {t.recurrence_id && <span className="sr-only"> (recorrente)</span>}
+                            </span>
+                            <span className="tabular shrink-0">{formatBRL(t.amount_cents)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">{k === "despesa" ? "Nada a pagar nos próximos 7 dias." : "Nada a receber nos próximos 7 dias."}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
