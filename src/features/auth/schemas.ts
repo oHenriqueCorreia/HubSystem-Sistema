@@ -19,6 +19,8 @@ export const signInSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, "Informe a senha."),
   next: z.string().optional(),
+  // Manter conectado neste aparelho (padrão: sim).
+  remember: z.boolean().default(true),
 });
 
 export const resetRequestSchema = z.object({ email: emailSchema });

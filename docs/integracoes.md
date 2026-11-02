@@ -16,7 +16,20 @@ Depois de aplicar, rode os testes do banco (sempre com ROLLBACK, não alteram da
 
 **Reversão.** As migrations são aditivas. Para desfazer uma mudança, crie uma migration nova com o inverso (por exemplo, `drop policy …`). Não apague linhas de `supabase_migrations.schema_migrations` à mão.
 
-## 2. E-mail de convite personalizado
+## 2. Login com Google e "manter conectado"
+
+Contas novas só nascem de um convite pendente e válido para o e-mail (gatilho `handle_new_user`). Quem foi convidado pode entrar com a conta Google do mesmo e-mail; quem não foi recebe "Esta conta Google não tem convite".
+
+1. Google Cloud → APIs e serviços → Credenciais → o cliente OAuth já usado (`GOOGLE_CLIENT_ID`) → URIs de redirecionamento autorizados: adicione `https://<ref-do-projeto>.supabase.co/auth/v1/callback`.
+2. Supabase → Authentication → Sign In / Providers → **Google**: ative, cole o Client ID e o Client Secret e salve.
+3. Supabase → Authentication → URL Configuration → Redirect URLs: adicione `https://SEU-DOMINIO/auth/confirm` (e `http://localhost:3000/auth/confirm` para testes).
+4. Supabase → Authentication → Sign In / Providers → desative **Allow new users to sign up** (os convites continuam funcionando; é uma segunda trava além do gatilho).
+
+O botão "Entrar com Google" só aparece no login quando o provedor está ativo no Supabase (consulta a cada 5 minutos).
+
+**Manter conectado:** marcado (padrão), a sessão dura até a pessoa sair. Desmarcado, o cookie `hub_sessao` some ao fechar o navegador e o proxy encerra a sessão. O e-mail usado fica lembrado no aparelho.
+
+## 3. E-mail de convite personalizado
 
 O envio usa o SMTP já configurado no Supabase (Authentication → Emails → SMTP).
 
@@ -27,7 +40,7 @@ O envio usa o SMTP já configurado no Supabase (Authentication → Emails → SM
 
 O link do e-mail é do próprio Hub System (`/convite/<token>`): token de uso único, válido por 7 dias, guardado só como hash. O Supabase só envia HTML; o template já traz o endereço do link escrito por extenso para clientes de e-mail que bloqueiam botões.
 
-## 3. Google Agenda
+## 4. Google Agenda
 
 1. Google Cloud → APIs: ative **Google Calendar API**.
 2. Google Auth platform → Data Access: escopos `calendar.events`, `calendar.freebusy` e `calendar.calendarlist.readonly` (além de `openid` e `email`).
@@ -39,7 +52,7 @@ O link do e-mail é do próprio Hub System (`/convite/<token>`): token de uso ú
 
 **Sincronização:** eventos e tarefas com prazo vão para o Google logo após serem salvos. O Google avisa o sistema a cada alteração por **notificações push** (`/api/google/webhook`, exige HTTPS público); o cron diário renova os canais e faz uma sincronização de segurança. Convidados por e-mail recebem convite e atualizações pelo próprio Google (`sendUpdates=all`).
 
-## 4. Meta Ads e WhatsApp (mesmo app da Meta)
+## 5. Meta Ads e WhatsApp (mesmo app da Meta)
 
 Em developers.facebook.com, crie um app do tipo **Empresa** e preencha `META_APP_ID` e `META_APP_SECRET`.
 
@@ -97,7 +110,7 @@ Atribuição pelo primeiro contato: a conversa pertence ao primeiro anúncio que
 - Quando o lead responde, a cadência ativa é pausada.
 - Toda mensagem é única por `wamid`; envios do sistema têm `client_ref` único (cliques ou reprocessamentos repetidos não duplicam).
 
-## 5. Google Ads
+## 6. Google Ads
 
 1. Na conta gerente (MCC): Ferramentas → **Central de API** → solicite o **token de desenvolvedor** (`GOOGLE_ADS_DEVELOPER_TOKEN`). Com acesso de teste, só contas de teste funcionam; para contas reais é preciso o acesso **Básico**.
 2. Google Cloud: ative a **Google Ads API** no mesmo projeto do OAuth e adicione o escopo `https://www.googleapis.com/auth/adwords`.
@@ -106,12 +119,12 @@ Atribuição pelo primeiro contato: a conversa pertence ao primeiro anúncio que
 
 O Google Ads não informa saldo nem limite de faturamento pela API de relatórios; a tela mostra “Indisponível pela API” em vez de inventar valores.
 
-## 6. Clima e passagem do dia
+## 7. Clima e passagem do dia
 
 - **Clima:** Open-Meteo (gratuita, sem chave). Cache de 30 minutos. Padrão: Araranguá/SC; cada usuário pode trocar a cidade ou usar a localização (pede permissão do navegador).
 - **Passagem bíblica:** bible-api.com, tradução Almeida (domínio público). Uma por dia, sem repetir até percorrer a lista; cache de 1 dia. Sem a API, mostra a referência.
 
-## 7. Tarefas agendadas (Vercel Cron)
+## 8. Tarefas agendadas (Vercel Cron)
 
 | Rota | Horário (UTC) | O que faz |
 |---|---|---|
@@ -122,7 +135,7 @@ O Google Ads não informa saldo nem limite de faturamento pela API de relatório
 
 Todas exigem `CRON_SECRET`. No plano Hobby da Vercel, crons rodam no máximo uma vez por dia; para processar cadências com mais frequência, use o botão **Executar automações agora** ou um plano Pro.
 
-## 8. Funções e permissões
+## 9. Funções e permissões
 
 | Papel | Resumo |
 |---|---|
@@ -138,7 +151,7 @@ Permissões podem ser ajustadas por papel (Configurações → Papéis) e por us
 
 **Novos usuários.** Convite “Entrar na minha equipe” coloca a pessoa na sua organização com o papel escolhido. Convite “Ambiente próprio” cria uma organização nova e vazia para ela (funis, colunas e categorias padrão); ela não vê nada da sua.
 
-## 9. Solução de problemas
+## 10. Solução de problemas
 
 | Sintoma | Causa provável |
 |---|---|

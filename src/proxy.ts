@@ -45,8 +45,23 @@ export async function proxy(request: NextRequest) {
   // Valida o JWT e renova a sessão quando necessário. Não colocar código entre
   // a criação do cliente e esta chamada.
   const { data } = await supabase.auth.getClaims();
-  const signedIn = Boolean(data?.claims?.sub);
+  let signedIn = Boolean(data?.claims?.sub);
   const { pathname, search } = request.nextUrl;
+
+  // Sem "manter conectado": o cookie de sessão some quando o navegador fecha; aí a sessão termina.
+  if (signedIn && request.cookies.get("hub_lembrar")?.value === "0" && !request.cookies.get("hub_sessao")) {
+    await supabase.auth.signOut({ scope: "local" });
+    signedIn = false;
+    if (!isPublic(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.search = "?motivo=sessao";
+      const res = copyCookies(response, NextResponse.redirect(url));
+      res.cookies.delete("hub_lembrar");
+      return res;
+    }
+    response.cookies.delete("hub_lembrar");
+  }
 
   if (!signedIn && !isPublic(pathname)) {
     const url = request.nextUrl.clone();

@@ -8,6 +8,7 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { Brand } from "@/components/app/brand";
 import { safeNext } from "@/features/auth/schemas";
+import { completeOAuthSignIn } from "@/features/auth/actions";
 
 const OTP_TYPES: EmailOtpType[] = ["invite", "recovery", "signup", "magiclink", "email_change", "email"];
 
@@ -18,6 +19,8 @@ const OTP_TYPES: EmailOtpType[] = ["invite", "recovery", "signup", "magiclink", 
 export default function ConfirmPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  // Volta do login com Google (só muda o texto da tela de erro, que aparece depois do efeito).
+  const [oauth] = useState(() => typeof window !== "undefined" && new URL(window.location.href).searchParams.has("lembrar"));
 
   useEffect(() => {
     const supabase = createClient();
@@ -26,10 +29,12 @@ export default function ConfirmPage() {
     const q = url.searchParams;
     const type = (q.get("type") ?? hash.get("type")) as EmailOtpType | null;
     const next = safeNext(q.get("next"), type === "invite" || type === "recovery" ? "/definir-senha" : "/inicio");
+    // Volta do login com Google: traz "lembrar" e não traz "type".
+    const fromOAuth = q.has("lembrar");
 
     async function run() {
       const hashError = hash.get("error_description") ?? q.get("error_description");
-      if (hashError) throw new Error(hashError);
+      if (hashError) throw new Error(fromOAuth ? "oauth_negado" : hashError);
 
       const tokenHash = q.get("token_hash");
       const code = q.get("code");
@@ -48,13 +53,22 @@ export default function ConfirmPage() {
       } else {
         throw new Error("missing");
       }
+      // Login com Google: confere se a conta tem acesso e aplica "manter conectado".
+      if (fromOAuth) {
+        const res = await completeOAuthSignIn(q.get("lembrar") !== "0");
+        if (!res.ok) throw new Error(`acesso:${res.message}`);
+      }
       // Limpa tokens da barra de endereço antes de seguir.
       window.history.replaceState(null, "", url.pathname);
       router.replace(next);
       router.refresh();
     }
 
-    run().catch(() => setError("Este link é inválido ou expirou. Peça um novo convite ou um novo link de recuperação."));
+    run().catch((e: Error) => {
+      if (e.message.startsWith("acesso:")) return setError(e.message.slice(7));
+      if (fromOAuth) return setError("Esta conta Google não tem convite para o Hub System. Entre com o e-mail em que você recebeu o convite ou peça um convite ao administrador.");
+      setError("Este link é inválido ou expirou. Peça um novo convite ou um novo link de recuperação.");
+    });
   }, [router]);
 
   return (
@@ -62,12 +76,12 @@ export default function ConfirmPage() {
       <Brand />
       {error ? (
         <div className="grid max-w-sm gap-3">
-          <h1 className="text-xl font-semibold">Não foi possível abrir o link</h1>
+          <h1 className="text-xl font-semibold">{oauth ? "Não foi possível entrar com o Google" : "Não foi possível abrir o link"}</h1>
           <p className="text-sm text-muted-foreground" role="alert">
             {error}
           </p>
-          <Link href="/recuperar-senha" className="text-sm text-primary underline-offset-4 hover:underline">
-            Pedir novo link de recuperação
+          <Link href={oauth ? "/login" : "/recuperar-senha"} className="text-sm text-primary underline-offset-4 hover:underline">
+            {oauth ? "Voltar para o login" : "Pedir novo link de recuperação"}
           </Link>
         </div>
       ) : (

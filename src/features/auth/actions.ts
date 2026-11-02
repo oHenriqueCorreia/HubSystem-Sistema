@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { publicEnv } from "@/lib/env";
 import { clientIp, RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
+import { applyRememberChoice, clearRememberChoice } from "@/lib/auth/remember";
 import { fail, ok, type ActionResult } from "@/domain/shared/result";
 import { newPasswordSchema, resetRequestSchema, safeNext, signInSchema } from "./schemas";
 
@@ -38,13 +39,33 @@ export async function signIn(raw: unknown): Promise<ActionResult<never>> {
     return fail("forbidden", "Seu acesso está desativado. Fale com o administrador.");
   }
   await supabase.from("profiles").update({ last_seen_at: new Date().toISOString() }).eq("id", auth.user.id);
+  await applyRememberChoice(parsed.data.remember);
 
   redirect(safeNext(parsed.data.next));
+}
+
+/**
+ * Fim do login com Google: a sessão já foi aberta no navegador. Confere se a
+ * pessoa tem acesso (perfil ativo) e aplica a escolha de manter conectado.
+ */
+export async function completeOAuthSignIn(remember: boolean): Promise<ActionResult<null>> {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) return fail("unauthenticated", "Não foi possível entrar com o Google. Tente de novo.");
+  const { data: profile } = await supabase.from("profiles").select("is_active").eq("id", data.user.id).maybeSingle();
+  if (!profile?.is_active) {
+    await supabase.auth.signOut({ scope: "local" });
+    return fail("forbidden", profile ? "Seu acesso ainda não foi liberado. Abra o link do convite que chegou no seu e-mail ou fale com o administrador." : "Esta conta Google não tem acesso. Entre com o e-mail em que você recebeu o convite.");
+  }
+  await supabase.from("profiles").update({ last_seen_at: new Date().toISOString() }).eq("id", data.user.id);
+  await applyRememberChoice(remember);
+  return ok(null);
 }
 
 export async function signOut(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut({ scope: "local" });
+  await clearRememberChoice();
   redirect("/login");
 }
 
