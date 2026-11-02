@@ -18,10 +18,16 @@ export function DashboardFilters({
   from,
   to,
   extra,
+  presets = PRESETS,
+  storageKey = STORAGE,
 }: {
   preset: Preset;
   from: string;
   to: string;
+  /** Atalhos de período (o padrão serve aos painéis; o financeiro usa os seus). */
+  presets?: [Preset, string][];
+  /** Onde lembrar o último período escolhido. */
+  storageKey?: string;
   extra?: { name: string; label: string; value?: string; options: [string, string][] }[];
 }) {
   const pathname = usePathname();
@@ -31,13 +37,13 @@ export function DashboardFilters({
   useEffect(() => {
     try {
       if (!params.get("periodo")) {
-        const saved = localStorage.getItem(STORAGE);
+        const saved = localStorage.getItem(storageKey);
         if (saved && saved !== "mes") router.replace(`${pathname}?periodo=${saved}`);
-      } else localStorage.setItem(STORAGE, params.get("periodo")!);
+      } else localStorage.setItem(storageKey, params.get("periodo")!);
     } catch {
       /* ignore */
     }
-  }, [params, pathname, router]);
+  }, [params, pathname, router, storageKey]);
 
   const href = (p: Preset) => {
     const q = new URLSearchParams(params.toString());
@@ -50,7 +56,7 @@ export function DashboardFilters({
   return (
     <div className="flex flex-wrap items-end gap-3">
       <nav aria-label="Período" className="inline-flex flex-wrap rounded-lg border bg-surface p-0.5">
-        {PRESETS.map(([p, label]) => (
+        {presets.map(([p, label]) => (
           <Link
             key={p}
             href={href(p)}

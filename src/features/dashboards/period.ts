@@ -1,7 +1,7 @@
 import { addMonthsCivil } from "@/domain/finance";
 import { todayLocal } from "@/domain/shared/dates";
 
-export type Preset = "mes" | "mes_passado" | "90d" | "ano" | "custom";
+export type Preset = "hoje" | "7d" | "mes" | "proximo_mes" | "mes_passado" | "90d" | "ano" | "custom";
 
 function monthStart(d: string) {
   return `${d.slice(0, 7)}-01`;
@@ -21,6 +21,20 @@ export function resolvePeriod(sp: Record<string, string | string[] | undefined>)
   let from: string;
   let to: string;
   switch (preset) {
+    case "hoje":
+      from = today;
+      to = today;
+      break;
+    case "7d":
+      from = today;
+      to = shiftDays(today, 6);
+      break;
+    case "proximo_mes": {
+      const next = addMonthsCivil(today, 1);
+      from = monthStart(next);
+      to = monthEnd(next);
+      break;
+    }
     case "mes_passado": {
       const prev = addMonthsCivil(today, -1);
       from = monthStart(prev);
@@ -54,6 +68,16 @@ export const PRESETS: [Preset, string][] = [
   ["mes", "Este mês"],
   ["mes_passado", "Mês passado"],
   ["90d", "Últimos 90 dias"],
+  ["ano", "Este ano"],
+];
+
+/** Financeiro: períodos que olham para frente (o que vence) e para trás (o que foi pago). */
+export const FINANCE_PRESETS: [Preset, string][] = [
+  ["hoje", "Hoje"],
+  ["7d", "Próximos 7 dias"],
+  ["mes", "Este mês"],
+  ["proximo_mes", "Próximo mês"],
+  ["mes_passado", "Mês passado"],
   ["ano", "Este ano"],
 ];
 

@@ -27,6 +27,38 @@ export const getLookups = cache(async (scope: FinanceScope) => {
   };
 });
 
+/**
+ * Em aberto (previsto) com vencimento dentro do período, a partir de hoje.
+ * Os vencidos ficam de fora: aparecem nos cartões de vencidos.
+ */
+export async function getOpenInPeriod(scope: FinanceScope, from: string, to: string, today: string) {
+  const start = from > today ? from : today;
+  const out = { receivable: 0, payable: 0, receivableCount: 0, payableCount: 0 };
+  if (start > to) return out;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("financial_transactions")
+    .select("kind, amount_cents")
+    .eq("scope", scope)
+    .is("deleted_at", null)
+    .eq("status", "previsto")
+    .in("kind", ["receita", "despesa"])
+    .gte("due_date", start)
+    .lte("due_date", to)
+    .limit(10000);
+  if (error) throw error;
+  for (const t of (data ?? []) as { kind: "receita" | "despesa"; amount_cents: number }[]) {
+    if (t.kind === "receita") {
+      out.receivable += Number(t.amount_cents);
+      out.receivableCount++;
+    } else {
+      out.payable += Number(t.amount_cents);
+      out.payableCount++;
+    }
+  }
+  return out;
+}
+
 export async function getSummary(scope: FinanceScope, from: string, to: string): Promise<Summary> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("finance_summary", { p_scope: scope, p_from: from, p_to: to });

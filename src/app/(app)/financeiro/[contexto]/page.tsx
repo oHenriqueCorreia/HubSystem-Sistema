@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Wallet } from "lucide-react";
 import { EmptyState } from "@/components/app/states";
 import { Button } from "@/components/ui/button";
 import { formatBRL } from "@/domain/shared/money";
-import { formatDateTime, todayLocal } from "@/domain/shared/dates";
+import { formatDate, formatDateTime, todayLocal } from "@/domain/shared/dates";
 import { addMonthsCivil, cashFlow } from "@/domain/finance";
 import { MONTH_LABEL, monthBounds, requireFinance } from "@/features/finance/server";
-import { getLookups, getSummary, listFlow, listTransactions } from "@/features/finance/queries";
+import { getLookups, getOpenInPeriod, getSummary, listFlow, listTransactions } from "@/features/finance/queries";
+import { FINANCE_PRESETS, resolvePeriod } from "@/features/dashboards/period";
+import { DashboardFilters } from "@/features/dashboards/components/dashboard-filters";
 import { ACCOUNT_TYPE_LABEL } from "@/features/finance/types";
 import { Stat } from "@/features/finance/components/stat";
 import { TxnTable } from "@/features/finance/components/txn-table";
@@ -16,19 +19,22 @@ import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Financeiro" };
 
-export default async function FinanceOverview({ params }: PageProps<"/financeiro/[contexto]">) {
+export default async function FinanceOverview({ params, searchParams }: PageProps<"/financeiro/[contexto]">) {
   const { contexto } = await params;
   const { scope, perms } = await requireFinance(contexto);
   const today = todayLocal();
+  const period = resolvePeriod(await searchParams);
   const month = monthBounds(today);
   const sixAgo = monthBounds(addMonthsCivil(today, -5)).from;
-  const horizon = new Date(Date.parse(`${today}T12:00:00Z`) + 15 * 86_400_000).toISOString().slice(0, 10);
+  // Lista "em aberto": do maior entre hoje e o início do período até o fim do período.
+  const openFrom = period.from > today ? period.from : today;
 
-  const [summary, lookups, overdue, upcoming, flow] = await Promise.all([
-    getSummary(scope, month.from, month.to),
+  const [summary, open, lookups, overdue, upcoming, flow] = await Promise.all([
+    getSummary(scope, period.from, period.to),
+    getOpenInPeriod(scope, period.from, period.to, today),
     getLookups(scope),
     listTransactions(scope, { situacao: "vencidos" }, today),
-    listTransactions(scope, { situacao: "abertos", de: today, ate: horizon }, today),
+    openFrom <= period.to ? listTransactions(scope, { situacao: "abertos", de: openFrom, ate: period.to }, today) : Promise.resolve({ rows: [], total: 0 }),
     listFlow(scope, sixAgo, month.to),
   ]);
 
@@ -52,16 +58,26 @@ export default async function FinanceOverview({ params }: PageProps<"/financeiro
 
   return (
     <div className="grid gap-8">
+      <div className="grid gap-2">
+        <Suspense>
+          <DashboardFilters preset={period.preset} from={period.from} to={period.to} presets={FINANCE_PRESETS} storageKey="hub:financeiro-periodo" />
+        </Suspense>
+        <p className="text-sm text-muted-foreground">
+          {period.from === period.to ? formatDate(period.from) : `${formatDate(period.from)} a ${formatDate(period.to)}`}. Os totais somam o que vence no período, pago ou não.
+        </p>
+      </div>
+
       <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Receitas do período" cents={summary.income_competence} hint={`Recebido ${formatBRL(summary.income_paid)}, falta ${formatBRL(open.receivable)}`} />
+        <Stat label="Despesas do período" cents={summary.expense_competence} hint={`Pago ${formatBRL(summary.expense_paid)}, falta ${formatBRL(open.payable)}`} />
+        <Stat label="Resultado previsto" cents={summary.income_competence - summary.expense_competence} tone="negative" hint="Receitas − despesas do período" />
         <Stat label="Saldo atual (contas)" cents={summary.balance} tone="negative" />
-        <Stat label="Recebido no mês" cents={summary.income_paid} hint={`Competência: ${formatBRL(summary.income_competence)}`} />
-        <Stat label="Pago no mês" cents={summary.expense_paid} hint={`Competência: ${formatBRL(summary.expense_competence)}`} />
-        <Stat label="Resultado do mês" cents={result} tone="negative" hint="Recebido − pago" />
-        <Stat label="A receber" cents={summary.receivable_open} />
-        <Stat label="A pagar" cents={summary.payable_open} />
+        <Stat label="A receber no período" cents={open.receivable} hint={`${open.receivableCount} lançamento(s) em aberto`} />
+        <Stat label="A pagar no período" cents={open.payable} hint={`${open.payableCount} lançamento(s) em aberto`} />
         <Stat label="Recebimentos vencidos" cents={summary.receivable_overdue} alert />
         <Stat label="Pagamentos vencidos" cents={summary.payable_overdue} alert />
       </dl>
+      <p className="-mt-5 text-xs text-muted-foreground">Resultado realizado (recebido − pago no período): {formatBRL(result)}.</p>
 
       {empty ? (
         <EmptyState
@@ -87,13 +103,17 @@ export default async function FinanceOverview({ params }: PageProps<"/financeiro
           <section aria-labelledby="proximos" className="grid gap-2">
             <div className="flex items-center justify-between">
               <h2 id="proximos" className="text-sm font-semibold">
-                Próximos 15 dias ({upcoming.total})
+                Em aberto no período ({upcoming.total})
               </h2>
-              <Link href={`/financeiro/${scope}/lancamentos?situacao=abertos`} className="text-xs text-primary hover:underline">
-                Ver contas a vencer
+              <Link href={`/financeiro/${scope}/lancamentos?situacao=abertos&de=${openFrom}&ate=${period.to}`} className="text-xs text-primary hover:underline">
+                Ver todos
               </Link>
             </div>
-            {upcoming.total === 0 ? <p className="text-sm text-muted-foreground">Nada a vencer nos próximos 15 dias.</p> : <TxnTable scope={scope} rows={upcoming.rows.slice(0, 15)} lookups={lookups} perms={perms} />}
+            {upcoming.total === 0 ? (
+              <p className="text-sm text-muted-foreground">Nada em aberto vencendo neste período.</p>
+            ) : (
+              <TxnTable scope={scope} rows={upcoming.rows.slice(0, 20)} lookups={lookups} perms={perms} />
+            )}
           </section>
           {monthly.length > 0 && <MonthlyChart rows={monthly} description="Últimos 6 meses. Previstos aparecem com contorno tracejado." />}
         </>
