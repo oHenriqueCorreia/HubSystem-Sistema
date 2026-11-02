@@ -30,6 +30,7 @@ import {
 } from "@/domain/crm/import";
 import { cn } from "cn";
 import { checkExistingLeads, getImportMapping, importLeads, saveImportMapping, undoImport } from "../actions";
+import { ProspectorPanel } from "./prospector-panel";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_ROWS = 10_000;
@@ -84,7 +85,7 @@ function key(file: string, line: number) {
   return `${file}:${line}`;
 }
 
-export function ImportWizard({ pipelines }: { pipelines: { id: string; name: string }[] }) {
+export function ImportWizard({ pipelines, source = "file" }: { pipelines: { id: string; name: string }[]; source?: "file" | "prospector" }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState(0);
@@ -273,14 +274,16 @@ export function ImportWizard({ pipelines }: { pipelines: { id: string; name: str
             >
               {i < step ? "✓" : i + 1}
             </span>
-            {s}
+            {i === 0 && source === "prospector" ? "Prospecção" : s}
           </li>
         ))}
       </ol>
 
       <FormAlert>{error}</FormAlert>
 
-      {step === 0 && (
+      {step === 0 && source === "prospector" && <ProspectorPanel onFiles={onFiles} />}
+
+      {step === 0 && source === "file" && (
         <div
           onDragOver={(e) => {
             e.preventDefault();

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { PasswordInput } from "@/components/app/password-input";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { createClient } from "@/lib/supabase/client";
 import { signIn } from "@/features/auth/actions";
 import { safeNext, signInSchema } from "@/features/auth/schemas";
@@ -39,6 +40,7 @@ function GoogleIcon() {
 
 export function LoginForm({ next, reason, google = false }: { next?: string; reason?: string; google?: boolean }) {
   const [pending, startTransition] = useTransition();
+  const hydrated = useHydrated();
   const [googlePending, setGooglePending] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -117,7 +119,8 @@ export function LoginForm({ next, reason, google = false }: { next?: string; rea
         </>
       )}
 
-      <form onSubmit={onSubmit} noValidate className="grid gap-5" aria-label="Entrar com e-mail e senha">
+      {/* method="post" e botão travado até carregar: um envio antes do JavaScript não põe a senha na URL. */}
+      <form method="post" onSubmit={onSubmit} noValidate className="grid gap-5" aria-label="Entrar com e-mail e senha">
         <FormField label="E-mail" error={errors.email?.message} required>
           <Input type="email" spellCheck={false} autoComplete="username email" inputMode="email" autoFocus className="h-11" {...form.register("email")} />
         </FormField>
@@ -136,7 +139,7 @@ export function LoginForm({ next, reason, google = false }: { next?: string; rea
           </Link>
         </div>
 
-        <Button type="submit" size="lg" disabled={pending || googlePending} className="w-full">
+        <Button type="submit" size="lg" disabled={pending || googlePending || !hydrated} className="w-full">
           {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />}
           {pending ? "Entrando…" : "Entrar"}
         </Button>

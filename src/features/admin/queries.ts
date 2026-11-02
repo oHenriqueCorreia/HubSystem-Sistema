@@ -146,6 +146,13 @@ export type InvitationListRow = {
   accepted_at: string | null;
 };
 
+/** A conta atual pode convidar para "ambiente próprio" (empresa nova)? Na dúvida, não. */
+export async function canCreateWorkspaces(): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("can_create_workspaces");
+  return data === true;
+}
+
 /** Convites da organização. "Expirado" é derivado do prazo, nunca gravado. */
 export async function listInvitations(): Promise<InvitationListRow[]> {
   const supabase = await createClient();

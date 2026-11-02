@@ -10,12 +10,14 @@ import type { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { PasswordInput } from "@/components/app/password-input";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { updatePassword } from "@/features/auth/actions";
 import { newPasswordSchema } from "@/features/auth/schemas";
 
 export function NewPasswordForm({ email }: { email: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const hydrated = useHydrated();
   const [serverError, setServerError] = useState<string | null>(null);
   const form = useForm<z.input<typeof newPasswordSchema>>({
     resolver: zodResolver(newPasswordSchema),
@@ -36,7 +38,8 @@ export function NewPasswordForm({ email }: { email: string }) {
   });
 
   return (
-    <form onSubmit={onSubmit} noValidate className="grid gap-4">
+    // method="post" e botão travado até carregar: um envio antes do JavaScript não põe a senha na URL.
+    <form method="post" onSubmit={onSubmit} noValidate className="grid gap-4">
       {/* Ajuda gerenciadores de senha a associar a conta. */}
       <input type="email" spellCheck={false} name="username" autoComplete="username" value={email} readOnly hidden />
       <FormAlert>{serverError}</FormAlert>
@@ -46,7 +49,7 @@ export function NewPasswordForm({ email }: { email: string }) {
       <FormField label="Confirme a senha" error={form.formState.errors.confirm?.message} required>
         <PasswordInput autoComplete="new-password" {...form.register("confirm")} />
       </FormField>
-      <Button type="submit" size="lg" disabled={pending} className="w-full">
+      <Button type="submit" size="lg" disabled={pending || !hydrated} className="w-full">
         {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />}
         {pending ? "Salvando…" : "Salvar senha e entrar"}
       </Button>

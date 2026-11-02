@@ -24,7 +24,7 @@ import { inviteUser } from "../invitations";
 import { inviteSchema } from "../schemas";
 import type { RoleRow, UserRow } from "../queries";
 
-export function InviteUserDialog({ roles }: { roles: RoleRow[] }) {
+export function InviteUserDialog({ roles, canCreateWorkspaces }: { roles: RoleRow[]; canCreateWorkspaces: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,31 +71,33 @@ export function InviteUserDialog({ roles }: { roles: RoleRow[] }) {
         </DialogHeader>
         <form id="invite-form" onSubmit={onSubmit} noValidate className="grid gap-3">
           <FormAlert>{error}</FormAlert>
-          <fieldset className="grid gap-2">
-            <legend className="mb-1 text-sm font-medium">Tipo de acesso</legend>
-            <Controller
-              control={form.control}
-              name="mode"
-              render={({ field }) => (
-                <RadioGroup value={field.value} onValueChange={field.onChange} className="grid gap-2 sm:grid-cols-2">
-                  <label className="flex cursor-pointer gap-2 rounded-md border p-3 text-sm has-[[data-state=checked]]:border-primary">
-                    <RadioGroupItem value="equipe" className="mt-0.5" />
-                    <span>
-                      <span className="font-medium">Entrar na minha equipe</span>
-                      <span className="block text-xs text-muted-foreground">Vê os dados da organização conforme o papel.</span>
-                    </span>
-                  </label>
-                  <label className="flex cursor-pointer gap-2 rounded-md border p-3 text-sm has-[[data-state=checked]]:border-primary">
-                    <RadioGroupItem value="ambiente" className="mt-0.5" />
-                    <span>
-                      <span className="font-medium">Ambiente próprio</span>
-                      <span className="block text-xs text-muted-foreground">Começa vazio, como uma empresa separada. Não vê seus dados.</span>
-                    </span>
-                  </label>
-                </RadioGroup>
-              )}
-            />
-          </fieldset>
+          {canCreateWorkspaces && (
+            <fieldset className="grid gap-2">
+              <legend className="mb-1 text-sm font-medium">Tipo de acesso</legend>
+              <Controller
+                control={form.control}
+                name="mode"
+                render={({ field }) => (
+                  <RadioGroup value={field.value} onValueChange={field.onChange} className="grid gap-2 sm:grid-cols-2">
+                    <label className="flex cursor-pointer gap-2 rounded-md border p-3 text-sm has-[[data-state=checked]]:border-primary">
+                      <RadioGroupItem value="equipe" className="mt-0.5" />
+                      <span>
+                        <span className="font-medium">Entrar na minha equipe</span>
+                        <span className="block text-xs text-muted-foreground">Vê os dados da organização conforme o papel.</span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer gap-2 rounded-md border p-3 text-sm has-[[data-state=checked]]:border-primary">
+                      <RadioGroupItem value="ambiente" className="mt-0.5" />
+                      <span>
+                        <span className="font-medium">Ambiente próprio</span>
+                        <span className="block text-xs text-muted-foreground">Começa vazio, como uma empresa separada. Não vê seus dados.</span>
+                      </span>
+                    </label>
+                  </RadioGroup>
+                )}
+              />
+            </fieldset>
+          )}
           <FormField label="Nome" error={form.formState.errors.fullName?.message} required>
             <Input autoFocus autoComplete="off" {...form.register("fullName")} />
           </FormField>

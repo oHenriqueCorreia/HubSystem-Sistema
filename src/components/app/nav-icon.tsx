@@ -6,6 +6,7 @@ import {
   Filter,
   House,
   ListChecks,
+  MapPinned,
   Repeat,
   Settings,
   UsersRound,
@@ -20,6 +21,7 @@ import type { NavIcon } from "@/config/navigation";
 const ICONS: Record<NavIcon, React.ComponentType<LucideProps>> = {
   home: House,
   leads: UsersRound,
+  prospector: MapPinned,
   funnel: Filter,
   cadence: Repeat,
   clients: BriefcaseBusiness,

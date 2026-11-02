@@ -9,11 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { PasswordInput } from "@/components/app/password-input";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { acceptInvitation } from "@/features/admin/invitations";
 import { acceptInvitationSchema } from "@/features/admin/schemas";
 
 export function AcceptInvitationForm({ token, email, defaultName }: { token: string; email: string; defaultName: string }) {
   const [pending, startTransition] = useTransition();
+  const hydrated = useHydrated();
   const [serverError, setServerError] = useState<string | null>(null);
   const form = useForm<z.input<typeof acceptInvitationSchema>>({
     resolver: zodResolver(acceptInvitationSchema),
@@ -30,18 +32,19 @@ export function AcceptInvitationForm({ token, email, defaultName }: { token: str
   });
 
   return (
-    <form onSubmit={onSubmit} noValidate className="grid gap-4">
+    // method="post" e botão travado até carregar: um envio antes do JavaScript não põe a senha na URL.
+    <form method="post" onSubmit={onSubmit} noValidate className="grid gap-4">
       <FormAlert>{serverError}</FormAlert>
       <FormField label="E-mail">
         <Input type="email" name="username" autoComplete="username" value={email} readOnly />
       </FormField>
       <FormField label="Seu nome" error={form.formState.errors.fullName?.message} required>
-        <Input autoComplete="name" autoFocus {...form.register("fullName")} />
+        <Input autoComplete="name" autoFocus defaultValue={defaultName} {...form.register("fullName")} />
       </FormField>
       <FormField label="Crie uma senha" hint="Pelo menos 8 caracteres, com letras e números." error={form.formState.errors.password?.message} required>
         <PasswordInput autoComplete="new-password" {...form.register("password")} />
       </FormField>
-      <Button type="submit" size="lg" disabled={pending} className="w-full">
+      <Button type="submit" size="lg" disabled={pending || !hydrated} className="w-full">
         {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />}
         {pending ? "Ativando acesso…" : "Aceitar convite e entrar"}
       </Button>

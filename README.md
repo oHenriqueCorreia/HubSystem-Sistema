@@ -6,6 +6,7 @@ Gestão comercial, operacional e financeira para agência de sites e tráfego pa
 - **Stack:** Next.js 16 (App Router) · React 19 · TypeScript estrito · Tailwind CSS 4 · shadcn/ui (Radix) · Supabase (Postgres 17, Auth, Storage, RLS) · React Hook Form + Zod · TanStack Query · dnd-kit · Recharts · Vitest · pgTAP
 - **Arquitetura e decisões:** [docs/fase-0-arquitetura.md](docs/fase-0-arquitetura.md) e [docs/adr/](docs/adr/README.md)
 - **Configuração das integrações, crons, permissões e solução de problemas:** [docs/integracoes.md](docs/integracoes.md)
+- **Prospectador local com Docker sob demanda:** [docs/prospectador-local.md](docs/prospectador-local.md)
 
 ## Módulos
 

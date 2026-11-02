@@ -31,7 +31,7 @@ O botão "Entrar com Google" só aparece no login quando o provedor está ativo 
 
 ## 3. E-mail de convite personalizado
 
-O envio usa o SMTP já configurado no Supabase (Authentication → Emails → SMTP).
+O envio exige SMTP próprio no Supabase (Authentication → Emails → SMTP Settings): sem ele, o modelo não pode ser editado e o serviço padrão só envia poucos e-mails por hora. Com Gmail: servidor `smtp.gmail.com`, porta `465`, usuário igual ao e-mail completo e, como senha, uma senha de app de 16 letras.
 
 1. Supabase → Authentication → Email Templates → **Invite user**.
 2. Assunto: `{{ .Data.inviter_name }} convidou você para o Hub System`.
@@ -149,7 +149,7 @@ Todas exigem `CRON_SECRET`. No plano Hobby da Vercel, crons rodam no máximo uma
 
 Permissões podem ser ajustadas por papel (Configurações → Papéis) e por usuário (Usuários → Permissões). A interface esconde botões, mas a garantia é sempre a RLS no banco.
 
-**Novos usuários.** Convite “Entrar na minha equipe” coloca a pessoa na sua organização com o papel escolhido. Convite “Ambiente próprio” cria uma organização nova e vazia para ela (funis, colunas e categorias padrão); ela não vê nada da sua.
+**Novos usuários.** Convite “Entrar na minha equipe” coloca a pessoa na sua organização com o papel escolhido. Convite “Ambiente próprio” cria uma organização nova e vazia para ela (funis, colunas e categorias padrão); ela não vê nada da sua. Só contas em `private.workspace_creators` veem e usam a opção “Ambiente próprio”; os demais administradores convidam apenas para a própria equipe.
 
 ## 10. Solução de problemas
 

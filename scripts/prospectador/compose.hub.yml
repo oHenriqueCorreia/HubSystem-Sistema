@@ -1,0 +1,3 @@
+services:
+  google-maps-scraper:
+    restart: "no"

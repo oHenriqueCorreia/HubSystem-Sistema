@@ -91,6 +91,10 @@ export const inviteUser = defineAction({ schema: inviteSchema, permission: "admi
 
   const email = input.email.toLowerCase();
   const supabase = await createClient();
+  if (input.mode === "ambiente") {
+    const { data: allowed } = await supabase.rpc("can_create_workspaces");
+    if (!allowed) return fail("forbidden", "Sua conta não pode criar empresas novas por convite. Convide a pessoa para a sua equipe.");
+  }
   const { data: member } = await supabase.from("profiles").select("id, is_active").eq("email", email).maybeSingle();
   if (member?.is_active) return fail("conflict", "Esta pessoa já faz parte da sua organização.");
   const { data: pending } = await supabase.from("invitations").select("id").eq("email", email).eq("status", "pendente").maybeSingle();

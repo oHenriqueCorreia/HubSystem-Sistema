@@ -52,6 +52,10 @@ next-env.d.ts
 /playwright/.cache/
 /coverage/
 
+# Conector local do prospectador
+__pycache__/
+*.pyc
+
 !.env.example
 
 .vercel

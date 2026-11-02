@@ -3,6 +3,7 @@ import { normalizePhone } from "@/domain/shared/phone";
 // Campos do lead que podem vir de uma planilha.
 export const LEAD_FIELDS = [
   { key: "name", label: "Nome / Empresa", required: true, aliases: ["empresa", "nome", "name", "razao social", "nome fantasia", "title"] },
+  { key: "place_id", label: "ID do Google Maps", aliases: ["place id"] },
   { key: "company_name", label: "Razão social", aliases: ["razao social", "company"] },
   { key: "phone", label: "Telefone", aliases: ["telefone", "phone", "fone", "celular", "tel"] },
   { key: "phone_type", label: "Tipo de telefone", aliases: ["tipo de telefone", "phone type"] },
@@ -226,7 +227,7 @@ export function validateRow(raw: Record<string, string>, mapping: ColumnMapping,
       zip,
       lat: maps.lat ?? null,
       lng: maps.lng ?? null,
-      place_id: maps.placeId ?? null,
+      place_id: get("place_id") ?? maps.placeId ?? null,
       gmb_url: gmbUrl,
       gmb_rating: rating !== null && rating >= 0 && rating <= 5 ? Math.round(rating * 10) / 10 : null,
       gmb_reviews_count: reviews !== null && reviews >= 0 ? Math.round(reviews) : null,

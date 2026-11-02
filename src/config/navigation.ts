@@ -3,6 +3,7 @@ import type { PermissionKey } from "@/domain/permissions";
 export type NavIcon =
   | "home"
   | "leads"
+  | "prospector"
   | "funnel"
   | "cadence"
   | "clients"
@@ -22,6 +23,8 @@ export type NavItem = {
   icon: NavIcon;
   /** Basta ter uma destas permissões para ver o item. */
   anyOf?: PermissionKey[];
+  /** Só para a conta dona da plataforma (private.workspace_creators). */
+  platformOwner?: boolean;
   /** Aparece na barra inferior do celular. */
   mobile?: boolean;
 };
@@ -43,6 +46,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/crm/leads", label: "Leads", icon: "leads", anyOf: ["crm.leads.read"], mobile: true },
       { href: "/crm/funil", label: "Funil", icon: "funnel", anyOf: ["crm.leads.read"] },
+      { href: "/crm/prospectador", label: "Prospectador", icon: "prospector", anyOf: ["crm.leads.import"], platformOwner: true },
       { href: "/atendimento", label: "Atendimento", icon: "inbox", anyOf: ["inbox.read"] },
       { href: "/crm/cadencias", label: "Cadências", icon: "cadence", anyOf: ["crm.cadences.read"] },
       { href: "/clientes", label: "Clientes", icon: "clients", anyOf: ["clients.read"] },

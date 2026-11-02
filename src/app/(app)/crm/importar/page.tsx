@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requirePermission } from "@/lib/auth/dal";
+import { canCreateWorkspaces } from "@/features/admin/queries";
 import { PageBody, PageHeader } from "@/components/app/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDateTime } from "@/domain/shared/dates";
@@ -10,7 +12,7 @@ export const metadata: Metadata = { title: "Importar leads" };
 
 export default async function ImportarPage() {
   await requirePermission("crm.leads.import");
-  const [lookups, imports] = await Promise.all([getCrmLookups(), listImports()]);
+  const [lookups, imports, owner] = await Promise.all([getCrmLookups(), listImports(), canCreateWorkspaces()]);
 
   return (
     <>
@@ -20,6 +22,7 @@ export default async function ImportarPage() {
         description="Envie planilhas exportadas do Google Maps ou de outra fonte. Nada é gravado antes da sua confirmação."
       />
       <PageBody className="grid gap-10">
+        {owner && <Link href="/crm/prospectador" className="text-sm text-primary underline">Buscar diretamente no prospectador deste computador</Link>}
         <ImportWizard pipelines={lookups.pipelines.map((p) => ({ id: p.id, name: p.name }))} />
 
         {imports.length > 0 && (
