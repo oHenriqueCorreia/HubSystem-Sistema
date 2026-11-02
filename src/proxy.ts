@@ -2,7 +2,20 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Rotas acessíveis sem sessão.
-const PUBLIC_PATHS = ["/login", "/recuperar-senha", "/convite", "/auth/confirm", "/auth/erro", "/offline", "/api/cron", "/api/google/webhook", "/api/whatsapp/webhook"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/recuperar-senha",
+  "/convite",
+  "/auth/confirm",
+  "/auth/erro",
+  "/offline",
+  "/privacidade",
+  "/termos",
+  "/exclusao-de-dados",
+  "/api/cron",
+  "/api/google/webhook",
+  "/api/whatsapp/webhook",
+];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

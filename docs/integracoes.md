@@ -43,6 +43,12 @@ O link do e-mail é do próprio Hub System (`/convite/<token>`): token de uso ú
 
 Em developers.facebook.com, crie um app do tipo **Empresa** e preencha `META_APP_ID` e `META_APP_SECRET`.
 
+Em **Configurações do app → Básico**, use as páginas públicas do sistema (o texto e o contato ficam em `src/features/legal/config.ts`):
+- URL da Política de Privacidade: `https://SEU-DOMINIO/privacidade`
+- URL dos Termos de Serviço: `https://SEU-DOMINIO/termos`
+- Exclusão de dados do usuário → URL de instruções: `https://SEU-DOMINIO/exclusao-de-dados`
+- Ícone do app (1024 × 1024): `public/brand/app-icon-1024.png`
+
 ### Meta Ads
 1. Adicione o produto **Marketing API** e o **Facebook Login para Empresas**.
 2. URI de redirecionamento OAuth válida: `https://SEU-DOMINIO/api/ads/meta/callback`.

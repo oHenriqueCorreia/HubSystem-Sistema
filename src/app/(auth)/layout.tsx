@@ -1,5 +1,7 @@
 import Image from "next/image";
+import Link from "next/link";
 import { Brand } from "@/components/app/brand";
+import { LEGAL_PAGES } from "@/features/legal/config";
 
 export default function AuthLayout({ children }: LayoutProps<"/">) {
   return (
@@ -30,8 +32,19 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
         <main id="conteudo" className="flex flex-1 items-center justify-center px-6 py-10 sm:px-10">
           <div className="auth-panel w-full max-w-md">{children}</div>
         </main>
-        <footer className="px-6 pb-7 text-xs leading-5 text-muted-foreground sm:px-10">
-          Acesso somente por convite. Dúvidas? Fale com o administrador da sua empresa.
+        <footer className="grid gap-2 px-6 pb-7 text-xs leading-5 text-muted-foreground sm:px-10">
+          <p>Acesso somente por convite. Dúvidas? Fale com o administrador da sua empresa.</p>
+          <nav aria-label="Documentos">
+            <ul className="flex flex-wrap gap-x-4 gap-y-1">
+              {LEGAL_PAGES.map((p) => (
+                <li key={p.href}>
+                  <Link href={p.href} className="underline underline-offset-2 hover:text-foreground">
+                    {p.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
         </footer>
       </div>
     </div>
