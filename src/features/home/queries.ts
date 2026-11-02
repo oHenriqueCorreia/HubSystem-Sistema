@@ -8,7 +8,7 @@ import type { CurrentUser } from "@/lib/auth/dal";
 
 export const HOME_WIDGETS = [
   { key: "clima", label: "Clima" },
-  { key: "passagem", label: "Passagem e mensagem do dia" },
+  { key: "passagem", label: "Passagem bíblica e mensagem" },
   { key: "resumo", label: "Resumo das tarefas" },
   { key: "prioritarias", label: "Prioritárias e agendadas" },
   { key: "reunioes", label: "Reuniões" },

@@ -126,7 +126,7 @@ O Google Ads não informa saldo nem limite de faturamento pela API de relatório
 ## 7. Clima e passagem do dia
 
 - **Clima:** Open-Meteo (gratuita, sem chave). Cache de 30 minutos. Padrão: Araranguá/SC; cada usuário pode trocar a cidade ou usar a localização (pede permissão do navegador).
-- **Passagem bíblica:** bible-api.com, tradução Almeida (domínio público). Uma por dia, sem repetir até percorrer a lista; cache de 1 dia. Sem a API, mostra a referência.
+- **Passagem bíblica e mensagem:** trocam a cada 2 horas no horário de Brasília (00h, 02h, 04h…), sem repetir até percorrer a lista, inclusive com a tela aberta. Os textos da Bíblia Portuguesa Mundial (domínio público, eBible.org) ficam em `src/features/home/content.ts`, sem depender de serviço externo.
 
 ## 8. Tarefas agendadas (Vercel Cron)
 

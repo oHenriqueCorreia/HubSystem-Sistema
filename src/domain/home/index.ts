@@ -1,4 +1,4 @@
-import { APP_TIMEZONE } from "@/domain/shared/dates";
+import { APP_TIMEZONE, todayLocal } from "@/domain/shared/dates";
 
 /** Hora (0–23) no fuso de São Paulo. */
 export function hourInSaoPaulo(now: Date = new Date()): number {
@@ -29,16 +29,24 @@ function gcd(a: number, b: number): number {
   return b ? gcd(b, a % b) : a;
 }
 
+/** Janelas de 2 horas no horário de Brasília: troca às 00h, 02h, 04h e assim por diante. */
+export const ROTATION_HOURS = 2;
+
+/** Número da janela atual; é o mesmo para todos os usuários até a próxima troca. */
+export function rotationSlot(now: Date = new Date()): number {
+  const slotsPerDay = 24 / ROTATION_HOURS;
+  return dayNumber(todayLocal(now)) * slotsPerDay + Math.floor(hourInSaoPaulo(now) / ROTATION_HOURS);
+}
+
 /**
- * Índice do item do dia: o mesmo o dia todo e sem repetir até percorrer a
- * lista inteira (passo coprimo com o tamanho espalha os itens vizinhos).
+ * Índice do item da janela: sem repetir até percorrer a lista inteira
+ * (passo coprimo com o tamanho espalha os itens vizinhos).
  */
-export function dailyIndex(day: string, length: number): number {
+export function rotationIndex(slot: number, length: number): number {
   if (length <= 0) return 0;
   let step = Math.max(1, Math.floor(length * 0.618));
   while (gcd(step, length) !== 1) step++;
-  const n = dayNumber(day);
-  return (((n * step) % length) + length) % length;
+  return (((slot * step) % length) + length) % length;
 }
 
 // Códigos WMO usados pela Open-Meteo.

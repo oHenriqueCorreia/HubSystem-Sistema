@@ -16,7 +16,9 @@ import { TaskFormDialog } from "@/features/tasks/components/task-form-dialog";
 import { PRIORITY_LABEL, type TaskPriority } from "@/features/tasks/types";
 import { getHomeOverview, HOME_WIDGETS, homePrefs, type HomeOverview, type HomeWidget } from "@/features/home/queries";
 import { getWeather } from "@/features/home/weather";
-import { dailyMessage, getDailyVerse } from "@/features/home/verse";
+import { messageForSlot, verseForSlot, VERSE_TRANSLATION } from "@/features/home/verse";
+import { rotationSlot, ROTATION_HOURS } from "@/domain/home";
+import { VerseRefresher } from "@/features/home/components/verse-refresher";
 import { LiveClock } from "@/features/home/components/live-clock";
 import { WeatherCard } from "@/features/home/components/weather-card";
 import { HomeCustomizer } from "@/features/home/components/home-customizer";
@@ -67,19 +69,21 @@ async function WeatherSection({ city }: { city: City }) {
   return <WeatherCard weather={await getWeather(city)} cityName={city.name} />;
 }
 
-async function VerseSection({ day }: { day: string }) {
-  const verse = await getDailyVerse(day);
+function VerseSection({ slot }: { slot: number }) {
+  const verse = verseForSlot(slot);
   return (
     <div className="grid gap-3">
+      <VerseRefresher slot={slot} />
       <figure className="grid gap-1">
-        <blockquote className="text-base leading-relaxed text-pretty">{verse.text ? `“${verse.text}”` : "Leia a passagem do dia na sua Bíblia."}</blockquote>
+        <blockquote className="text-base leading-relaxed text-pretty">{verse.text}</blockquote>
         <figcaption className="text-sm font-medium">
-          {verse.reference} <span className="font-normal text-muted-foreground">· {verse.translation}</span>
+          {verse.ref} <span className="font-normal text-muted-foreground">· {VERSE_TRANSLATION}</span>
         </figcaption>
       </figure>
       <p className="flex items-start gap-2 border-t pt-3 text-sm text-muted-foreground">
-        <Sparkles className="mt-0.5 size-4 shrink-0 text-signal" aria-hidden="true" /> {dailyMessage(day)}
+        <Sparkles className="mt-0.5 size-4 shrink-0 text-signal" aria-hidden="true" /> {messageForSlot(slot)}
       </p>
+      <p className="text-xs text-muted-foreground">Uma nova passagem a cada {ROTATION_HOURS} horas.</p>
     </div>
   );
 }
@@ -153,10 +157,8 @@ export default async function InicioPage() {
       </Panel>
     ),
     passagem: (
-      <Panel key="passagem" title="Passagem do dia" icon={BookOpen}>
-        <Suspense fallback={fallback}>
-          <VerseSection day={day} />
-        </Suspense>
+      <Panel key="passagem" title="Passagem bíblica" icon={BookOpen}>
+        <VerseSection slot={rotationSlot()} />
       </Panel>
     ),
     resumo: o.tasks ? (
