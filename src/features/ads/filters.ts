@@ -37,6 +37,7 @@ export function filtersQuery(f: AdsFilters) {
     q.set("de", f.from);
     q.set("ate", f.to);
   }
+  if (f.clientId) q.set("cliente", f.clientId);
   if (f.accountId) q.set("conta", f.accountId);
   if (f.provider) q.set("plataforma", f.provider === "meta_ads" ? "meta" : "google");
   if (f.status) q.set("status", f.status);
@@ -51,6 +52,7 @@ export function parseAdsFilters(sp: Record<string, string | string[] | undefined
   const agrupar = one("agrupar");
   return {
     ...resolvePeriod(sp),
+    clientId: one("cliente"),
     accountId: one("conta"),
     provider: plataforma === "meta" ? ("meta_ads" as const) : plataforma === "google" ? ("google_ads" as const) : undefined,
     status: status === "ativas" || status === "pausadas" ? (status as StatusGroup) : undefined,

@@ -22,7 +22,7 @@ export default async function ContasPage({ searchParams }: PageProps<"/anuncios/
   const user = await requirePermission("ads.read");
   const sp = await searchParams;
   const canManage = Boolean(user.permissions["ads.manage"]);
-  const { connections, accounts } = await getAdsSetup();
+  const { connections, accounts, clients } = await getAdsSetup();
   const erro = typeof sp.erro === "string" ? ERRORS[sp.erro] : null;
 
   return (
@@ -33,7 +33,7 @@ export default async function ContasPage({ searchParams }: PageProps<"/anuncios/
         <ProviderCard provider="meta_ads" configured={metaConfigured()} connection={connections.find((c) => c.provider === "meta_ads")} canManage={canManage} />
         <ProviderCard provider="google_ads" configured={googleAdsConfigured()} connection={connections.find((c) => c.provider === "google_ads")} canManage={canManage} />
       </div>
-      <AccountsList accounts={accounts} canManage={canManage} />
+      <AccountsList accounts={accounts} clients={clients} canManage={canManage} />
     </>
   );
 }

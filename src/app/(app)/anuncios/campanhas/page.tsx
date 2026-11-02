@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Campanhas · Anúncios" };
 export default async function CampanhasPage({ searchParams }: PageProps<"/anuncios/campanhas">) {
   const user = await requirePermission("ads.read");
   const filters = parseAdsFilters(await searchParams);
-  const { accounts } = await getAdsSetup();
+  const { accounts, clients } = await getAdsSetup();
   if (!accounts.some((a) => a.is_selected)) return <NoAccounts canManage={Boolean(user.permissions["ads.manage"])} />;
 
   const campaigns = await getCampaignsReport(accounts, filters);
@@ -23,7 +23,7 @@ export default async function CampanhasPage({ searchParams }: PageProps<"/anunci
 
   return (
     <>
-      <AdsFilterBar accounts={accounts} filters={filters} />
+      <AdsFilterBar accounts={accounts} clients={clients} filters={filters} />
       {mixed && <MixedCurrencyAlert />}
       <section aria-labelledby="campanhas" className="grid gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">

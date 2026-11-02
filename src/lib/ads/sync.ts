@@ -124,10 +124,11 @@ async function syncAdLevel(admin: Admin, organizationId: string, provider: AdPro
 
 /**
  * Sincroniza uma conexão: contas → (selecionadas) campanhas e métricas diárias.
- * Primeira vez: últimos 90 dias; depois, os últimos 7 (a Meta e o Google
- * ajustam números de dias recentes). Tudo idempotente (upsert por chave).
+ * Conta ainda sem métricas: últimos 90 dias; depois, os últimos 7 (a Meta e o
+ * Google ajustam números de dias recentes). Tudo idempotente (upsert por chave).
+ * `accountId` sincroniza só aquela conta (usado ao ativá-la nos relatórios).
  */
-export async function syncAds(organizationId: string, provider: AdProvider) {
+export async function syncAds(organizationId: string, provider: AdProvider, accountId?: string) {
   const admin = createAdminClient();
   const { data } = await admin.from("integration_connections").select("*").eq("organization_id", organizationId).eq("provider", provider).maybeSingle();
   const conn = data as Connection | null;
@@ -139,9 +140,10 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
       throw Object.assign(new Error("expired"), { code: 190 });
     }
 
-    // 1) Contas autorizadas.
-    const accounts =
-      provider === "meta_ads"
+    // 1) Contas autorizadas (pulado quando só uma conta é sincronizada).
+    const accounts = accountId
+      ? []
+      : provider === "meta_ads"
         ? (await metaAccounts(token)).map((a) => ({ ...a }))
         : await Promise.all(
             (await googleAdsAccessibleCustomers(token)).slice(0, 50).map(async (id) => {
@@ -171,13 +173,15 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
     }
 
     // 2) Campanhas e métricas das contas selecionadas.
-    const { data: selected } = await admin
+    let selectedQ = admin
       .from("ad_accounts")
       .select("id, external_id, name, currency, balance_cents, alert_balance_below_cents, alert_daily_spend_above_cents")
       .eq("organization_id", organizationId)
       .eq("provider", provider)
       .eq("is_selected", true);
-    const since = daysAgo(conn.last_synced_at ? 7 : 90);
+    if (accountId) selectedQ = selectedQ.eq("id", accountId);
+    const { data: selected, error: selectedError } = await selectedQ;
+    if (selectedError) throw selectedError;
     const until = todayLocal();
     let metrics = 0;
     let adLevelFailed = false;
@@ -185,28 +189,27 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
     for (const acc of selected ?? []) {
       const campaigns = provider === "meta_ads" ? await metaCampaigns(token, acc.external_id) : await googleAdsCampaigns(token, acc.external_id);
       const ids = new Map<string, string>();
-      for (const c of campaigns) {
-        const { data: row } = await admin
-          .from("ad_campaigns")
-          .upsert(
-            {
-              organization_id: organizationId,
-              account_id: acc.id,
-              external_id: c.externalId,
-              name: c.name,
-              status: c.status,
-              objective: c.objective,
-              daily_budget_cents: c.dailyBudgetCents,
-              lifetime_budget_cents: c.lifetimeBudgetCents,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "account_id,external_id" },
-          )
-          .select("id")
-          .single();
-        if (row) ids.set(c.externalId, row.id);
+      const now = new Date().toISOString();
+      const campaignRows = campaigns.map((c) => ({
+        organization_id: organizationId,
+        account_id: acc.id,
+        external_id: c.externalId,
+        name: c.name,
+        status: c.status,
+        objective: c.objective,
+        daily_budget_cents: c.dailyBudgetCents,
+        lifetime_budget_cents: c.lifetimeBudgetCents,
+        updated_at: now,
+      }));
+      for (let i = 0; i < campaignRows.length; i += 500) {
+        const { data: saved, error } = await admin.from("ad_campaigns").upsert(campaignRows.slice(i, i + 500), { onConflict: "account_id,external_id" }).select("id, external_id");
+        if (error) throw error;
+        for (const r of saved ?? []) ids.set(r.external_id, r.id);
       }
 
+      // Histórico por conta: 90 dias na primeira vez (inclusive conta ativada depois da conexão).
+      const { count: known } = await admin.from("ad_insights_daily").select("id", { count: "exact", head: true }).eq("account_id", acc.id);
+      const since = daysAgo(known ? 7 : 90);
       const daily: DailyMetric[] =
         provider === "meta_ads" ? await metaDailyInsights(token, acc.external_id, since, until) : await googleAdsDailyInsights(token, acc.external_id, since, until);
       const rows = daily
@@ -224,8 +227,10 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
           conversion_value_cents: d.conversionValueCents,
         }));
       for (let i = 0; i < rows.length; i += 500) {
-        await admin.from("ad_insights_daily").upsert(rows.slice(i, i + 500), { onConflict: "account_id,campaign_id,day" });
+        const { error } = await admin.from("ad_insights_daily").upsert(rows.slice(i, i + 500), { onConflict: "account_id,campaign_id,day" });
+        if (error) throw error;
       }
+      await admin.from("ad_accounts").update({ last_synced_at: new Date().toISOString() }).eq("id", acc.id);
       metrics += rows.length;
 
       // Conjuntos, anúncios e criativos. Uma falha aqui não perde as campanhas já gravadas.
@@ -233,7 +238,7 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
         metrics += await syncAdLevel(admin, organizationId, provider, token, acc, ids, until);
       } catch (e) {
         adLevelFailed = true;
-        console.error("[ads-sync] anúncios", provider, (e as { code?: unknown; status?: unknown }).code ?? (e as { status?: unknown }).status ?? "erro");
+        console.error("[ads-sync] anúncios", provider, (e as { code?: unknown; status?: unknown }).code ?? (e as { status?: unknown }).status ?? "erro", (e as { detail?: string }).detail ?? "");
       }
 
       // 3) Alertas (um por conta por dia, sem repetição).
@@ -292,7 +297,7 @@ export async function syncAds(organizationId: string, provider: AdProvider) {
         p_key: `ads_expired:${provider}:${todayLocal()}`,
       });
     }
-    console.error("[ads-sync]", provider, err.code ?? err.status ?? "erro");
+    console.error("[ads-sync]", provider, err.code ?? err.status ?? "erro", (e as { detail?: string; message?: string }).detail ?? (e as Error).message);
     throw e;
   }
 }

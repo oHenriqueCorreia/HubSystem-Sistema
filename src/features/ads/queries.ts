@@ -16,23 +16,100 @@ export type AdAccount = {
   alert_balance_below_cents: number | null;
   alert_daily_spend_above_cents: number | null;
   last_synced_at: string | null;
+  ad_client_id: string | null;
 };
+
+export type AdClient = { id: string; name: string };
+
+/** Clientes de anúncios (agrupam contas). Antes da migration, devolve lista vazia. */
+export async function getAdClients() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("ad_clients").select("id, name").order("name");
+  if (error) {
+    console.error("[ads] clientes", error.code);
+    return [] as AdClient[];
+  }
+  return (data ?? []) as AdClient[];
+}
+
+export type UtmLink = {
+  id: string;
+  name: string;
+  ad_client_id: string | null;
+  base_url: string;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  utm_content: string | null;
+  utm_term: string | null;
+  created_at: string;
+};
+
+export async function getUtmLinks() {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("utm_links")
+    .select("id, name, ad_client_id, base_url, utm_source, utm_medium, utm_campaign, utm_content, utm_term, created_at")
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) {
+    console.error("[ads] utms", error.code);
+    return [] as UtmLink[];
+  }
+  return (data ?? []) as UtmLink[];
+}
 
 export type AdConnection = { provider: Provider; external_user: string; status: string; last_synced_at: string | null; last_error: string | null; expires_at: string | null };
 
 export async function getAdsSetup() {
   const supabase = await createClient();
-  const [conns, accounts] = await Promise.all([
+  const [conns, accounts, clients] = await Promise.all([
     supabase.rpc("my_ad_connections"),
     supabase.from("ad_accounts").select("*").order("provider").order("name"),
+    getAdClients(),
   ]);
   if (accounts.error) throw accounts.error;
-  return { connections: (conns.data ?? []) as AdConnection[], accounts: (accounts.data ?? []) as AdAccount[] };
+  return {
+    connections: (conns.data ?? []) as AdConnection[],
+    accounts: ((accounts.data ?? []) as AdAccount[]).map((a) => ({ ...a, ad_client_id: a.ad_client_id ?? null })),
+    clients,
+  };
 }
 
 /** Contas que entram no relatório com os filtros atuais. */
 export const reportAccounts = (accounts: AdAccount[], f: AdsFilters) =>
-  accounts.filter((a) => a.is_selected && (!f.accountId || a.id === f.accountId) && (!f.provider || a.provider === f.provider));
+  accounts.filter(
+    (a) => a.is_selected && (!f.clientId || a.ad_client_id === f.clientId) && (!f.accountId || a.id === f.accountId) && (!f.provider || a.provider === f.provider),
+  );
+
+export type ClientSummary = { client: AdClient; accounts: AdAccount[]; totals: Totals; previous: Totals; activeCampaigns: number };
+
+/** Painel de clientes: investimento e resultados do período por cliente (contas nos relatórios). */
+export async function getClientsSummary(accounts: AdAccount[], clients: AdClient[], f: AdsFilters): Promise<ClientSummary[]> {
+  const supabase = await createClient();
+  const selected = accounts.filter((a) => a.is_selected && a.ad_client_id);
+  const { data: active } = selected.length
+    ? await supabase.from("ad_campaigns").select("account_id").in("account_id", selected.map((a) => a.id)).in("status", STATUS_GROUPS.ativas)
+    : { data: [] };
+  const activeByAccount = new Map<string, number>();
+  for (const r of (active ?? []) as { account_id: string }[]) activeByAccount.set(r.account_id, (activeByAccount.get(r.account_id) ?? 0) + 1);
+
+  return Promise.all(
+    clients.map(async (client) => {
+      const own = accounts.filter((a) => a.ad_client_id === client.id);
+      const ids = own.filter((a) => a.is_selected).map((a) => a.id);
+      if (!ids.length) return { client, accounts: own, totals: emptyTotals(), previous: emptyTotals(), activeCampaigns: 0 };
+      const [cur, prev] = await Promise.all([series(ids, f.from, f.to, { ...f, group: "mes" }), series(ids, f.prevFrom, f.prevTo, { ...f, group: "mes" })]);
+      return {
+        client,
+        accounts: own,
+        totals: cur.reduce(addRow, emptyTotals()),
+        previous: prev.reduce(addRow, emptyTotals()),
+        activeCampaigns: ids.reduce((s, id) => s + (activeByAccount.get(id) ?? 0), 0),
+      };
+    }),
+  );
+}
 
 export type Totals = { impressions: number; reach: number; clicks: number; spend: number; conversions: number; conversionValue: number };
 export const emptyTotals = (): Totals => ({ impressions: 0, reach: 0, clicks: 0, spend: 0, conversions: 0, conversionValue: 0 });

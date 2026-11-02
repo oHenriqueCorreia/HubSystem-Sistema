@@ -13,8 +13,10 @@ import { FormField } from "@/components/app/form-field";
 import { MoneyInput } from "@/components/app/money-input";
 import { formatMoney } from "../format";
 import { formatDateTime } from "@/domain/shared/dates";
-import { disconnectAds, setAdAccountSelected, setAdAlerts, syncAdsNow } from "../actions";
-import type { AdAccount, AdConnection } from "../queries";
+import Link from "next/link";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { disconnectAds, setAccountClient, setAdAccountSelected, setAdAlerts, syncAdsNow } from "../actions";
+import type { AdAccount, AdClient, AdConnection } from "../queries";
 
 const NAME = { meta_ads: "Meta Ads (Facebook e Instagram)", google_ads: "Google Ads" } as const;
 const START = { meta_ads: "/api/ads/meta/start", google_ads: "/api/ads/google/start" } as const;
@@ -129,19 +131,41 @@ export function ProviderCard({
   );
 }
 
-export function AccountsList({ accounts, canManage }: { accounts: AdAccount[]; canManage: boolean }) {
+export function AccountsList({ accounts, clients, canManage }: { accounts: AdAccount[]; clients: AdClient[]; canManage: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [syncing, setSyncing] = useState<string | null>(null);
   if (!accounts.length) return null;
+  // Contas nos relatórios primeiro; depois por nome.
+  const sorted = [...accounts].sort((a, b) => Number(b.is_selected) - Number(a.is_selected) || a.name.localeCompare(b.name));
+
+  function run(fn: () => Promise<{ ok: boolean; message?: string }>, accountId?: string) {
+    if (accountId) setSyncing(accountId);
+    startTransition(async () => {
+      const res = await fn();
+      if (res.ok) toast.success(res.message);
+      else toast.error(res.message);
+      setSyncing(null);
+      router.refresh();
+    });
+  }
 
   return (
     <section aria-labelledby="contas" className="grid gap-2">
-      <h2 id="contas" className="text-sm font-semibold">
-        Contas de anúncio
-      </h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="contas" className="text-sm font-semibold">
+          Contas de anúncio ({accounts.length})
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Ative “Nos relatórios” nas contas que você acompanha. A sincronização roda na hora e traz 90 dias.{" "}
+          <Link href="/anuncios/clientes" className="font-medium text-primary hover:underline">
+            Organizar por cliente
+          </Link>
+        </p>
+      </div>
       <ul className="grid gap-2 md:grid-cols-2">
-        {accounts.map((a) => (
-          <li key={a.id} className="grid gap-2 rounded-xl border bg-surface p-3 text-sm">
+        {sorted.map((a) => (
+          <li key={a.id} className="grid content-start gap-2 rounded-xl border bg-surface p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate font-medium">{a.name}</p>
@@ -152,23 +176,37 @@ export function AccountsList({ accounts, canManage }: { accounts: AdAccount[]; c
               </div>
               {canManage && (
                 <label className="flex shrink-0 items-center gap-2 text-xs">
+                  {syncing === a.id ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
                   <Switch
                     checked={a.is_selected}
                     disabled={pending}
-                    onCheckedChange={(v) =>
-                      startTransition(async () => {
-                        const res = await setAdAccountSelected({ id: a.id, selected: v });
-                        if (res.ok) toast.success(res.message);
-                        else toast.error(res.message);
-                        router.refresh();
-                      })
-                    }
+                    onCheckedChange={(v) => run(() => setAdAccountSelected({ id: a.id, selected: v }), v ? a.id : undefined)}
                     aria-label={`Usar ${a.name} nos relatórios`}
                   />
-                  Nos relatórios
+                  {syncing === a.id ? "Sincronizando…" : "Nos relatórios"}
                 </label>
               )}
             </div>
+            {canManage && clients.length > 0 && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground" id={`cliente-${a.id}`}>
+                  Cliente
+                </span>
+                <Select value={a.ad_client_id ?? "__sem__"} disabled={pending} onValueChange={(v) => run(() => setAccountClient({ id: a.id, clientId: v === "__sem__" ? null : v }))}>
+                  <SelectTrigger size="sm" className="w-56" aria-labelledby={`cliente-${a.id}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__sem__">Sem cliente</SelectItem>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <dl className="grid grid-cols-3 gap-2 text-xs">
               <div>
                 <dt className="text-muted-foreground">Saldo</dt>

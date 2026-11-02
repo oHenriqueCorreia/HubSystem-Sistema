@@ -1,13 +1,23 @@
 import { Suspense } from "react";
 import { DashboardFilters } from "@/features/dashboards/components/dashboard-filters";
 import { PROVIDER_NAME, type AdsFilters } from "../filters";
-import type { AdAccount } from "../queries";
+import type { AdAccount, AdClient } from "../queries";
 
-/** Período, plataforma, conta e status (e agrupamento, quando há gráfico). */
-export function AdsFilterBar({ accounts, filters, withGroup = false }: { accounts: AdAccount[]; filters: AdsFilters; withGroup?: boolean }) {
-  const selected = accounts.filter((a) => a.is_selected);
+/** Período, cliente, plataforma, conta e status (e agrupamento, quando há gráfico). */
+export function AdsFilterBar({ accounts, clients = [], filters, withGroup = false }: { accounts: AdAccount[]; clients?: AdClient[]; filters: AdsFilters; withGroup?: boolean }) {
+  const selected = accounts.filter((a) => a.is_selected && (!filters.clientId || a.ad_client_id === filters.clientId));
   const providers = new Set(selected.map((a) => a.provider));
   const extra = [
+    ...(clients.length
+      ? [
+          {
+            name: "cliente",
+            label: "Cliente",
+            value: filters.clientId,
+            options: [["", "Todos os clientes"], ...clients.map((c) => [c.id, c.name] as [string, string])] as [string, string][],
+          },
+        ]
+      : []),
     ...(providers.size > 1
       ? [
           {

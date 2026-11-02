@@ -36,12 +36,101 @@ export const disconnectAds = defineAction({ schema: z.object({ provider }), perm
   return ok(null, "Conta desconectada. O acesso foi revogado.");
 });
 
-export const setAdAccountSelected = defineAction({ schema: z.object({ id: z.uuid(), selected: z.boolean() }), permission: "ads.manage" }, async (input) => {
+export const setAdAccountSelected = defineAction({ schema: z.object({ id: z.uuid(), selected: z.boolean() }), permission: "ads.manage" }, async (input, { user }) => {
   const supabase = await createClient();
-  const res = must(await supabase.from("ad_accounts").update({ is_selected: input.selected }).eq("id", input.id).select("id")) as { id: string }[];
+  const res = must(await supabase.from("ad_accounts").update({ is_selected: input.selected }).eq("id", input.id).select("id, provider")) as { id: string; provider: "meta_ads" | "google_ads" }[];
+  if (!res.length) return fail("forbidden", "Conta não encontrada.");
+  if (!input.selected) {
+    revalidatePath("/anuncios", "layout");
+    return ok(null, "Conta removida dos relatórios.");
+  }
+  // Traz campanhas, anúncios e 90 dias de métricas da conta na hora.
+  try {
+    const r = await syncAds(user.organizationId, res[0].provider, input.id);
+    revalidatePath("/anuncios", "layout");
+    return ok(null, `Conta ativada e sincronizada: ${r.metrics} registro(s) de métricas.`);
+  } catch {
+    revalidatePath("/anuncios", "layout");
+    return ok(null, "Conta ativada, mas a sincronização falhou agora. Clique em “Sincronizar agora” em alguns minutos.");
+  }
+});
+
+export const setAccountClient = defineAction({ schema: z.object({ id: z.uuid(), clientId: z.uuid().nullable() }), permission: "ads.manage" }, async (input) => {
+  const supabase = await createClient();
+  const res = must(await supabase.from("ad_accounts").update({ ad_client_id: input.clientId }).eq("id", input.id).select("id")) as { id: string }[];
   if (!res.length) return fail("forbidden", "Conta não encontrada.");
   revalidatePath("/anuncios", "layout");
-  return ok(null, input.selected ? "Conta selecionada. Sincronize para trazer as campanhas." : "Conta removida dos relatórios.");
+  return ok(null, input.clientId ? "Conta ligada ao cliente." : "Conta sem cliente.");
+});
+
+const clientName = z.string().trim().min(1, "Informe o nome do cliente.").max(120);
+
+export const createAdClient = defineAction({ schema: z.object({ name: clientName, accountIds: z.array(z.uuid()).max(100).default([]) }), permission: "ads.manage" }, async (input) => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("ad_clients").insert({ name: input.name }).select("id").single();
+  if (error?.code === "23505") return fail("conflict", "Já existe um cliente com esse nome.");
+  if (error) throw error;
+  if (input.accountIds.length) must(await supabase.from("ad_accounts").update({ ad_client_id: data.id }).in("id", input.accountIds));
+  revalidatePath("/anuncios", "layout");
+  return ok({ id: data.id as string }, "Cliente criado.");
+});
+
+export const renameAdClient = defineAction({ schema: z.object({ id: z.uuid(), name: clientName }), permission: "ads.manage" }, async (input) => {
+  const supabase = await createClient();
+  const { error } = await supabase.from("ad_clients").update({ name: input.name }).eq("id", input.id);
+  if (error?.code === "23505") return fail("conflict", "Já existe um cliente com esse nome.");
+  if (error) throw error;
+  revalidatePath("/anuncios", "layout");
+  return ok(null, "Nome atualizado.");
+});
+
+export const deleteAdClient = defineAction({ schema: z.object({ id: z.uuid() }), permission: "ads.manage" }, async (input) => {
+  const supabase = await createClient();
+  must(await supabase.from("ad_clients").delete().eq("id", input.id));
+  revalidatePath("/anuncios", "layout");
+  return ok(null, "Cliente excluído. As contas continuam conectadas, sem cliente.");
+});
+
+const utmText = (max: number) => z.string().trim().max(max);
+
+export const saveUtmLink = defineAction(
+  {
+    schema: z.object({
+      name: z.string().trim().min(1, "Dê um nome para o link.").max(120),
+      clientId: z.uuid().nullable(),
+      baseUrl: z.url("Informe a URL completa, começando com https://").max(2000).refine((u) => /^https?:\/\//.test(u), "A URL precisa começar com http:// ou https://"),
+      source: utmText(200).min(1, "Informe a origem (utm_source)."),
+      medium: utmText(200).min(1, "Informe a mídia (utm_medium)."),
+      campaign: utmText(300).min(1, "Informe a campanha (utm_campaign)."),
+      content: utmText(300),
+      term: utmText(300),
+    }),
+    permission: "ads.manage",
+  },
+  async (input) => {
+    const supabase = await createClient();
+    must(
+      await supabase.from("utm_links").insert({
+        name: input.name,
+        ad_client_id: input.clientId,
+        base_url: input.baseUrl,
+        utm_source: input.source,
+        utm_medium: input.medium,
+        utm_campaign: input.campaign,
+        utm_content: input.content || null,
+        utm_term: input.term || null,
+      }),
+    );
+    revalidatePath("/anuncios/utms");
+    return ok(null, "Link salvo.");
+  },
+);
+
+export const deleteUtmLink = defineAction({ schema: z.object({ id: z.uuid() }), permission: "ads.manage" }, async (input) => {
+  const supabase = await createClient();
+  must(await supabase.from("utm_links").delete().eq("id", input.id));
+  revalidatePath("/anuncios/utms");
+  return ok(null, "Link excluído.");
 });
 
 const cents = z.number().int().min(0).max(100_000_000_000).nullable();

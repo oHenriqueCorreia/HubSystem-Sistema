@@ -15,7 +15,7 @@ export default async function CriativosPage({ searchParams }: PageProps<"/anunci
   const sp = await searchParams;
   const filters = parseAdsFilters(sp);
   const view = sp.ver === "tabela" ? "tabela" : "cartoes";
-  const { accounts } = await getAdsSetup();
+  const { accounts, clients } = await getAdsSetup();
   if (!accounts.some((a) => a.is_selected)) return <NoAccounts canManage={Boolean(user.permissions["ads.manage"])} />;
 
   const { ads } = await getAdLevelReport(accounts, filters);
@@ -25,7 +25,7 @@ export default async function CriativosPage({ searchParams }: PageProps<"/anunci
 
   return (
     <>
-      <AdsFilterBar accounts={accounts} filters={filters} />
+      <AdsFilterBar accounts={accounts} clients={clients} filters={filters} />
       {mixed && <MixedCurrencyAlert />}
       <section aria-labelledby="anuncios" className="grid gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

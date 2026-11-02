@@ -16,7 +16,7 @@ const GROUP_LABEL = { dia: "dia", semana: "semana", mes: "mês" } as const;
 export default async function AnunciosPage({ searchParams }: PageProps<"/anuncios">) {
   const user = await requirePermission("ads.read");
   const filters = parseAdsFilters(await searchParams);
-  const { accounts } = await getAdsSetup();
+  const { accounts, clients } = await getAdsSetup();
   if (!accounts.some((a) => a.is_selected)) return <NoAccounts canManage={Boolean(user.permissions["ads.manage"])} />;
 
   const [overview, campaigns] = await Promise.all([getAdsOverview(accounts, filters), getCampaignsReport(accounts, filters)]);
@@ -24,10 +24,19 @@ export default async function AnunciosPage({ searchParams }: PageProps<"/anuncio
   const scoped = reportAccounts(accounts, filters);
   const bothPlatforms = new Set(scoped.map((a) => a.provider)).size > 1;
   const withMeta = scoped.some((a) => a.provider === "meta_ads");
+  const client = filters.clientId ? clients.find((c) => c.id === filters.clientId) : undefined;
 
   return (
     <>
-      <AdsFilterBar accounts={accounts} filters={filters} withGroup />
+      {client && (
+        <div className="grid gap-0.5">
+          <h2 className="text-lg font-semibold tracking-tight break-words">Painel de {client.name}</h2>
+          <p className="text-sm text-muted-foreground">
+            {scoped.length} {scoped.length === 1 ? "conta" : "contas"}: {scoped.map((a) => a.name).join(", ") || "nenhuma conta nos relatórios"}
+          </p>
+        </div>
+      )}
+      <AdsFilterBar accounts={accounts} clients={clients} filters={filters} withGroup />
       {mixed && <MixedCurrencyAlert />}
       {!overview ? (
         <p className="text-sm text-muted-foreground">Nenhuma conta corresponde a estes filtros.</p>

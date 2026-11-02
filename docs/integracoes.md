@@ -66,6 +66,11 @@ O token da Meta dura cerca de 60 dias; antes de expirar, o sistema avisa na cent
 - **ROAS** depende de valor de conversão configurado na plataforma (valor no pixel/API de Conversões da Meta ou valor nas ações de conversão do Google). Sem isso, aparece “—”.
 - Na primeira sincronização de cada conta são trazidos 90 dias; depois, os últimos 7 (as plataformas ajustam dias recentes).
 
+### Clientes e UTMs
+- **Clientes:** agrupe as contas de anúncio de cada cliente (Anúncios → Clientes → Novo cliente, ou o seletor "Cliente" em cada conta). Cada cliente tem cartão com investimento, conversões, cliques, CTR, CPC e campanhas ativas, e um painel completo (filtro `cliente` em todas as abas).
+- **Ativar uma conta** em "Nos relatórios" sincroniza na hora: campanhas, conjuntos, anúncios e 90 dias de métricas.
+- **UTMs:** gerador com modelos da Meta (`{{campaign.name}}`, `{{ad.name}}`…) e do Google (`{campaignid}`, `{creative}`…), campanha sincronizada como `utm_campaign`, cópia do link completo ou só dos parâmetros (para "Parâmetros de URL" na Meta e "Sufixo do URL final" no Google) e links salvos por cliente.
+
 ### Do anúncio à venda (Clique para WhatsApp)
 Quando alguém clica num anúncio "Clique para WhatsApp" da Meta e chama um número conectado em **Atendimento**, a Meta envia na mensagem o anúncio de origem (`referral`). O sistema:
 1. grava a origem (`ad_referrals`) e mostra na conversa “Veio de um anúncio: …”, com link para a campanha;

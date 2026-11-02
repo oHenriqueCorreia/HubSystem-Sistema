@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Conjuntos e grupos · Anúncios" };
 export default async function ConjuntosPage({ searchParams }: PageProps<"/anuncios/conjuntos">) {
   const user = await requirePermission("ads.read");
   const filters = parseAdsFilters(await searchParams);
-  const { accounts } = await getAdsSetup();
+  const { accounts, clients } = await getAdsSetup();
   if (!accounts.some((a) => a.is_selected)) return <NoAccounts canManage={Boolean(user.permissions["ads.manage"])} />;
 
   const { adSets } = await getAdLevelReport(accounts, filters);
@@ -19,7 +19,7 @@ export default async function ConjuntosPage({ searchParams }: PageProps<"/anunci
 
   return (
     <>
-      <AdsFilterBar accounts={accounts} filters={filters} />
+      <AdsFilterBar accounts={accounts} clients={clients} filters={filters} />
       {mixed && <MixedCurrencyAlert />}
       <section aria-labelledby="conjuntos" className="grid gap-2">
         <div className="grid gap-1">
