@@ -6,7 +6,10 @@ import { EmptyState, NoResults } from "@/components/app/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBRL } from "@/domain/shared/money";
-import { listContracts, listServices } from "@/features/clients/queries";
+import { listClients, listContracts, listServices } from "@/features/clients/queries";
+import { NewContractDialog } from "@/features/clients/components/new-contract-dialog";
+import { getLookups } from "@/features/finance/queries";
+import { createClient } from "@/lib/supabase/server";
 import { CONTRACT_STATUS_LABEL, monthlyValue } from "@/features/clients/types";
 import { ContractsTable } from "@/features/clients/components/contracts-table";
 
@@ -17,10 +20,21 @@ function str(v: string | string[] | undefined) {
 }
 
 export default async function ContratosPage({ searchParams }: PageProps<"/contratos">) {
-  await requirePermission("contracts.read");
+  const user = await requirePermission("contracts.read");
+  const canCreate = Boolean(user.permissions["contracts.create"]);
+  const canCreateClient = Boolean(user.permissions["clients.create"]);
   const sp = await searchParams;
   const filters = { q: str(sp.q)?.slice(0, 100), status: str(sp.status), servico: str(sp.servico) };
-  const [contracts, services] = await Promise.all([listContracts(filters), listServices()]);
+  const supabase = await createClient();
+  const [contracts, services, clients, leads, finance] = await Promise.all([
+    listContracts(filters),
+    listServices(),
+    canCreate ? listClients({ status: "ativo" }) : Promise.resolve([]),
+    canCreate && canCreateClient
+      ? supabase.from("leads").select("id, name, company_name").is("deleted_at", null).neq("status", "cliente").order("name").limit(1000)
+      : Promise.resolve({ data: [] }),
+    canCreate && user.permissions["finance.company.create"] ? getLookups("empresa") : Promise.resolve(null),
+  ]);
   const mrr = contracts.reduce((s, k) => s + monthlyValue(k), 0);
   const hasFilters = Boolean(filters.q || filters.status || filters.servico);
 
@@ -29,7 +43,18 @@ export default async function ContratosPage({ searchParams }: PageProps<"/contra
       <PageHeader
         breadcrumbs={[{ label: "Comercial" }, { label: "Contratos" }]}
         title="Contratos"
-        description={`${contracts.length} contrato(s) · recorrente ativo ${formatBRL(mrr)}/mês. Para criar, abra o cliente.`}
+        description={`${contracts.length} contrato(s) · recorrente ativo ${formatBRL(mrr)}/mês.`}
+        actions={
+          canCreate ? (
+            <NewContractDialog
+              clients={clients.map((c) => ({ id: c.id, name: c.lead?.name ?? c.legal_name ?? "Cliente" })).sort((a, b) => a.name.localeCompare(b.name))}
+              leads={((leads.data ?? []) as { id: string; name: string; company_name: string | null }[]).map((l) => ({ id: l.id, name: l.company_name && l.company_name !== l.name ? `${l.name} (${l.company_name})` : l.name }))}
+              services={services}
+              finance={finance}
+              canCreateClient={canCreateClient}
+            />
+          ) : null
+        }
       />
       <PageBody className="grid gap-4">
         <form className="flex flex-wrap gap-2" role="search" aria-label="Filtrar contratos">
@@ -55,7 +80,7 @@ export default async function ContratosPage({ searchParams }: PageProps<"/contra
           </Button>
         </form>
         {contracts.length === 0 ? (
-          hasFilters ? <NoResults query={filters.q} /> : <EmptyState icon={FileSignature} title="Nenhum contrato" description="Converta um lead em cliente ou abra um cliente para registrar o primeiro contrato." />
+          hasFilters ? <NoResults query={filters.q} /> : <EmptyState icon={FileSignature} title="Nenhum contrato" description="Clique em “Novo contrato” para escolher o cliente, anexar o contrato e lançar as mensalidades no financeiro." />
         ) : (
           <ContractsTable contracts={contracts} />
         )}

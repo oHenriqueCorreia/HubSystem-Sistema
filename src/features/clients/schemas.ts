@@ -49,6 +49,45 @@ export const clientUpdateSchema = convertSchema.pick({ legalName: true, document
   notes: z.string().trim().max(10000).default(""),
 });
 
+/** Cliente do novo contrato: um cliente existente, um lead do CRM ou um cliente novo. */
+export const contractClientSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("cliente"), clientId: z.uuid({ error: "Escolha o cliente." }) }),
+  z.object({ mode: z.literal("lead"), leadId: z.uuid({ error: "Escolha o lead." }) }),
+  z.object({
+    mode: z.literal("novo"),
+    name: z.string().trim().min(2, "Informe o nome do cliente.").max(160),
+    document: z
+      .string()
+      .trim()
+      .default("")
+      .refine((v) => !v || isValidDocument(v), "CPF ou CNPJ inválido."),
+    email: z
+      .string()
+      .trim()
+      .default("")
+      .refine((v) => !v || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), "E-mail inválido."),
+    phone: z
+      .string()
+      .trim()
+      .default("")
+      .refine((v) => !v || normalizePhone(v) !== null, "Telefone inválido."),
+  }),
+]);
+
+/** Contrato com cliente, já lançado no financeiro da empresa. */
+export const newContractSchema = z.object({
+  client: contractClientSchema,
+  contract: contractFormSchema,
+  finance: z.object({
+    launch: z.boolean(),
+    accountId: z.uuid().nullable(),
+    categoryId: z.uuid().nullable(),
+    // Cobranças com vencimento antes de hoje (contrato que já estava rodando).
+    past: z.enum(["ignorar", "recebidas", "abertas"]).default("ignorar"),
+  }),
+});
+export type NewContractValues = z.input<typeof newContractSchema>;
+
 export const attachmentEntitySchema = z.object({
   entityType: z.enum(["lead", "client", "contract", "task", "transaction"]),
   entityId: z.uuid(),

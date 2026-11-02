@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pause, Play, Square } from "lucide-react";
@@ -27,7 +28,7 @@ const STATE: Record<RecurrenceRow["state"], { label: string; variant: "default" 
   encerrada: { label: "Encerrada", variant: "outline" },
 };
 
-export function RecurrenceTable({ rows, categories, canEdit }: { rows: RecurrenceRow[]; categories: Map<string, string>; canEdit: boolean }) {
+export function RecurrenceTable({ rows, categories, clients, canEdit }: { rows: RecurrenceRow[]; categories: Map<string, string>; clients?: Map<string, string>; canEdit: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -60,10 +61,19 @@ export function RecurrenceTable({ rows, categories, canEdit }: { rows: Recurrenc
           {rows.map((r) => (
             <TableRow key={r.id} className={r.state !== "ativa" ? "text-muted-foreground" : undefined}>
               <TableCell>
-                <div className="font-medium">{r.description}</div>
+                <div className="font-medium">
+                  {r.contract_id ? (
+                    <Link href={`/contratos/${r.contract_id}`} className="hover:underline">
+                      {r.description}
+                    </Link>
+                  ) : (
+                    r.description
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground">
                   {r.kind === "receita" ? "Receita" : "Despesa"}
                   {r.category_id && categories.get(r.category_id) ? ` · ${categories.get(r.category_id)}` : ""}
+                  {r.client_id && clients?.get(r.client_id) ? ` · Cliente: ${clients.get(r.client_id)}` : ""}
                   {r.end_date ? ` · até ${formatDate(r.end_date)}` : " · sem data de término"}
                 </div>
               </TableCell>

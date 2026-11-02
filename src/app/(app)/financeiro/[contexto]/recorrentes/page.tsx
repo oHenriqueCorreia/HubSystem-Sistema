@@ -6,6 +6,8 @@ import { todayLocal } from "@/domain/shared/dates";
 import { monthBounds, requireFinance } from "@/features/finance/server";
 import { fixedVsVariable, getLookups, listRecurrences } from "@/features/finance/queries";
 import { RecurrenceTable } from "@/features/finance/components/recurrence-table";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Fixos e recorrentes" };
 
@@ -30,6 +32,22 @@ export default async function RecorrentesPage({ params }: { params: Promise<{ co
   const fixedIn = active.filter((r) => r.kind === "receita").reduce((a, r) => a + r.monthly_cents, 0);
   const categories = new Map(lookups.categories.map((c) => [c.id, c.name]));
 
+  // Empresa: nomes dos clientes das receitas de contrato e receita recorrente por cliente.
+  const clientIds = [...new Set(rows.map((r) => r.client_id).filter((x): x is string => Boolean(x)))];
+  const clients = new Map<string, string>();
+  if (scope === "empresa" && clientIds.length) {
+    const supabase = await createClient();
+    const { data } = await supabase.from("clients").select("id, legal_name, lead:leads(name)").in("id", clientIds);
+    for (const c of (data ?? []) as { id: string; legal_name: string | null; lead: { name: string } | { name: string }[] | null }[]) {
+      const lead = Array.isArray(c.lead) ? c.lead[0] : c.lead;
+      clients.set(c.id, lead?.name ?? c.legal_name ?? "Cliente");
+    }
+  }
+  const byClient = [...clientIds]
+    .map((id) => ({ id, name: clients.get(id) ?? "Cliente", monthly: active.filter((r) => r.kind === "receita" && r.client_id === id).reduce((a, r) => a + r.monthly_cents, 0), contracts: active.filter((r) => r.client_id === id && r.contract_id).length }))
+    .filter((c) => c.monthly > 0)
+    .sort((a, b) => b.monthly - a.monthly);
+
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -51,7 +69,27 @@ export default async function RecorrentesPage({ params }: { params: Promise<{ co
           description="Clique em “Nova recorrência” (no topo) para cadastrar o que você paga sempre (aluguel, mensalidades, assinaturas) ou recebe sempre (salário, contratos). As datas aparecem aqui, em Lançamentos e no Início."
         />
       ) : (
-        <RecurrenceTable rows={rows} categories={categories} canEdit={perms.update} />
+        <RecurrenceTable rows={rows} categories={categories} clients={clients} canEdit={perms.update} />
+      )}
+      {byClient.length > 0 && (
+        <section aria-labelledby="por-cliente" className="grid gap-2">
+          <h2 id="por-cliente" className="text-sm font-semibold">
+            Receita recorrente por cliente
+          </h2>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {byClient.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-3 rounded-lg border bg-surface px-3 py-2">
+                <span className="grid min-w-0">
+                  <Link href={`/clientes/${c.id}`} className="truncate text-sm font-medium hover:underline">
+                    {c.name}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">{c.contracts} {c.contracts === 1 ? "contrato ativo" : "contratos ativos"}</span>
+                </span>
+                <span className="tabular shrink-0 font-semibold">{formatBRL(c.monthly)}/mês</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

@@ -188,6 +188,9 @@ export type RecurrenceRow = {
   /** Regra de vencimento: dia fixo do mês ou N-ésimo dia útil. */
   due_rule: "dia_fixo" | "dia_util";
   business_day: number | null;
+  /** Receita de contrato: cliente e contrato de origem. */
+  client_id: string | null;
+  contract_id: string | null;
 };
 
 // Equivalente mensal de cada periodicidade (para somar fixos de forma comparável).
@@ -225,6 +228,8 @@ export async function listRecurrences(scope: FinanceScope, today: string): Promi
       monthly_cents: Math.round(amount * PER_MONTH[frequency]),
       due_rule: r.due_rule === "dia_util" ? "dia_util" : "dia_fixo",
       business_day: r.business_day ?? null,
+      client_id: (t.client_id as string) || null,
+      contract_id: (t.contract_id as string) || null,
     };
   });
 }
