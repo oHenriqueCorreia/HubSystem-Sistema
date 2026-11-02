@@ -13,6 +13,13 @@ import { formatDate } from "@/domain/shared/dates";
 import { setRecurrenceState } from "../actions";
 import type { RecurrenceRow } from "../queries";
 
+/** Como o vencimento é calculado: "todo 5º dia útil" ou "todo dia 10". */
+export function dueRuleLabel(r: Pick<RecurrenceRow, "due_rule" | "business_day" | "start_date" | "frequency">) {
+  if (r.due_rule === "dia_util" && r.business_day) return `Vence no ${r.business_day}º dia útil`;
+  if (r.frequency === "semanal") return "Toda semana, no mesmo dia";
+  return `Vence todo dia ${Number(r.start_date.slice(8, 10))}`;
+}
+
 const FREQ: Record<RecurrenceRow["frequency"], string> = { semanal: "Semanal", mensal: "Mensal", trimestral: "Trimestral", semestral: "Semestral", anual: "Anual" };
 const STATE: Record<RecurrenceRow["state"], { label: string; variant: "default" | "secondary" | "outline" }> = {
   ativa: { label: "Ativa", variant: "default" },
@@ -60,7 +67,10 @@ export function RecurrenceTable({ rows, categories, canEdit }: { rows: Recurrenc
                   {r.end_date ? ` · até ${formatDate(r.end_date)}` : " · sem data de término"}
                 </div>
               </TableCell>
-              <TableCell>{FREQ[r.frequency]}</TableCell>
+              <TableCell>
+                <div>{FREQ[r.frequency]}</div>
+                <div className="text-xs text-muted-foreground">{dueRuleLabel(r)}</div>
+              </TableCell>
               <TableCell className="tabular text-right">{formatBRL(r.amount_cents)}</TableCell>
               <TableCell className="tabular text-right">{formatBRL(r.monthly_cents)}</TableCell>
               <TableCell className="whitespace-nowrap">{r.next_due ? formatDate(r.next_due) : "—"}</TableCell>

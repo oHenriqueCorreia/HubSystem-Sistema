@@ -41,7 +41,17 @@ export type HomeOverview = {
   scheduledList: HomeTask[];
   meetings: { week: number; month: number; next: HomeMeeting[] } | null;
   commercial: { attendedWeek: number; waiting: number; newLeadsWeek: number } | null;
-  finance: { scope: "empresa" | "pessoal"; receivable: number; payable: number; overdueReceivable: number; overduePayable: number; monthIn: number; monthOut: number }[];
+  finance: {
+    scope: "empresa" | "pessoal";
+    receivable: number;
+    payable: number;
+    overdueReceivable: number;
+    overduePayable: number;
+    monthIn: number;
+    monthOut: number;
+    /** Contas a pagar de hoje até 7 dias (inclui contas fixas). */
+    dueSoon: { id: string; description: string; amount_cents: number; due_date: string; recurrence_id: string | null }[];
+  }[];
   google: { status: string; last_synced_at: string | null; last_error: string | null } | null;
   pendingInvites: number;
 };
@@ -130,13 +140,25 @@ export async function getHomeOverview(user: CurrentUser): Promise<HomeOverview> 
         supabase.from("financial_transactions").select("amount_cents").is("deleted_at", null).eq("scope", scope).eq("kind", kind).eq("status", "previsto").limit(5000);
       const paid = (kind: "receita" | "despesa") =>
         supabase.from("financial_transactions").select("amount_cents:paid_amount_cents").is("deleted_at", null).eq("scope", scope).eq("kind", kind).eq("status", "pago").gte("paid_at", monthStart).lte("paid_at", monthEnd).limit(5000);
-      const [rec, pay, recLate, payLate, inPaid, outPaid] = await Promise.all([
+      const weekAhead = new Date(Date.parse(`${today}T12:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
+      const [rec, pay, recLate, payLate, inPaid, outPaid, soon] = await Promise.all([
         base("receita").lte("due_date", monthEnd),
         base("despesa").lte("due_date", monthEnd),
         base("receita").lt("due_date", today),
         base("despesa").lt("due_date", today),
         paid("receita"),
         paid("despesa"),
+        supabase
+          .from("financial_transactions")
+          .select("id, description, amount_cents, due_date, recurrence_id")
+          .is("deleted_at", null)
+          .eq("scope", scope)
+          .eq("kind", "despesa")
+          .eq("status", "previsto")
+          .gte("due_date", today)
+          .lte("due_date", weekAhead)
+          .order("due_date")
+          .limit(8),
       ]);
       return {
         scope,
@@ -146,6 +168,7 @@ export async function getHomeOverview(user: CurrentUser): Promise<HomeOverview> 
         overduePayable: sum(payLate.data),
         monthIn: sum(inPaid.data as { amount_cents: number }[] | null),
         monthOut: sum(outPaid.data as { amount_cents: number }[] | null),
+        dueSoon: (soon.data ?? []) as { id: string; description: string; amount_cents: number; due_date: string; recurrence_id: string | null }[],
       };
     }),
   );

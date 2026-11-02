@@ -153,6 +153,9 @@ export type RecurrenceRow = {
   category_id: string | null;
   next_due: string | null;
   monthly_cents: number;
+  /** Regra de vencimento: dia fixo do mês ou N-ésimo dia útil. */
+  due_rule: "dia_fixo" | "dia_util";
+  business_day: number | null;
 };
 
 // Equivalente mensal de cada periodicidade (para somar fixos de forma comparável).
@@ -163,7 +166,7 @@ export async function listRecurrences(scope: FinanceScope, today: string): Promi
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("financial_recurrences")
-    .select("id, frequency, start_date, end_date, template, is_active, paused_at, ended_at, financial_transactions(due_date, status, deleted_at)")
+    .select("*, financial_transactions(due_date, status, deleted_at)")
     .eq("scope", scope)
     .order("created_at", { ascending: false })
     .limit(500);
@@ -188,6 +191,8 @@ export async function listRecurrences(scope: FinanceScope, today: string): Promi
       category_id: (t.category_id as string | null) ?? null,
       next_due: next,
       monthly_cents: Math.round(amount * PER_MONTH[frequency]),
+      due_rule: r.due_rule === "dia_util" ? "dia_util" : "dia_fixo",
+      business_day: r.business_day ?? null,
     };
   });
 }

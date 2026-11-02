@@ -6,6 +6,7 @@ import { todayLocal } from "@/domain/shared/dates";
 import { monthBounds, requireFinance } from "@/features/finance/server";
 import { fixedVsVariable, getLookups, listRecurrences } from "@/features/finance/queries";
 import { RecurrenceTable } from "@/features/finance/components/recurrence-table";
+import { RecurrenceDialog } from "@/features/finance/components/recurrence-dialog";
 
 export const metadata: Metadata = { title: "Fixos e recorrentes" };
 
@@ -32,10 +33,13 @@ export default async function RecorrentesPage({ params }: { params: Promise<{ co
 
   return (
     <div className="grid gap-6">
-      <p className="max-w-prose text-sm text-muted-foreground">
-        Gastos e receitas fixos são lançamentos com recorrência (mensal ou outra periodicidade). Para criar um, use “Novo lançamento” e escolha a recorrência. Aqui você
-        acompanha, pausa ou encerra cada série sem alterar o que já aconteceu.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Contas que se repetem: mensalidades, aluguel, salários, assinaturas. Escolha o dia do mês ou o dia útil (ex.: 5º dia útil) e os vencimentos aparecem nas contas a pagar, no Início e nas notificações do dia. Aqui você
+          também pausa ou encerra cada série sem alterar o que já aconteceu.
+        </p>
+        {perms.create && <RecurrenceDialog scope={scope} accounts={lookups.accounts} categories={lookups.categories} />}
+      </div>
       <section aria-label="Resumo do mês" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile label="Despesas fixas por mês" value={formatBRL(fixedOut)} hint={`${active.filter((r) => r.kind === "despesa").length} série(s) ativa(s)`} />
         <Tile label="Receitas fixas por mês" value={formatBRL(fixedIn)} hint={`${active.filter((r) => r.kind === "receita").length} série(s) ativa(s)`} />
@@ -46,7 +50,7 @@ export default async function RecorrentesPage({ params }: { params: Promise<{ co
         <EmptyState
           icon={Repeat}
           title="Nenhum lançamento recorrente"
-          description="Cadastre aluguel, assinaturas, salários ou mensalidades com recorrência para que apareçam aqui e nas previsões."
+          description="Clique em “Nova conta fixa” para cadastrar aluguel, assinaturas, salários ou mensalidades. Os vencimentos aparecem aqui, nas contas a pagar e no Início."
         />
       ) : (
         <RecurrenceTable rows={rows} categories={categories} canEdit={perms.update} />

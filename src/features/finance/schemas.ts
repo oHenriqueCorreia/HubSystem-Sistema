@@ -80,6 +80,27 @@ export const categorySchema = z.object({
 
 export const recurrenceStateSchema = z.object({ id: z.uuid(), state: z.enum(["ativa", "pausada", "encerrada"]) });
 
+/** Conta fixa: dia do mês ou N-ésimo dia útil, a partir de um mês. */
+export const recurrenceSchema = z
+  .object({
+    scope,
+    kind: z.enum(["despesa", "receita"]),
+    description: z.string().trim().min(1, "Informe a descrição.").max(200),
+    amountCents: z.number().int().positive("Informe o valor."),
+    categoryId: z.uuid().nullable().default(null),
+    accountId: z.uuid().nullable().default(null),
+    frequency: z.enum(["mensal", "trimestral", "semestral", "anual"]),
+    dueRule: z.enum(["dia_fixo", "dia_util"]),
+    dueDay: z.number().int().min(1, "Dia de 1 a 31.").max(31, "Dia de 1 a 31.").default(10),
+    businessDay: z.number().int().min(1, "De 1 a 23.").max(23, "De 1 a 23.").default(5),
+    startMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Escolha o mês do primeiro vencimento."),
+    endDate: z.iso.date().nullable().default(null),
+  })
+  .refine((v) => !v.endDate || v.endDate >= `${v.startMonth}-01`, { path: ["endDate"], message: "O término precisa ser depois do início." });
+export type RecurrenceValues = z.input<typeof recurrenceSchema>;
+
+export const categoriesFromTagsSchema = z.object({ scope, kind: z.enum(["receita", "despesa"]), names: z.array(z.string().trim().min(2).max(40)).min(1, "Escolha ao menos uma etiqueta.").max(50) });
+
 export const costCenterSchema = z.object({ id: z.uuid().optional(), name: z.string().trim().min(2, "Informe o nome.").max(80), isActive: z.boolean().default(true) });
 
 export const receivablesSchema = z.object({ contractId: z.uuid(), accountId: z.uuid().nullable(), categoryId: z.uuid().nullable() });

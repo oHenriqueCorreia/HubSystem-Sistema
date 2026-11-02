@@ -26,6 +26,7 @@ export const metadata: Metadata = { title: "Início" };
 
 /** Instante da requisição (o relógio do cliente continua a partir dele). */
 const requestTime = () => new Date().getTime();
+const DAY_MONTH = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
 
 function Panel({ title, icon: Icon, href, children, className }: { title: string; icon?: typeof Flag; href?: string; children: ReactNode; className?: string }) {
   return (
@@ -115,6 +116,7 @@ export default async function InicioPage() {
   const firstName = user.fullName.split(" ")[0];
   const prefs = homePrefs(user);
   const day = todayLocal();
+  const today = day;
   const canTasks = Boolean(user.permissions["tasks.read"]);
   const [overview, myDay, lookups] = await Promise.all([
     getHomeOverview(user),
@@ -129,6 +131,13 @@ export default async function InicioPage() {
   if (o.tasks?.overdue) alerts.push({ text: `${o.tasks.overdue} tarefa(s) atrasada(s)`, href: "/tarefas?periodo=atrasadas", tone: "danger" });
   if (o.commercial?.waiting) alerts.push({ text: `${o.commercial.waiting} lead(s) com contato atrasado`, href: "/crm/leads", tone: "warning" });
   for (const f of o.finance) {
+    const dueToday = f.dueSoon.filter((t) => t.due_date === today);
+    if (dueToday.length)
+      alerts.push({
+        text: `${dueToday.length} conta(s) vencem hoje (${f.scope}): ${formatBRL(dueToday.reduce((s, t) => s + t.amount_cents, 0))}`,
+        href: `/financeiro/${f.scope}/lancamentos`,
+        tone: "warning",
+      });
     if (f.overduePayable) alerts.push({ text: `${formatBRL(f.overduePayable)} em contas vencidas (${f.scope})`, href: `/financeiro/${f.scope}/lancamentos`, tone: "danger" });
     if (f.overdueReceivable) alerts.push({ text: `${formatBRL(f.overdueReceivable)} a receber em atraso (${f.scope})`, href: `/financeiro/${f.scope}/lancamentos`, tone: "warning" });
   }
@@ -227,6 +236,27 @@ export default async function InicioPage() {
                 <Stat label="Pago no mês" value={formatBRL(f.monthOut)} />
               </div>
               <p className="text-xs text-muted-foreground">Saldo realizado no mês: {formatBRL(f.monthIn - f.monthOut)}</p>
+              <div className="grid gap-1.5 border-t pt-2">
+                <h4 className="text-xs font-medium">A pagar nos próximos 7 dias</h4>
+                {f.dueSoon.length ? (
+                  <ul className="grid gap-1 text-sm">
+                    {f.dueSoon.map((t) => (
+                      <li key={t.id} className="flex items-baseline justify-between gap-3">
+                        <span className="min-w-0 truncate">
+                          <span className={cn("tabular mr-2 text-xs", t.due_date === today ? "font-semibold text-danger" : "text-muted-foreground")}>
+                            {t.due_date === today ? "Hoje" : DAY_MONTH.format(new Date(`${t.due_date}T12:00:00Z`))}
+                          </span>
+                          {t.description}
+                          {t.recurrence_id && <span className="sr-only"> (conta fixa)</span>}
+                        </span>
+                        <span className="tabular shrink-0">{formatBRL(t.amount_cents)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nada vence nos próximos 7 dias.</p>
+                )}
+              </div>
             </div>
           ))}
         </div>

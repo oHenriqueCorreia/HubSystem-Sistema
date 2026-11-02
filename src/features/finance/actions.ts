@@ -5,21 +5,32 @@ import { defineAction, must } from "@/lib/actions";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok } from "@/domain/shared/result";
 import { installmentPlan } from "@/domain/finance";
+import { upcomingDueDates } from "@/domain/finance/business-days";
+import { todayLocal } from "@/domain/shared/dates";
 import type { PermissionKey } from "@/domain/permissions";
 import {
   accountSchema,
   adminReadSchema,
+  categoriesFromTagsSchema,
   categorySchema,
   costCenterSchema,
   idSchema,
   paySchema,
   receivablesSchema,
+  recurrenceSchema,
   recurrenceStateSchema,
   reconcileSchema,
   txnFormSchema,
   txnUpdateSchema,
 } from "./schemas";
 import type { FinanceScope } from "./types";
+
+/** Data do primeiro vencimento de uma conta fixa com dia fixo (dia 31 em mês curto vira o último dia). */
+function firstFixedDate(month: string, day: number) {
+  const [y, m] = month.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${month}-${String(Math.min(day, last)).padStart(2, "0")}`;
+}
 
 function revalidateFinance(scope?: FinanceScope) {
   for (const s of scope ? [scope] : (["empresa", "pessoal"] as const)) revalidatePath(`/financeiro/${s}`, "layout");
@@ -265,4 +276,50 @@ export const setRecurrenceState = defineAction({ schema: recurrenceStateSchema }
   if (input.state === "ativa") must(await supabase.rpc("generate_recurrences", { p_until: null }));
   revalidateFinance();
   return ok(null, RECURRENCE_MESSAGE[input.state]);
+});
+
+/** Conta fixa (ex.: mensalidade no 5º dia útil). Gera as ocorrências dos próximos 12 meses. */
+export const createRecurrence = defineAction({ schema: recurrenceSchema }, async (input, { user }) => {
+  if (!(await requireScopePerm(input.scope, "create", user.permissions))) return fail("forbidden", "Você não tem permissão para lançar neste contexto.");
+  const supabase = await createClient();
+  const businessDay = input.dueRule === "dia_util";
+  // Vencimentos que já passaram não são criados: a série começa no próximo a partir de hoje.
+  const first = upcomingDueDates({ startMonth: input.startMonth, frequency: input.frequency, rule: input.dueRule, day: businessDay ? input.businessDay : input.dueDay, count: 16 }).find(
+    (d) => d >= todayLocal(),
+  );
+  if (!first) return fail("validation", "Não há vencimento futuro com essas datas.", { startMonth: ["Escolha um mês a partir de agora."] });
+  must(
+    await supabase.from("financial_recurrences").insert({
+      scope: input.scope,
+      owner_user_id: input.scope === "pessoal" ? user.id : null,
+      frequency: input.frequency,
+      // Dia útil: a série começa no 1º dia do mês do primeiro vencimento; dia fixo: a data define o dia de todos os meses.
+      start_date: businessDay ? `${first.slice(0, 7)}-01` : firstFixedDate(first.slice(0, 7), input.dueDay),
+      end_date: input.endDate,
+      due_rule: input.dueRule,
+      business_day: businessDay ? input.businessDay : null,
+      template: { kind: input.kind, description: input.description, amount_cents: input.amountCents, category_id: input.categoryId ?? "", account_id: input.accountId ?? "" },
+    }),
+  );
+  must(await supabase.rpc("generate_recurrences", { p_until: null }));
+  revalidateFinance(input.scope);
+  revalidatePath("/inicio");
+  return ok(null, "Conta fixa criada. Os próximos vencimentos já aparecem nas contas a pagar e no Início.");
+});
+
+/** Cria tipos (categorias) a partir das etiquetas do sistema. Nomes já existentes são ignorados. */
+export const createCategoriesFromTags = defineAction({ schema: categoriesFromTagsSchema }, async (input, { user }) => {
+  if (!(await requireScopePerm(input.scope, "create", user.permissions))) return fail("forbidden", "Sem permissão.");
+  const supabase = await createClient();
+  const { data: existing } = await supabase.from("financial_categories").select("name").eq("scope", input.scope).eq("kind", input.kind);
+  const taken = new Set(((existing ?? []) as { name: string }[]).map((c) => c.name.toLowerCase()));
+  const fresh = [...new Set(input.names)].filter((n) => !taken.has(n.toLowerCase()));
+  if (fresh.length)
+    must(
+      await supabase
+        .from("financial_categories")
+        .insert(fresh.map((name) => ({ name, kind: input.kind, scope: input.scope, owner_user_id: input.scope === "pessoal" ? user.id : null }))),
+    );
+  revalidateFinance(input.scope);
+  return ok(null, fresh.length ? `${fresh.length} tipo(s) criado(s).` : "Esses tipos já existiam.");
 });
