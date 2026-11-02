@@ -4,7 +4,11 @@ Guia para o responsável técnico do Hub System. Cada integração funciona de f
 
 ## 1. Banco de dados (aplicar as migrations)
 
-Todas as mudanças de estrutura ficam em `supabase/migrations/` e nunca são editadas depois de aplicadas. Escolha **uma** das formas:
+Todas as mudanças de estrutura ficam em `supabase/migrations/` e nunca são editadas depois de aplicadas.
+
+**Automático no deploy:** em produção, a Vercel roda `scripts/vercel-build.mjs`, que aplica as migrations pendentes antes do build. Se uma falhar, o deploy para e a versão atual continua no ar; pré-visualizações não alteram o banco. Exige `SUPABASE_DB_URL` no ambiente Production da Vercel, com a URL do **Session pooler** e os caracteres especiais da senha codificados (`$` vira `%24`, `#` vira `%23`).
+
+Para aplicar à mão, escolha **uma** das formas:
 
 | Forma | Quando usar |
 |---|---|
