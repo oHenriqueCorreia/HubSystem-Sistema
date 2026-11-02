@@ -28,8 +28,10 @@ import {
   type LeadFieldKey,
   type ValidatedRow,
 } from "@/domain/crm/import";
+import { PROSPECTOR_SOURCE } from "@/domain/crm/prospector";
 import { cn } from "cn";
 import { checkExistingLeads, getImportMapping, importLeads, saveImportMapping, undoImport } from "../actions";
+import type { ProspectorImports } from "../queries";
 import { ProspectorPanel } from "./prospector-panel";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -85,7 +87,15 @@ function key(file: string, line: number) {
   return `${file}:${line}`;
 }
 
-export function ImportWizard({ pipelines, source = "file" }: { pipelines: { id: string; name: string }[]; source?: "file" | "prospector" }) {
+export function ImportWizard({
+  pipelines,
+  source = "file",
+  prospector,
+}: {
+  pipelines: { id: string; name: string }[];
+  source?: "file" | "prospector";
+  prospector?: { added: ProspectorImports; segments: { id: string; name: string }[] };
+}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState(0);
@@ -103,7 +113,7 @@ export function ImportWizard({ pipelines, source = "file" }: { pipelines: { id: 
   const headers = files[0]?.headers ?? [];
   const sample = files[0]?.rows.slice(0, 20) ?? [];
 
-  async function onFiles(list: FileList | File[]) {
+  async function onFiles(list: FileList | File[], segment?: string) {
     setError(null);
     const arr = Array.from(list);
     if (!arr.length) return;
@@ -112,7 +122,7 @@ export function ImportWizard({ pipelines, source = "file" }: { pipelines: { id: 
       const sig = headerSignature(parsed[0].headers);
       const mismatch = parsed.find((p) => headerSignature(p.headers) !== sig);
       if (mismatch) throw new Error(`“${mismatch.name}” tem colunas diferentes de “${parsed[0].name}”. Importe arquivos com o mesmo layout juntos.`);
-      setFiles(parsed);
+      setFiles(segment ? parsed.map((p) => ({ ...p, segment })) : parsed);
       let m = suggestMapping(parsed[0].headers);
       const saved = await getImportMapping({ signature: sig });
       if (saved.ok && saved.data) m = saved.data as ColumnMapping;
@@ -204,7 +214,7 @@ export function ImportWizard({ pipelines, source = "file" }: { pipelines: { id: 
             pipelineId,
             mode,
             segmentName: pf.file.segment.trim() || null,
-            rows: chunk,
+            rows: source === "prospector" ? chunk.map((r) => ({ ...r, source: PROSPECTOR_SOURCE })) : chunk,
           });
           if (!res.ok) {
             setError(`${pf.file.name}: ${res.message}`);
@@ -281,7 +291,7 @@ export function ImportWizard({ pipelines, source = "file" }: { pipelines: { id: 
 
       <FormAlert>{error}</FormAlert>
 
-      {step === 0 && source === "prospector" && <ProspectorPanel onFiles={onFiles} />}
+      {step === 0 && source === "prospector" && <ProspectorPanel onFiles={onFiles} pipelines={pipelines} added={prospector?.added ?? {}} segments={prospector?.segments ?? []} />}
 
       {step === 0 && source === "file" && (
         <div

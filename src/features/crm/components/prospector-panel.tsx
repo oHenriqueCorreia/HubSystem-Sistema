@@ -1,19 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, CheckCircle2, ExternalLink, Laptop, LoaderCircle, Play, Power, RotateCcw, Search as SearchIcon, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ExternalLink, Laptop, ListChecks, LoaderCircle, Power, RotateCcw, Search as SearchIcon, UserPlus, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UFS } from "@/domain/crm/import";
+import { prepareProspectorRows, prospectorFileName, prospectorSegment } from "@/domain/crm/prospector";
 import { cn } from "cn";
+import { importLeads } from "../actions";
+import type { ProspectorImports } from "../queries";
 
 const BRIDGE = "http://127.0.0.1:8091";
 const PANEL = "http://127.0.0.1:8090";
 const FORM_KEY = "hub.prospector.location";
+const CHUNK = 1000;
 const STAGES = [
   { key: "docker", label: "Docker" },
   { key: "coletor", label: "Coletor" },
@@ -99,7 +105,19 @@ function plural(count: number, one: string, many: string) {
   return `${count.toLocaleString("pt-BR")} ${count === 1 ? one : many}`;
 }
 
-export function ProspectorPanel({ onFiles }: { onFiles: (files: File[]) => Promise<void> }) {
+export function ProspectorPanel({
+  onFiles,
+  pipelines,
+  added,
+  segments,
+}: {
+  onFiles: (files: File[], segment?: string) => Promise<void>;
+  pipelines: { id: string; name: string }[];
+  added: ProspectorImports;
+  segments: { id: string; name: string }[];
+}) {
+  const router = useRouter();
+  const [pipelineId, setPipelineId] = useState(pipelines[0]?.id ?? "");
   const [connection, setConnection] = useState<Connection>("checking");
   const [status, setStatus] = useState<Status | null>(null);
   const [searches, setSearches] = useState<Search[]>([]);
@@ -230,8 +248,36 @@ export function ProspectorPanel({ onFiles }: { onFiles: (files: File[]) => Promi
   function importSearch(search: Search) {
     void run(`import:${search.id}`, async () => {
       const csv = await (await request(`/buscas/${search.id}/csv`)).blob();
-      const name = search.parametros.nichos.join(" ").replace(/[^\p{L}\p{N} -]/gu, "").slice(0, 70) || "Prospecção";
-      await onFiles([new File([csv], `${name}.csv`, { type: "text/csv" })]);
+      await onFiles([new File([csv], prospectorFileName(search), { type: "text/csv" })], prospectorSegment(search.parametros.nichos));
+    });
+  }
+
+  function addToCrm(search: Search) {
+    void run(`add:${search.id}`, async () => {
+      if (!pipelineId) throw new Error("Crie um funil antes de adicionar os leads.");
+      const csv = await (await request(`/buscas/${search.id}/csv`)).text();
+      const { rows, invalid, duplicates } = prepareProspectorRows(csv);
+      if (!rows.length) throw new Error("Esta busca não tem empresas válidas para adicionar.");
+      let inserted = 0;
+      let skipped = duplicates;
+      let failed = invalid;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const res = await importLeads({
+          fileName: prospectorFileName(search),
+          pipelineId,
+          mode: "skip",
+          segmentName: prospectorSegment(search.parametros.nichos),
+          rows: rows.slice(i, i + CHUNK),
+        });
+        if (!res.ok) throw new Error(inserted ? `${plural(inserted, "lead adicionado", "leads adicionados")} antes do erro: ${res.message}` : res.message);
+        inserted += res.data.inserted;
+        skipped += res.data.skipped;
+        failed += res.data.invalid;
+      }
+      toast.success(
+        [plural(inserted, "lead adicionado ao CRM", "leads adicionados ao CRM"), skipped ? plural(skipped, "já estava", "já estavam") : "", failed ? plural(failed, "com dados inválidos", "com dados inválidos") : ""].filter(Boolean).join(", ") + ".",
+      );
+      router.refresh();
     });
   }
 
@@ -402,9 +448,30 @@ export function ProspectorPanel({ onFiles }: { onFiles: (files: File[]) => Promi
           </form>
 
           <section aria-labelledby="prospectador-buscas" className="grid min-w-0 gap-3 rounded-xl border bg-surface p-4 sm:p-5">
-            <h2 id="prospectador-buscas" className="font-semibold">
-              Buscas neste computador
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              <h2 id="prospectador-buscas" className="font-semibold">
+                Buscas neste computador
+              </h2>
+              {pipelines.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="pros-funil" className="shrink-0 text-sm font-normal text-muted-foreground">
+                    Adicionar no funil
+                  </Label>
+                  <Select value={pipelineId} onValueChange={setPipelineId}>
+                    <SelectTrigger id="pros-funil" className="w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {pipelines.map((pipeline) => (
+                        <SelectItem key={pipeline.id} value={pipeline.id}>
+                          {pipeline.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
             {!status?.panel ? (
               <p className="py-6 text-sm text-muted-foreground">{state === "iniciando" ? "Suas buscas aparecem aqui assim que o painel ligar." : "Ligue o coletor para ver suas buscas."}</p>
             ) : !searches.length ? (
@@ -417,6 +484,9 @@ export function ProspectorPanel({ onFiles }: { onFiles: (files: File[]) => Promi
                     search={search}
                     busy={busy}
                     ready={ready}
+                    added={added[search.id]}
+                    segmentId={segments.find((segment) => plainText(segment.name) === plainText(prospectorSegment(search.parametros.nichos)))?.id}
+                    onAdd={() => addToCrm(search)}
                     onImport={() => importSearch(search)}
                     onCancel={() => void run(`cancel:${search.id}`, async () => void (await request(`/buscas/${search.id}/cancelar`, {})))}
                     onRepeat={() => void run(`repeat:${search.id}`, async () => void (await request(`/buscas/${search.id}/repetir`, {})))}
@@ -486,7 +556,27 @@ function StartupSteps({ stage }: { stage: NonNullable<Status["stage"]> }) {
   );
 }
 
-function SearchRow({ search, busy, ready, onImport, onCancel, onRepeat }: { search: Search; busy: string | null; ready: boolean; onImport: () => void; onCancel: () => void; onRepeat: () => void }) {
+function SearchRow({
+  search,
+  busy,
+  ready,
+  added,
+  segmentId,
+  onAdd,
+  onImport,
+  onCancel,
+  onRepeat,
+}: {
+  search: Search;
+  busy: string | null;
+  ready: boolean;
+  added?: ProspectorImports[string];
+  segmentId?: string;
+  onAdd: () => void;
+  onImport: () => void;
+  onCancel: () => void;
+  onRepeat: () => void;
+}) {
   const { parametros: params, estado, progresso } = search;
   const running = estado === "rodando" || estado === "na_fila";
   const percent = progresso?.total ? Math.round((progresso.atual / progresso.total) * 100) : null;
@@ -514,6 +604,13 @@ function SearchRow({ search, busy, ready, onImport, onCancel, onRepeat }: { sear
                 ))}
               </ul>
             )}
+            {added && (
+              <p className="flex items-center gap-1.5 text-sm font-medium text-success">
+                <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+                {added.inserted ? plural(added.inserted, "lead no CRM", "leads no CRM") : "Empresas já estavam no CRM"}
+                {added.inserted && added.skipped ? `, ${plural(added.skipped, "já estava", "já estavam")}` : ""}
+              </p>
+            )}
           </>
         )}
         {estado === "na_fila" && <p className="text-sm text-muted-foreground tabular">{search.posicao_fila ? `Na fila, posição ${search.posicao_fila}` : "Na fila"}</p>}
@@ -531,10 +628,21 @@ function SearchRow({ search, busy, ready, onImport, onCancel, onRepeat }: { sear
         {Boolean(search.avisos?.length) && <p className="text-xs text-warning break-words">{search.avisos!.join(" ")}</p>}
       </div>
       <div className="flex flex-wrap gap-2 sm:justify-end">
-        {estado === "concluida" && search.total > 0 && (
-          <Button size="sm" onClick={onImport} disabled={Boolean(busy)}>
-            {busy === `import:${search.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Play aria-hidden="true" />}
-            Revisar e importar
+        {estado === "concluida" && search.total > 0 && !added && (
+          <>
+            <Button size="sm" onClick={onAdd} disabled={Boolean(busy)}>
+              {busy === `add:${search.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <UserPlus aria-hidden="true" />}
+              {busy === `add:${search.id}` ? "Adicionando…" : "Adicionar ao CRM"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={onImport} disabled={Boolean(busy)}>
+              {busy === `import:${search.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <ListChecks aria-hidden="true" />}
+              Revisar antes
+            </Button>
+          </>
+        )}
+        {estado === "concluida" && added && (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={segmentId ? `/crm/leads?segmento=${segmentId}` : "/crm/leads"}>Ver leads</Link>
           </Button>
         )}
         {running && (

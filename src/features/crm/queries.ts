@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { PROSPECTOR_SOURCE, searchIdFromFileName } from "@/domain/crm/prospector";
 import type {
   Activity,
   BoardCard,
@@ -218,6 +219,29 @@ export async function getBoard(pipelineId: string, filters: Pick<LeadFilters, "q
   });
   if (filters.etiqueta) cards = cards.filter((c) => c.lead.tags.some((t) => t.id === filters.etiqueta));
   return cards;
+}
+
+export type ProspectorImports = Record<string, { inserted: number; skipped: number }>;
+
+/** Buscas do prospectador já enviadas ao CRM. Importação desfeita volta a ficar disponível. */
+export async function listProspectorImports(): Promise<ProspectorImports> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("imports")
+    .select("file_name, inserted, skipped")
+    .like("file_name", `${PROSPECTOR_SOURCE} %`)
+    .is("undone_at", null)
+    .limit(1000);
+  if (error) throw error;
+  const added: ProspectorImports = {};
+  for (const row of data ?? []) {
+    const id = searchIdFromFileName(row.file_name);
+    if (!id) continue;
+    const total = (added[id] ??= { inserted: 0, skipped: 0 });
+    total.inserted += row.inserted;
+    total.skipped += row.skipped;
+  }
+  return added;
 }
 
 export async function listImports() {

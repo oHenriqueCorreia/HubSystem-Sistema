@@ -128,6 +128,7 @@ export const importRowSchema = z.object({
   gmb_reviews_count: z.number().int().min(0).nullable(),
   notes: z.string().max(10000).nullable(),
   category: z.string().max(120).nullable(),
+  source: z.string().max(80).nullable().optional(),
 });
 
 export const importSchema = z.object({
