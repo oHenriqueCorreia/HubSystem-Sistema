@@ -15,9 +15,13 @@ export function metaAuthUrl(state: string) {
     client_id: process.env.META_APP_ID!,
     redirect_uri: metaRedirectUri(),
     state,
-    scope: META_SCOPES.join(","),
     response_type: "code",
   });
+  // Apps do tipo Empresa usam o "Login do Facebook para Empresas": as permissões e os ativos
+  // vêm da configuração criada no painel da Meta (config_id) em vez do parâmetro scope.
+  const configId = process.env.META_LOGIN_CONFIG_ID;
+  if (configId) q.set("config_id", configId);
+  else q.set("scope", META_SCOPES.join(","));
   return `https://www.facebook.com/${version()}/dialog/oauth?${q.toString()}`;
 }
 

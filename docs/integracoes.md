@@ -47,6 +47,7 @@ Em developers.facebook.com, crie um app do tipo **Empresa** e preencha `META_APP
 1. Adicione o produto **Marketing API** e o **Facebook Login para Empresas**.
 2. URI de redirecionamento OAuth válida: `https://SEU-DOMINIO/api/ads/meta/callback`.
 3. Permissões solicitadas: `ads_read` e `business_management` (somente leitura). Para uso por contas de terceiros, essas permissões passam pela **análise do app** da Meta.
+   - Em **Login do Facebook para Empresas → Configurações**, crie uma configuração do tipo **Token de acesso do usuário** com essas duas permissões e o ativo **Contas de anúncios**, e preencha `META_LOGIN_CONFIG_ID` com o ID dela. Sem essa variável o sistema envia as permissões pelo parâmetro `scope`.
 4. Em **Trabalho → Anúncios → Contas e alertas**, clique em Conectar, escolha as contas que entram nos relatórios e crie alertas de saldo/gasto.
 
 O token da Meta dura cerca de 60 dias; antes de expirar, o sistema avisa na central de notificações para reconectar.
