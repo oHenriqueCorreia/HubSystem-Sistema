@@ -7,19 +7,24 @@ export const META_SCOPES = ["ads_read", "business_management"];
 const version = () => process.env.META_GRAPH_VERSION || "v23.0";
 const graph = (path: string) => `https://graph.facebook.com/${version()}${path}`;
 
-export const metaConfigured = () => Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.TOKEN_ENCRYPTION_KEY && process.env.SUPABASE_SECRET_KEY);
+// Valores colados no painel da Vercel às vezes vêm com espaço, quebra de linha ou aspas.
+const env = (name: string) => (process.env[name] ?? "").trim().replace(/^["']|["']$/g, "");
+const appId = () => env("META_APP_ID");
+const appSecret = () => env("META_APP_SECRET");
+
+export const metaConfigured = () => Boolean(appId() && appSecret() && process.env.TOKEN_ENCRYPTION_KEY && process.env.SUPABASE_SECRET_KEY);
 export const metaRedirectUri = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/ads/meta/callback`;
 
 export function metaAuthUrl(state: string) {
   const q = new URLSearchParams({
-    client_id: process.env.META_APP_ID!,
+    client_id: appId(),
     redirect_uri: metaRedirectUri(),
     state,
     response_type: "code",
   });
   // Apps do tipo Empresa usam o "Login do Facebook para Empresas": as permissões e os ativos
   // vêm da configuração criada no painel da Meta (config_id) em vez do parâmetro scope.
-  const configId = process.env.META_LOGIN_CONFIG_ID;
+  const configId = env("META_LOGIN_CONFIG_ID");
   if (configId) q.set("config_id", configId);
   else q.set("scope", META_SCOPES.join(","));
   return `https://www.facebook.com/${version()}/dialog/oauth?${q.toString()}`;
@@ -44,7 +49,7 @@ async function get<T>(url: string): Promise<T> {
 
 /** Código → token de longa duração (cerca de 60 dias). */
 export async function metaExchangeCode(code: string) {
-  const base = { client_id: process.env.META_APP_ID!, client_secret: process.env.META_APP_SECRET! };
+  const base = { client_id: appId(), client_secret: appSecret() };
   const short = await get<{ access_token: string }>(graph(`/oauth/access_token?${new URLSearchParams({ ...base, redirect_uri: metaRedirectUri(), code })}`));
   const long = await get<{ access_token: string; expires_in?: number }>(
     graph(`/oauth/access_token?${new URLSearchParams({ ...base, grant_type: "fb_exchange_token", fb_exchange_token: short.access_token })}`),
