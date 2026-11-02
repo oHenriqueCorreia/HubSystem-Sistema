@@ -60,6 +60,14 @@ O token da Meta dura cerca de 60 dias; antes de expirar, o sistema avisa na cent
 - **ROAS** depende de valor de conversão configurado na plataforma (valor no pixel/API de Conversões da Meta ou valor nas ações de conversão do Google). Sem isso, aparece “—”.
 - Na primeira sincronização de cada conta são trazidos 90 dias; depois, os últimos 7 (as plataformas ajustam dias recentes).
 
+### Do anúncio à venda (Clique para WhatsApp)
+Quando alguém clica num anúncio "Clique para WhatsApp" da Meta e chama um número conectado em **Atendimento**, a Meta envia na mensagem o anúncio de origem (`referral`). O sistema:
+1. grava a origem (`ad_referrals`) e mostra na conversa “Veio de um anúncio: …”, com link para a campanha;
+2. ao criar o lead pela conversa, preenche a origem como “Anúncio Meta (WhatsApp)”;
+3. em **Anúncios**, mostra conversas, leads, vendas (negócios ganhos no funil depois do contato), valor vendido, custo por conversa, custo por venda e **ROAS real** (valor vendido ÷ investimento), por campanha, conjunto e anúncio. O CSV de campanhas traz as mesmas colunas.
+
+Atribuição pelo primeiro contato: a conversa pertence ao primeiro anúncio que a trouxe. Requisitos: o número de WhatsApp conectado pela Cloud API (seção abaixo) e a conta de anúncio sincronizada (para ligar o ID do anúncio à campanha). O valor de cada venda é o valor do negócio no funil.
+
 ### WhatsApp (Cloud API oficial)
 1. Adicione o produto **WhatsApp** ao app e vincule a conta do WhatsApp Business (WABA) e o número.
 2. Gerenciador de Negócios → Usuários do sistema: crie um usuário do sistema, dê acesso ao app e à WABA e gere um **token permanente** com `whatsapp_business_messaging` e `whatsapp_business_management`.

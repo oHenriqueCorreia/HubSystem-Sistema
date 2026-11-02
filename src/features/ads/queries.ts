@@ -49,12 +49,43 @@ function addRow(t: Totals, r: AggRow) {
   return t;
 }
 
-function sumInto(t: Totals, o: Totals) {
-  for (const k of Object.keys(t) as (keyof Totals)[]) t[k] += o[k];
+function sumInto<T extends Record<string, number>>(t: T, o: T) {
+  for (const k of Object.keys(t) as (keyof T)[]) t[k] = (t[k] + o[k]) as T[keyof T];
   return t;
 }
 
 export const ratio = (num: number, den: number) => (den > 0 ? num / den : null);
+
+/** Do anúncio à venda: conversas de "Clique para WhatsApp", leads e negócios ganhos (valores do CRM). */
+export type CrmTotals = { conversations: number; leads: number; won: number; wonValue: number };
+export const emptyCrm = (): CrmTotals => ({ conversations: 0, leads: 0, won: 0, wonValue: 0 });
+
+type CrmRow = { ad_id: string; campaign_id: string; conversations: number | string; leads: number | string; won: number | string; won_cents: number | string };
+
+function addCrm(t: CrmTotals, r: CrmRow) {
+  t.conversations += Number(r.conversations);
+  t.leads += Number(r.leads);
+  t.won += Number(r.won);
+  t.wonValue += Number(r.won_cents);
+  return t;
+}
+
+function crmBy(rows: CrmRow[], key: "ad_id" | "campaign_id") {
+  const map = new Map<string, CrmTotals>();
+  for (const r of rows) map.set(r[key], addCrm(map.get(r[key]) ?? emptyCrm(), r));
+  return map;
+}
+
+// Dado complementar: se a consulta falhar, o relatório de mídia continua de pé.
+async function crmRows(ids: string[], from: string, to: string, statuses: string[] | null = null) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("ad_report_crm", { p_accounts: ids, p_from: from, p_to: to, p_statuses: statuses });
+  if (error) {
+    console.error("[ads] falha ao ler conversas e vendas dos anúncios", error.code);
+    return [] as CrmRow[];
+  }
+  return (data ?? []) as CrmRow[];
+}
 
 type SeriesRow = AggRow & { bucket: string; provider: Provider };
 
@@ -88,7 +119,14 @@ export type SeriesPoint = Totals & { period: string; meta_spend: number; google_
 export async function getAdsOverview(accounts: AdAccount[], f: AdsFilters, campaignId?: string) {
   const ids = reportAccounts(accounts, f).map((a) => a.id);
   if (!ids.length) return null;
-  const [cur, prev] = await Promise.all([series(ids, f.from, f.to, f, campaignId), series(ids, f.prevFrom, f.prevTo, f, campaignId)]);
+  const statuses = f.status ? STATUS_GROUPS[f.status] : null;
+  const [cur, prev, crmCur, crmPrev] = await Promise.all([
+    series(ids, f.from, f.to, f, campaignId),
+    series(ids, f.prevFrom, f.prevTo, f, campaignId),
+    crmRows(ids, f.from, f.to, statuses),
+    crmRows(ids, f.prevFrom, f.prevTo, statuses),
+  ]);
+  const crmTotal = (rows: CrmRow[]) => rows.filter((r) => !campaignId || r.campaign_id === campaignId).reduce(addCrm, emptyCrm());
 
   const points = new Map<string, SeriesPoint>();
   for (const r of cur) {
@@ -106,6 +144,8 @@ export async function getAdsOverview(accounts: AdAccount[], f: AdsFilters, campa
     byProvider: now.byProvider,
     previousByProvider: before.byProvider,
     series: [...points.values()].sort((a, b) => a.period.localeCompare(b.period)),
+    crm: crmTotal(crmCur),
+    previousCrm: crmTotal(crmPrev),
   };
 }
 
@@ -120,6 +160,7 @@ export type CampaignRow = {
   account: string;
   provider: Provider;
   metrics: Totals;
+  crm: CrmTotals;
 };
 
 /** Campanhas das contas do relatório, com métricas do período, por investimento. */
@@ -129,14 +170,28 @@ export async function getCampaignsReport(accounts: AdAccount[], f: AdsFilters) {
   if (!ids.length) return [];
   const supabase = await createClient();
   const q = supabase.from("ad_campaigns").select("id, account_id, name, status, objective, daily_budget_cents, lifetime_budget_cents").in("account_id", ids);
-  const [campaigns, metrics] = await Promise.all([f.status ? q.in("status", STATUS_GROUPS[f.status]) : q, supabase.rpc("ad_report_campaigns", { p_accounts: ids, p_from: f.from, p_to: f.to })]);
+  const [campaigns, metrics, crm] = await Promise.all([
+    f.status ? q.in("status", STATUS_GROUPS[f.status]) : q,
+    supabase.rpc("ad_report_campaigns", { p_accounts: ids, p_from: f.from, p_to: f.to }),
+    crmRows(ids, f.from, f.to),
+  ]);
   if (campaigns.error) throw campaigns.error;
   if (metrics.error) throw metrics.error;
 
   const byId = new Map(((metrics.data ?? []) as (AggRow & { campaign_id: string })[]).map((m) => [m.campaign_id, addRow(emptyTotals(), m)]));
+  const crmById = crmBy(crm, "campaign_id");
   const acc = new Map(scoped.map((a) => [a.id, a]));
   return (campaigns.data ?? [])
-    .map((c) => ({ ...c, account: acc.get(c.account_id)?.name ?? "", provider: acc.get(c.account_id)!.provider, metrics: byId.get(c.id) ?? emptyTotals() }) as CampaignRow)
+    .map(
+      (c) =>
+        ({
+          ...c,
+          account: acc.get(c.account_id)?.name ?? "",
+          provider: acc.get(c.account_id)!.provider,
+          metrics: byId.get(c.id) ?? emptyTotals(),
+          crm: crmById.get(c.id) ?? emptyCrm(),
+        }) as CampaignRow,
+    )
     .sort((a, b) => b.metrics.spend - a.metrics.spend || a.name.localeCompare(b.name));
 }
 
@@ -156,6 +211,7 @@ export type AdRow = {
   account: string;
   provider: Provider;
   metrics: Totals;
+  crm: CrmTotals;
 };
 
 export type AdSetRow = {
@@ -171,6 +227,7 @@ export type AdSetRow = {
   provider: Provider;
   ads: number;
   metrics: Totals;
+  crm: CrmTotals;
 };
 
 /**
@@ -189,32 +246,35 @@ export async function getAdLevelReport(accounts: AdAccount[], f: AdsFilters, cam
     setsQ = setsQ.eq("campaign_id", campaignId);
     adsQ = adsQ.eq("campaign_id", campaignId);
   }
-  const [sets, ads, metrics] = await Promise.all([setsQ, adsQ, supabase.rpc("ad_report_ads", { p_accounts: ids, p_from: f.from, p_to: f.to })]);
+  const [sets, ads, metrics, crm] = await Promise.all([setsQ, adsQ, supabase.rpc("ad_report_ads", { p_accounts: ids, p_from: f.from, p_to: f.to }), crmRows(ids, f.from, f.to)]);
   for (const r of [sets, ads, metrics]) if (r.error) throw r.error;
 
   const byAd = new Map(((metrics.data ?? []) as (AggRow & { ad_id: string })[]).map((m) => [m.ad_id, addRow(emptyTotals(), m)]));
+  const crmByAd = crmBy(crm, "ad_id");
   const acc = new Map(scoped.map((a) => [a.id, a]));
   const campaignName = (r: { ad_campaigns: unknown }) => (r.ad_campaigns as { name: string } | null)?.name ?? "";
   const statuses = f.status ? new Set(STATUS_GROUPS[f.status]) : null;
 
-  const allAds: AdRow[] = ((ads.data ?? []) as (Omit<AdRow, "campaign" | "account" | "provider" | "metrics"> & { ad_campaigns: unknown })[]).map(({ ad_campaigns, ...a }) => ({
+  const allAds: AdRow[] = ((ads.data ?? []) as (Omit<AdRow, "campaign" | "account" | "provider" | "metrics" | "crm"> & { ad_campaigns: unknown })[]).map(({ ad_campaigns, ...a }) => ({
     ...a,
     campaign: campaignName({ ad_campaigns }),
     account: acc.get(a.account_id)?.name ?? "",
     provider: acc.get(a.account_id)!.provider,
     metrics: byAd.get(a.id) ?? emptyTotals(),
+    crm: crmByAd.get(a.id) ?? emptyCrm(),
   }));
 
-  const perSet = new Map<string, { n: number; t: Totals }>();
+  const perSet = new Map<string, { n: number; t: Totals; crm: CrmTotals }>();
   for (const a of allAds) {
     if (!a.ad_set_id) continue;
-    if (!perSet.has(a.ad_set_id)) perSet.set(a.ad_set_id, { n: 0, t: emptyTotals() });
+    if (!perSet.has(a.ad_set_id)) perSet.set(a.ad_set_id, { n: 0, t: emptyTotals(), crm: emptyCrm() });
     const s = perSet.get(a.ad_set_id)!;
     s.n++;
     sumInto(s.t, a.metrics);
+    sumInto(s.crm, a.crm);
   }
 
-  const adSets: AdSetRow[] = ((sets.data ?? []) as (Omit<AdSetRow, "campaign" | "account" | "provider" | "ads" | "metrics"> & { ad_campaigns: unknown })[])
+  const adSets: AdSetRow[] = ((sets.data ?? []) as (Omit<AdSetRow, "campaign" | "account" | "provider" | "ads" | "metrics" | "crm"> & { ad_campaigns: unknown })[])
     .filter((s) => !statuses || statuses.has(s.status ?? ""))
     .map(({ ad_campaigns, ...s }) => ({
       ...s,
@@ -223,6 +283,7 @@ export async function getAdLevelReport(accounts: AdAccount[], f: AdsFilters, cam
       provider: acc.get(s.account_id)!.provider,
       ads: perSet.get(s.id)?.n ?? 0,
       metrics: perSet.get(s.id)?.t ?? emptyTotals(),
+      crm: perSet.get(s.id)?.crm ?? emptyCrm(),
     }))
     .sort((a, b) => b.metrics.spend - a.metrics.spend || a.name.localeCompare(b.name));
 

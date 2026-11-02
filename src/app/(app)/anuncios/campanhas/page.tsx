@@ -48,6 +48,7 @@ export default async function CampanhasPage({ searchParams }: PageProps<"/anunci
             status: c.status,
             budget: c.daily_budget_cents,
             metrics: c.metrics,
+            crm: c.crm,
             name: <NameCell name={c.name} href={`/anuncios/campanhas/${c.id}?${query}`} provider={c.provider} context={c.account} />,
           }))}
         />

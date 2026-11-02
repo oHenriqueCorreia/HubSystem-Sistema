@@ -6,6 +6,7 @@ import { getAdsOverview, getAdsSetup, getCampaignsReport, reportAccounts } from 
 import { filtersQuery, parseAdsFilters } from "@/features/ads/filters";
 import { AdsFilterBar } from "@/features/ads/components/ads-filter-bar";
 import { PlatformCompare } from "@/features/ads/components/platform-compare";
+import { CrmFunnel } from "@/features/ads/components/crm-funnel";
 import { EfficiencyGrid, KpiGrid, MetricsTable, MixedCurrencyAlert, NameCell, NoAccounts, reportCurrency } from "@/features/ads/components/report";
 
 export const metadata: Metadata = { title: "Anúncios" };
@@ -22,6 +23,7 @@ export default async function AnunciosPage({ searchParams }: PageProps<"/anuncio
   const { currency, mixed } = reportCurrency(accounts, filters);
   const scoped = reportAccounts(accounts, filters);
   const bothPlatforms = new Set(scoped.map((a) => a.provider)).size > 1;
+  const withMeta = scoped.some((a) => a.provider === "meta_ads");
 
   return (
     <>
@@ -33,6 +35,7 @@ export default async function AnunciosPage({ searchParams }: PageProps<"/anuncio
         <>
           <KpiGrid totals={overview.totals} previous={overview.previous} />
           <EfficiencyGrid totals={overview.totals} currency={currency} />
+          {withMeta && <CrmFunnel crm={overview.crm} previous={overview.previousCrm} spend={overview.byProvider.meta_ads.spend} currency={currency} />}
 
           <ChartFigure
             title={`Investimento por ${GROUP_LABEL[filters.group]}`}
@@ -88,6 +91,7 @@ export default async function AnunciosPage({ searchParams }: PageProps<"/anuncio
                 key: c.id,
                 status: c.status,
                 metrics: c.metrics,
+                crm: c.crm,
                 name: <NameCell name={c.name} href={`/anuncios/campanhas/${c.id}?${filtersQuery(filters)}`} provider={c.provider} context={c.account} />,
               }))}
             />

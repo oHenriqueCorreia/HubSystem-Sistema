@@ -88,6 +88,35 @@ export async function getConversation(id: string) {
     lead: (lead ?? null) as { id: string; name: string; contact_opt_out_at: string | null; whatsapp_consent_at: string | null; owner_id: string | null } | null,
     tagIds: ((conv.data.conversation_tags as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id),
     messages: ((msgs.data ?? []) as Message[]).reverse(),
+    origin: await getConversationOrigin(id),
+  };
+}
+
+export type ConversationOrigin = { kind: "ad" | "post" | "outro"; title: string; campaignId: string | null; campaignName: string | null; url: string | null; at: string };
+
+/** Primeiro anúncio ou publicação que trouxe a conversa (Clique para WhatsApp). Complementar: sem dados, devolve null. */
+async function getConversationOrigin(conversationId: string): Promise<ConversationOrigin | null> {
+  const supabase = await createClient();
+  const { data: ref } = await supabase
+    .from("ad_referrals")
+    .select("source_type, source_id, source_url, headline, created_at")
+    .eq("conversation_id", conversationId)
+    .order("created_at")
+    .limit(1)
+    .maybeSingle();
+  if (!ref) return null;
+  // O nome do anúncio e a campanha só aparecem para quem pode ver Anúncios (RLS).
+  const { data: ad } = ref.source_id
+    ? await supabase.from("ads").select("name, campaign_id, ad_campaigns(name)").eq("external_id", ref.source_id).limit(1).maybeSingle()
+    : { data: null };
+  const campaign = ad ? ((Array.isArray(ad.ad_campaigns) ? ad.ad_campaigns[0] : ad.ad_campaigns) as { name: string } | null) : null;
+  return {
+    kind: ref.source_type as ConversationOrigin["kind"],
+    title: ad?.name ?? ref.headline ?? (ref.source_type === "post" ? "Publicação da Meta" : "Anúncio da Meta"),
+    campaignId: ad?.campaign_id ?? null,
+    campaignName: campaign?.name ?? null,
+    url: ref.source_url,
+    at: ref.created_at,
   };
 }
 

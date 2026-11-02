@@ -301,6 +301,7 @@ export const createLeadFromConversation = defineAction(
       return ok({ id: existing.id }, `Já existia o lead “${existing.name}” com este telefone. A conversa foi vinculada a ele.`);
     }
     const owner = conv.assignee_id ?? user.id;
+    const { data: fromAd } = await supabase.from("ad_referrals").select("source_type").eq("conversation_id", conv.id).order("created_at").limit(1).maybeSingle();
     const lead = must(
       await supabase
         .from("leads")
@@ -310,7 +311,7 @@ export const createLeadFromConversation = defineAction(
           email: input.email || null,
           phone_e164: conv.contact_e164,
           whatsapp_e164: conv.contact_e164,
-          source: "WhatsApp",
+          source: fromAd ? (fromAd.source_type === "post" ? "Publicação Meta (WhatsApp)" : "Anúncio Meta (WhatsApp)") : "WhatsApp",
           notes: input.notes || null,
           owner_id: owner,
           whatsapp_consent_at: input.consent ? new Date().toISOString() : null,
@@ -321,7 +322,7 @@ export const createLeadFromConversation = defineAction(
     const stage = must(await supabase.from("stages").select("id").eq("pipeline_id", input.pipelineId).eq("kind", "open").is("archived_at", null).order("position").limit(1).single()) as { id: string };
     must(await supabase.from("deals").insert({ lead_id: lead.id, pipeline_id: input.pipelineId, stage_id: stage.id, owner_id: owner, position: Date.now() / 1000 }));
     must(await supabase.from("conversations").update({ lead_id: lead.id }).eq("id", conv.id));
-    must(await supabase.from("activities").insert({ lead_id: lead.id, type: "sistema", content: "Lead criado a partir de conversa do WhatsApp" }));
+    must(await supabase.from("activities").insert({ lead_id: lead.id, type: "sistema", content: fromAd ? "Lead criado a partir de conversa do WhatsApp iniciada por anúncio da Meta" : "Lead criado a partir de conversa do WhatsApp" }));
     revalidatePath("/crm", "layout");
     done(conv.id);
     return ok({ id: lead.id }, "Lead criado e vinculado à conversa.");

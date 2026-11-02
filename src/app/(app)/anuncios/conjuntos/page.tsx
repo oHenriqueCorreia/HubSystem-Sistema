@@ -38,6 +38,7 @@ export default async function ConjuntosPage({ searchParams }: PageProps<"/anunci
             status: s.status,
             budget: s.daily_budget_cents,
             metrics: s.metrics,
+            crm: s.crm,
             name: (
               <NameCell
                 name={s.name}

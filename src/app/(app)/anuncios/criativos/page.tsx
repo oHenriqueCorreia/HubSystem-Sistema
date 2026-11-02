@@ -60,6 +60,7 @@ export default async function CriativosPage({ searchParams }: PageProps<"/anunci
               key: a.id,
               status: a.status,
               metrics: a.metrics,
+              crm: a.crm,
               name: <NameCell name={a.name} href={`/anuncios/campanhas/${a.campaign_id}?${query}`} provider={a.provider} context={a.campaign} />,
             }))}
           />

@@ -13,6 +13,7 @@ import { filtersQuery, parseAdsFilters, PROVIDER_NAME } from "@/features/ads/fil
 import { formatMoney } from "@/features/ads/format";
 import { AdCard } from "@/features/ads/components/ad-card";
 import { EfficiencyGrid, KpiGrid, MetricsTable, StatusText } from "@/features/ads/components/report";
+import { CrmFunnel } from "@/features/ads/components/crm-funnel";
 
 export const metadata: Metadata = { title: "Campanha · Anúncios" };
 
@@ -120,6 +121,7 @@ export default async function CampanhaPage({ params, searchParams }: PageProps<"
         <>
           <KpiGrid totals={overview.totals} previous={overview.previous} />
           <EfficiencyGrid totals={overview.totals} currency={account.currency} />
+          {account.provider === "meta_ads" && <CrmFunnel crm={overview.crm} previous={overview.previousCrm} spend={overview.totals.spend} currency={account.currency} />}
           <ChartFigure
             title={`Investimento por ${GROUP_LABEL[filters.group]}`}
             description="Valores informados pela plataforma."
@@ -157,6 +159,7 @@ export default async function CampanhaPage({ params, searchParams }: PageProps<"
                 status: s.status,
                 budget: s.daily_budget_cents,
                 metrics: s.metrics,
+                crm: s.crm,
                 name: (
                   <div className="grid gap-0.5">
                     <a href={`#conjunto-${s.id}`} className="font-medium break-words hover:underline">

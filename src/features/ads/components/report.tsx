@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Kpi } from "@/features/dashboards/components/kpi";
 import { formatInt, formatMoney, formatPct, formatRoas } from "../format";
 import { PROVIDER_NAME, STATUS_GROUPS, STATUS_LABEL, type AdsFilters, type Provider } from "../filters";
-import { ratio, reportAccounts, type AdAccount, type Totals } from "../queries";
+import { ratio, reportAccounts, type AdAccount, type CrmTotals, type Totals } from "../queries";
 
 /** Moeda dos valores exibidos; avisa quando as contas misturam moedas. */
 export function reportCurrency(accounts: AdAccount[], f: AdsFilters) {
@@ -115,12 +115,13 @@ export function NameCell({ name, href, provider, context }: { name: string; href
   );
 }
 
-export type MetricsRow ={ key: string; name: ReactNode; status: string | null; budget?: number | null; metrics: Totals };
+export type MetricsRow = { key: string; name: ReactNode; status: string | null; budget?: number | null; metrics: Totals; crm?: CrmTotals };
 
-/** Tabela de métricas comum a campanhas, conjuntos e anúncios. */
+/** Tabela de métricas comum a campanhas, conjuntos e anúncios. As colunas do CRM só aparecem quando há conversas vindas de anúncios. */
 export function MetricsTable({ label, rows, currency, budgetLabel, empty }: { label: string; rows: MetricsRow[]; currency: string; budgetLabel?: string; empty: string }) {
   const money = (c: number) => formatMoney(c, currency);
   if (!rows.length) return <p className="rounded-xl border border-dashed bg-surface px-4 py-6 text-sm text-muted-foreground">{empty}</p>;
+  const withCrm = rows.some((r) => (r.crm?.conversations ?? 0) > 0);
   return (
     <div className="overflow-x-auto rounded-xl border bg-surface">
       <Table aria-label={label}>
@@ -137,6 +138,14 @@ export function MetricsTable({ label, rows, currency, budgetLabel, empty }: { la
             <TableHead className="text-right">Conversões</TableHead>
             <TableHead className="text-right">Custo/conv.</TableHead>
             <TableHead className="text-right">ROAS</TableHead>
+            {withCrm && (
+              <>
+                <TableHead className="text-right">Conversas</TableHead>
+                <TableHead className="text-right">Vendas</TableHead>
+                <TableHead className="text-right">Valor vendido</TableHead>
+                <TableHead className="text-right">ROAS real</TableHead>
+              </>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -157,6 +166,14 @@ export function MetricsTable({ label, rows, currency, budgetLabel, empty }: { la
                 <TableCell className="tabular text-right">{m.conversions.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</TableCell>
                 <TableCell className="tabular text-right">{m.conversions ? money(m.spend / m.conversions) : "—"}</TableCell>
                 <TableCell className="tabular text-right">{formatRoas(m.conversionValue, m.spend)}</TableCell>
+                {withCrm && (
+                  <>
+                    <TableCell className="tabular text-right">{formatInt(r.crm?.conversations ?? 0)}</TableCell>
+                    <TableCell className="tabular text-right">{formatInt(r.crm?.won ?? 0)}</TableCell>
+                    <TableCell className="tabular text-right">{r.crm?.wonValue ? formatMoney(r.crm.wonValue) : "—"}</TableCell>
+                    <TableCell className="tabular text-right">{currency === "BRL" ? formatRoas(r.crm?.wonValue ?? 0, m.spend) : "—"}</TableCell>
+                  </>
+                )}
               </TableRow>
             );
           })}

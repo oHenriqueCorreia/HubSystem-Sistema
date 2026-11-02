@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   const filters = parseAdsFilters({ ...Object.fromEntries(q), periodo: "custom", de: from, ate: to });
   const { accounts } = await getAdsSetup();
   const campaigns = await getCampaignsReport(accounts, filters);
-  const header = ["Plataforma", "Conta", "Campanha", "Status", "Investimento", "Impressões", "Cliques", "Conversões", "Valor das conversões", "ROAS"];
+  const header = ["Plataforma", "Conta", "Campanha", "Status", "Investimento", "Impressões", "Cliques", "Conversões", "Valor das conversões", "ROAS", "Conversas no WhatsApp", "Leads", "Vendas", "Valor vendido", "ROAS real"];
   const lines = campaigns.map((c) =>
     [
       PROVIDER_NAME[c.provider],
@@ -37,6 +37,11 @@ export async function GET(request: NextRequest) {
       c.metrics.conversions.toFixed(1).replace(".", ","),
       decimal(c.metrics.conversionValue),
       c.metrics.spend && c.metrics.conversionValue ? (c.metrics.conversionValue / c.metrics.spend).toFixed(2).replace(".", ",") : "",
+      c.crm.conversations,
+      c.crm.leads,
+      c.crm.won,
+      decimal(c.crm.wonValue),
+      c.metrics.spend && c.crm.wonValue ? (c.crm.wonValue / c.metrics.spend).toFixed(2).replace(".", ",") : "",
     ]
       .map(cell)
       .join(";"),

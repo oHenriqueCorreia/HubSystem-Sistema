@@ -30,7 +30,11 @@ type WaMessage = {
   audio?: { id: string; mime_type: string };
   video?: { id: string; mime_type: string; caption?: string };
   sticker?: { id: string; mime_type: string };
+  // Presente na primeira mensagem de quem clicou num anúncio "Clique para WhatsApp".
+  referral?: { source_type?: unknown; source_id?: unknown; source_url?: unknown; headline?: unknown; body?: unknown; ctwa_clid?: unknown };
 };
+
+const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 type WaStatus = { id: string; status: "sent" | "delivered" | "read" | "failed"; errors?: { title?: string; message?: string }[] };
 type WaValue = { metadata?: { phone_number_id: string }; contacts?: { wa_id: string; profile?: { name?: string } }[]; messages?: WaMessage[]; statuses?: WaStatus[] };
 
@@ -71,7 +75,7 @@ export async function POST(request: NextRequest) {
         const media = m.image ?? m.document ?? m.audio ?? m.video ?? m.sticker;
         const body = m.text?.body ?? m.button?.text ?? m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? m.image?.caption ?? m.document?.caption ?? m.video?.caption ?? null;
         const name = v.contacts?.find((c) => c.wa_id === m.from)?.profile?.name ?? "";
-        const { error } = await admin.rpc("whatsapp_receive", {
+        const { data: messageId, error } = await admin.rpc("whatsapp_receive", {
           p_number: number.id,
           p_from: from,
           p_variants: brPhoneVariants(from),
@@ -86,6 +90,20 @@ export async function POST(request: NextRequest) {
           p_opt_out: isOptOut(body),
         });
         if (error) console.error("[whatsapp-webhook] falha ao gravar mensagem", error.code);
+        // Origem no anúncio (o banco valida formato e tamanho). messageId nulo = reentrega já processada.
+        if (m.referral && messageId) {
+          const r = m.referral;
+          const { error: refError } = await admin.rpc("whatsapp_referral", {
+            p_message: messageId,
+            p_source_type: str(r.source_type),
+            p_source_id: str(r.source_id),
+            p_source_url: str(r.source_url),
+            p_headline: str(r.headline),
+            p_body: str(r.body),
+            p_ctwa_clid: str(r.ctwa_clid),
+          });
+          if (refError) console.error("[whatsapp-webhook] falha ao gravar origem do anúncio", refError.code);
+        }
       }
 
       for (const s of v.statuses ?? []) {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Ban, Check, CheckCheck, Clock, FileText, LoaderCircle, Lock, Send, Star, TriangleAlert, UserPlus } from "lucide-react";
+import { ArrowLeft, Ban, Check, CheckCheck, Clock, FileText, LoaderCircle, Lock, Megaphone, Send, Star, TriangleAlert, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import {
   setConversationTags,
   toggleImportant,
 } from "../actions";
-import type { Message } from "../queries";
+import type { ConversationOrigin, Message } from "../queries";
 
 type Owner = { id: string; full_name: string; email: string };
 type Template = { id: string; name: string; language: string; status: string; components: { type: string; text?: string }[] };
@@ -42,6 +42,7 @@ type Conversation = {
   lead: { id: string; name: string; contact_opt_out_at: string | null } | null;
   tagIds: string[];
   messages: Message[];
+  origin: ConversationOrigin | null;
 };
 
 const time = (iso: string) => new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(iso));
@@ -161,6 +162,21 @@ export function ConversationView({
         )}
         {!conversation.lead && canCreateLead && <CreateLeadDialog conversationId={conversation.id} defaultName={conversation.contact_name} pipelines={pipelines} />}
       </header>
+      {conversation.origin && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/30 px-3 py-2 text-xs">
+          <Megaphone className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="text-muted-foreground">{conversation.origin.kind === "post" ? "Veio de uma publicação:" : "Veio de um anúncio:"}</span>
+          {conversation.origin.campaignId ? (
+            <Link href={`/anuncios/campanhas/${conversation.origin.campaignId}`} className="min-w-0 font-medium break-words text-primary hover:underline">
+              {conversation.origin.title}
+            </Link>
+          ) : (
+            <span className="min-w-0 font-medium break-words">{conversation.origin.title}</span>
+          )}
+          {conversation.origin.campaignName && <span className="min-w-0 break-words text-muted-foreground">Campanha {conversation.origin.campaignName}</span>}
+          <span className="text-muted-foreground">em {formatDateTime(conversation.origin.at)}</span>
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <TagPicker
           value={tagIds}

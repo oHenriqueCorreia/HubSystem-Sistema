@@ -76,6 +76,17 @@ export function AdCard({ ad, currency, showCampaign = true }: { ad: AdRow; curre
             <dd className="tabular">{formatRoas(m.conversionValue, m.spend)}</dd>
           </div>
         </dl>
+        {ad.crm.conversations > 0 && (
+          <p className="flex flex-wrap gap-x-3 gap-y-1 rounded-lg bg-muted/40 px-2.5 py-2 text-xs">
+            <span>
+              <strong className="tabular font-semibold">{formatInt(ad.crm.conversations)}</strong> {ad.crm.conversations === 1 ? "conversa" : "conversas"}
+            </span>
+            <span>
+              <strong className="tabular font-semibold">{formatInt(ad.crm.won)}</strong> {ad.crm.won === 1 ? "venda" : "vendas"}
+            </span>
+            {ad.crm.wonValue > 0 && <strong className="tabular font-semibold">{formatMoney(ad.crm.wonValue)}</strong>}
+          </p>
+        )}
         {ad.link_url && (
           <a href={ad.link_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 justify-self-start text-xs font-medium text-primary hover:underline">
             {ad.provider === "meta_ads" ? "Ver prévia na Meta" : "Abrir página de destino"}
