@@ -25,7 +25,7 @@ export function metaAuthUrl(state: string) {
   return `https://www.facebook.com/${version()}/dialog/oauth?${q.toString()}`;
 }
 
-type GraphError = { error?: { message: string; code: number; error_subcode?: number } };
+type GraphError = { error?: { message: string; type?: string; code: number; error_subcode?: number } };
 
 async function get<T>(url: string): Promise<T> {
   for (let attempt = 0; ; attempt++) {
@@ -36,7 +36,8 @@ async function get<T>(url: string): Promise<T> {
       await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
       continue;
     }
-    if (!res.ok || data.error) throw Object.assign(new Error("meta_api"), { code: data.error?.code, subcode: data.error?.error_subcode });
+    if (!res.ok || data.error)
+      throw Object.assign(new Error("meta_api"), { code: data.error?.code, subcode: data.error?.error_subcode, detail: `${data.error?.type ?? res.status}: ${data.error?.message ?? ""}`.slice(0, 300) });
     return data;
   }
 }

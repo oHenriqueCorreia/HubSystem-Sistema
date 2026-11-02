@@ -34,8 +34,10 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
     await syncAds(user.organizationId, "meta_ads").catch(() => null);
     return back("conectado=meta");
-  } catch {
-    console.error("[meta-oauth] falha na conexão");
+  } catch (e) {
+    // Código e mensagem da Meta (sem token) para diagnosticar pelo log da Vercel.
+    const err = e as { code?: number; subcode?: number; detail?: string; message?: string };
+    console.error("[meta-oauth] falha na conexão", { code: err.code, subcode: err.subcode, detail: err.detail ?? err.message });
     return back("erro=falha");
   }
 }
