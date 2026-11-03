@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { ContentStatus } from "@/domain/content";
+import type { ContentFormat, ContentStatus } from "@/domain/content";
 
 const one = <T,>(v: T | T[] | null | undefined) => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
 
@@ -12,7 +12,7 @@ function clientOption(raw: unknown): { id: string; legal_name: string } | null {
   return { id: c.id, legal_name: c.legal_name || one(c.lead as { name?: string } | null)?.name || "Cliente" };
 }
 
-export type ContentAsset = { id: string; kind: "imagem" | "video_drive"; file_name: string | null; drive_url: string | null; drive_file_id: string | null; drive_status: string | null; position: number; url: string | null };
+export type ContentAsset = { id: string; kind: "imagem" | "video_drive" | "video_arquivo"; file_name: string | null; drive_url: string | null; drive_file_id: string | null; drive_status: string | null; position: number; url: string | null };
 export type ContentCard = { id: string; status: ContentStatus; caption: string; updated_at: string; task: { id: string; title: string; due_at: string | null; owner_id: string | null } | null; client: { id: string; legal_name: string } | null; board: string | null; list: string | null };
 
 const CARD = "id, status, caption, updated_at, client:clients(id, legal_name, lead:leads(name)), task:tasks!inner(id, title, due_at, owner_id, deleted_at, list:task_columns(name, board:task_boards(name)))";
@@ -42,7 +42,7 @@ export async function listContent(filter: { status?: string; client?: string }) 
   return ((data ?? []) as Record<string, unknown>[]).map(toCard);
 }
 
-export type SocialAccount = { id: string; platform: "facebook" | "instagram"; external_id: string; name: string; username: string | null; status: string; selected: boolean; last_error: string | null };
+export type SocialAccount = { id: string; platform: "facebook" | "instagram"; external_id: string; name: string; username: string | null; status: string; selected: boolean; last_error: string | null; picture_url: string | null; picture_checked_at: string | null };
 
 export async function getSocialSetup() {
   const supabase = await createClient();
@@ -53,14 +53,14 @@ export async function getSocialSetup() {
   };
 }
 
-export type ScheduleRow = { id: string; content_id: string; account_id: string; scheduled_at: string; status: string; permalink: string | null; error: string | null; published_at: string | null; account: { name: string; platform: string; username: string | null } | null; title: string };
+export type ScheduleRow = { id: string; content_id: string; account_id: string; scheduled_at: string; status: string; permalink: string | null; error: string | null; published_at: string | null; account: { name: string; platform: string; username: string | null; picture_url: string | null } | null; title: string; caption: string; format: ContentFormat; thumb: string | null };
 
 /** Calendário de conteúdo: publicações de um período. */
 export async function listSchedules(fromIso: string, toIso: string) {
   const supabase = await createClient();
   const { data: rows, error } = await supabase
     .from("content_schedules")
-    .select("id, content_id, account_id, scheduled_at, status, permalink, error, published_at, content:content_items(task:tasks(title))")
+    .select("id, content_id, account_id, scheduled_at, status, permalink, error, published_at, content:content_items(caption, format, task:tasks(title), content_assets(kind, storage_path, position))")
     .gte("scheduled_at", fromIso)
     .lt("scheduled_at", toIso)
     .neq("status", "cancelado")
@@ -68,11 +68,19 @@ export async function listSchedules(fromIso: string, toIso: string) {
     .limit(500);
   if (error) throw error;
   const { accounts } = await getSocialSetup();
-  return ((rows ?? []) as Record<string, unknown>[]).map((r) => {
+  type Raw = { caption: string; format: ContentFormat; task: unknown; content_assets: { kind: string; storage_path: string | null; position: number }[] };
+  const list = (rows ?? []) as Record<string, unknown>[];
+  const firstImage = (c: Raw | null) => c?.content_assets.filter((x) => x.kind === "imagem" && x.storage_path).sort((a, b) => a.position - b.position)[0]?.storage_path ?? null;
+  const paths = [...new Set(list.map((r) => firstImage(one(r.content as Raw | null))).filter(Boolean))] as string[];
+  // A RLS já confirmou o acesso: as miniaturas usam links temporários.
+  const signed = paths.length ? await createAdminClient().storage.from("content-media").createSignedUrls(paths, 3600) : { data: [] };
+  const thumbs = new Map((signed.data ?? []).map((x) => [x.path, x.signedUrl]));
+  return list.map((r) => {
     const a = accounts.find((x) => x.id === r.account_id);
-    const content = one(r.content as { task: unknown } | null);
+    const content = one(r.content as Raw | null);
     const task = content ? one(content.task as { title: string } | null) : null;
-    return { ...(r as unknown as ScheduleRow), account: a ? { name: a.name, platform: a.platform, username: a.username } : null, title: task?.title ?? "Conteúdo" };
+    const image = firstImage(content);
+    return { ...(r as unknown as ScheduleRow), account: a ? { name: a.name, platform: a.platform, username: a.username, picture_url: a.picture_url } : null, title: task?.title ?? "Conteúdo", caption: content?.caption ?? "", format: content?.format ?? "post", thumb: image ? (thumbs.get(image) ?? null) : null };
   });
 }
 
@@ -88,7 +96,7 @@ export async function getContent(id: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("content_items")
-    .select("id, status, caption, version, approved_version, last_error, ad_campaign_id, updated_at, client:clients(id, legal_name, lead:leads(name)), campaign:ad_campaigns(id, name), task:tasks(id, title, due_at, has_time, owner_id, description, list:task_columns(name, board:task_boards(id, name)))")
+    .select("id, status, format, caption, version, approved_version, last_error, ad_campaign_id, updated_at, client:clients(id, legal_name, lead:leads(name)), campaign:ad_campaigns(id, name), task:tasks(id, title, due_at, has_time, owner_id, description, list:task_columns(name, board:task_boards(id, name)))")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -107,6 +115,7 @@ export async function getContent(id: string) {
   return {
     id: r.id as string,
     status: r.status as ContentStatus,
+    format: r.format as ContentFormat,
     caption: r.caption as string,
     version: r.version as number,
     approved_version: r.approved_version as number | null,

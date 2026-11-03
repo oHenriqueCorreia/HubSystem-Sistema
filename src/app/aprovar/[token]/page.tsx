@@ -16,6 +16,7 @@ export default async function AprovarPage({ params }: { params: Promise<{ token:
   if (!review) notFound();
   const images = review.assets.filter((a) => a.kind === "imagem" && a.url);
   const videos = review.assets.filter((a) => a.kind === "video_drive");
+  const files = review.assets.filter((a) => a.kind === "video_arquivo" && a.url);
 
   return (
     <main className="mx-auto grid max-w-2xl gap-6 px-4 py-8">
@@ -34,6 +35,9 @@ export default async function AprovarPage({ params }: { params: Promise<{ token:
           ))}
         </ul>
       )}
+      {files.map((v) => (
+        <video key={v.id} controls preload="metadata" src={v.url!} className="max-h-[70dvh] w-full rounded-lg border bg-black" />
+      ))}
       {videos.map((v) => (
         <div key={v.id} className="grid gap-1">
           <iframe src={drivePreviewUrl(v.drive_file_id!)} title="Vídeo do conteúdo" allow="autoplay" className="aspect-video w-full rounded-lg border" />

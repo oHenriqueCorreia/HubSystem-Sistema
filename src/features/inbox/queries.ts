@@ -13,6 +13,8 @@ export type ConversationListItem = {
   assignee_id: string | null;
   lead: { id: string; name: string } | null;
   tags: { id: string; name: string; color: string }[];
+  number_id: string;
+  preview: { direction: string; type: string; body: string | null; media_name: string | null; status: string } | null;
 };
 
 export type InboxFilters = { q?: string; status?: "abertas" | "aguardando" | "encerradas" | "todas"; responsavel?: string; etiqueta?: string; numero?: string; de?: string; ate?: string };
@@ -22,7 +24,7 @@ const PAGE = 50;
 /** Conversas paginadas (mais recentes primeiro), nunca todas de uma vez. */
 export async function listConversations(f: InboxFilters, userId: string, page = 0) {
   const supabase = await createClient();
-  const cols = `id, contact_e164, contact_name, status, waiting_reply, unread_count, last_message_at, last_inbound_at, assignee_id,
+  const cols = `id, number_id, contact_e164, contact_name, status, waiting_reply, unread_count, last_message_at, last_inbound_at, assignee_id,
     lead:leads(id, name), conversation_tags(tag:tags(id, name, color))${f.etiqueta ? ", tag_filter:conversation_tags!inner(tag_id)" : ""}`;
   let q = supabase.from("conversations").select(cols, { count: "exact" });
   const status = f.status ?? "abertas";
@@ -51,7 +53,10 @@ export async function listConversations(f: InboxFilters, userId: string, page = 
     lead: one(r.lead as ConversationListItem["lead"] | ConversationListItem["lead"][]),
     tags: ((r.conversation_tags as { tag: ConversationListItem["tags"][number] | null }[] | null) ?? []).flatMap((t) => (t.tag ? [t.tag] : [])),
   }));
-  return { items, total: count ?? items.length, hasMore: (count ?? 0) > (page + 1) * PAGE };
+  // Última mensagem de cada conversa, para a lista mostrar como no WhatsApp.
+  const { data: previews } = items.length ? await supabase.rpc("conversation_previews", { p_ids: items.map((i) => i.id) }) : { data: [] };
+  const byId = new Map(((previews ?? []) as (NonNullable<ConversationListItem["preview"]> & { conversation_id: string })[]).map((p) => [p.conversation_id, p]));
+  return { items: items.map((i) => ({ ...i, preview: byId.get(i.id) ?? null })), total: count ?? items.length, hasMore: (count ?? 0) > (page + 1) * PAGE };
 }
 
 export type Message = {
@@ -67,6 +72,9 @@ export type Message = {
   author_id: string | null;
   important: boolean;
   created_at: string;
+  wamid: string | null;
+  client_ref: string | null;
+  reply_to_wamid: string | null;
 };
 
 export async function getConversation(id: string) {
@@ -78,7 +86,7 @@ export async function getConversation(id: string) {
       .eq("id", id)
       .maybeSingle(),
     // Últimas 200 mensagens (o suficiente para o atendimento; o histórico completo fica no banco).
-    supabase.from("messages").select("id, direction, type, body, media_id, media_mime, media_name, status, error, author_id, important, created_at").eq("conversation_id", id).order("created_at", { ascending: false }).limit(200),
+    supabase.from("messages").select("id, direction, type, body, media_id, media_mime, media_name, status, error, author_id, important, created_at, wamid, client_ref, reply_to_wamid").eq("conversation_id", id).order("created_at", { ascending: false }).limit(200),
   ]);
   if (conv.error) throw conv.error;
   if (!conv.data) return null;

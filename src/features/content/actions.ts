@@ -12,7 +12,9 @@ import { clientIp, withinRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit"
 import { socialRevoke } from "@/lib/meta-social";
 import { zonedIso } from "@/domain/calendar";
 import { fail, ok } from "@/domain/shared/result";
-import { driveFileId, publishProblem, type SchedulePlatform } from "@/domain/content";
+import { after } from "next/server";
+import { driveFileId, formatProblem, MAX_VIDEO_BYTES, publishProblem, VIDEO_TYPES, type ContentFormat, type SchedulePlatform } from "@/domain/content";
+import { socialListAccounts } from "@/lib/meta-social";
 
 const LINK_DAYS = 14;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -60,6 +62,100 @@ export const createContentTask = defineAction(
     return ok({ id }, "Tarefa de produção criada.");
   },
 );
+
+/** Rascunho do Estúdio: a tarefa nasce no quadro principal, com o horário como prazo. */
+export const createStudioDraft = defineAction(
+  {
+    schema: z.object({
+      format: z.enum(["post", "video", "reels"]),
+      title: z.string().trim().min(1, "Dê um nome à publicação.").max(200),
+      caption: z.string().max(2200, "A legenda aceita até 2.200 caracteres.").default(""),
+      clientId: z.uuid().nullable().default(null),
+      date: z.iso.date().nullable().default(null),
+      time: z.string().regex(/^\d{2}:\d{2}$/).nullable().default(null),
+    }),
+    permission: "content.manage",
+  },
+  async (input, { user }) => {
+    if (!user.permissions["tasks.create"]) return fail("forbidden", "Você não tem permissão para criar tarefas.");
+    const supabase = await createClient();
+    const { data: board } = await supabase.from("task_boards").select("id").eq("is_default", true).maybeSingle();
+    const { data: list } = board ? await supabase.from("task_columns").select("id").eq("board_id", board.id).eq("kind", "a_fazer").is("archived_at", null).order("position").limit(1).maybeSingle() : { data: null };
+    if (!list) return fail("business_rule", "Crie uma lista A fazer no quadro principal.");
+    const id = must(
+      await supabase.rpc("create_content_task", {
+        p_title: input.title,
+        p_description: "",
+        p_column: list.id,
+        p_owner: null,
+        p_client: input.clientId,
+        p_campaign: null,
+        p_due: input.date ? zonedIso(input.date, input.time ?? "23:59") : null,
+        p_has_time: Boolean(input.date && input.time),
+      }),
+    ) as string;
+    must(await supabase.from("content_items").update({ format: input.format, caption: input.caption }).eq("id", id));
+    refresh();
+    return ok({ id });
+  },
+);
+
+export const prepareVideoUpload = defineAction({ schema: z.object({ contentId: z.uuid(), size: z.number().int().positive(), mime: z.string().max(60) }), permission: "content.manage" }, async ({ contentId, size, mime }, { user }) => {
+  if (!VIDEO_TYPES.includes(mime)) return fail("validation", "Envie o vídeo em MP4 ou MOV.");
+  if (size > MAX_VIDEO_BYTES) return fail("validation", "O vídeo passa de 50 MB. Use o link do Google Drive para arquivos maiores.");
+  const supabase = await createClient();
+  const { data: item } = await supabase.from("content_items").select("id").eq("id", contentId).maybeSingle();
+  if (!item) return fail("not_found", "Conteúdo não encontrado.");
+  const path = `${user.organizationId}/${contentId}/${crypto.randomUUID()}.${mime === "video/mp4" ? "mp4" : "mov"}`;
+  const { data, error } = await createAdminClient().storage.from("content-media").createSignedUploadUrl(path);
+  if (error || !data) return fail("network", "Não foi possível preparar o envio do vídeo.");
+  return ok({ path, token: data.token });
+});
+
+export const registerVideo = defineAction(
+  { schema: z.object({ contentId: z.uuid(), path: z.string().max(200), fileName: z.string().trim().min(1).max(200), size: z.number().int().positive(), mime: z.string().max(60) }), permission: "content.manage" },
+  async (input, { user }) => {
+    if (!input.path.startsWith(`${user.organizationId}/${input.contentId}/`)) return fail("forbidden", "Arquivo inválido.");
+    const supabase = await createClient();
+    must(await supabase.from("content_assets").insert({ content_id: input.contentId, kind: "video_arquivo", storage_path: input.path, file_name: input.fileName, mime_type: input.mime, size_bytes: input.size, position: Date.now() / 1000 }));
+    refresh(input.contentId);
+    return ok(null);
+  },
+);
+
+/** Conteúdo próprio, sem cliente: a equipe aprova e fica registrado quem aprovou. */
+export const approveInternally = defineAction({ schema: z.object({ id: z.uuid() }), permission: "content.publish" }, async ({ id }) => {
+  const supabase = await createClient();
+  must(await supabase.rpc("content_internal_approve", { p_content: id }));
+  refresh(id);
+  return ok(null, "Conteúdo aprovado pela equipe.");
+});
+
+export const setContentFormat = defineAction({ schema: z.object({ id: z.uuid(), format: z.enum(["post", "video", "reels"]) }), permission: "content.manage" }, async ({ id, format }) => {
+  const supabase = await createClient();
+  must(await supabase.from("content_items").update({ format }).eq("id", id));
+  refresh(id);
+  return ok(null);
+});
+
+/** Atualiza nomes e fotos das contas. As fotos da Meta expiram, então roda de tempos em tempos. */
+async function refreshAccounts(organizationId: string) {
+  const admin = createAdminClient();
+  const { data: conn } = await admin.from("integration_connections").select("token_enc, status").eq("organization_id", organizationId).eq("provider", "meta_social").maybeSingle();
+  if (!conn || conn.status !== "ativa") return 0;
+  const accounts = await socialListAccounts(decrypt(conn.token_enc));
+  const now = new Date().toISOString();
+  for (const a of accounts) {
+    await admin.from("social_accounts").update({ name: a.name, username: a.username, picture_url: a.pictureUrl, picture_checked_at: now }).eq("organization_id", organizationId).eq("platform", a.platform).eq("external_id", a.externalId);
+  }
+  return accounts.length;
+}
+
+export const refreshSocialAccounts = defineAction({ schema: z.object({}), permission: "content.read" }, async (_, { user }) => {
+  // Em segundo plano: a tela abre na hora e as fotos aparecem na próxima visita.
+  after(() => refreshAccounts(user.organizationId).catch(() => 0));
+  return ok(null);
+});
 
 export const saveCaption = defineAction({ schema: z.object({ id: z.uuid(), caption: z.string().max(2200, "A legenda aceita até 2.200 caracteres.") }), permission: "content.manage" }, async ({ id, caption }) => {
   const supabase = await createClient();
@@ -119,6 +215,7 @@ export const addDriveVideo = defineAction({ schema: z.object({ contentId: z.uuid
   const status = await driveReachable(id);
   const supabase = await createClient();
   must(await supabase.from("content_assets").insert({ content_id: contentId, kind: "video_drive", drive_url: url, drive_file_id: id, drive_status: status, position: Date.now() / 1000 }));
+  must(await supabase.from("content_items").update({ format: "video" }).eq("id", contentId).eq("format", "post"));
   refresh(contentId);
   if (status === "inacessivel") return ok({ status: status as string }, "Vídeo adicionado, mas o link não está acessível. No Drive, escolha Qualquer pessoa com o link.");
   if (status === "nao_verificado") return ok({ status: status as string }, "Vídeo adicionado. Não foi possível conferir o acesso agora: confira se o link está aberto.");
@@ -157,12 +254,14 @@ export const scheduleContent = defineAction(
     const supabase = await createClient();
     const [{ data: assets }, { data: item }, { data: accounts }] = await Promise.all([
       supabase.from("content_assets").select("kind, drive_status").eq("content_id", input.id),
-      supabase.from("content_items").select("caption").eq("id", input.id).single(),
+      supabase.from("content_items").select("caption, format").eq("id", input.id).single(),
       supabase.rpc("my_social_accounts"),
     ]);
     const list = (assets ?? []) as { kind: string; drive_status: string | null }[];
     if (list.some((a) => a.drive_status === "inacessivel")) return fail("business_rule", "O link do vídeo não está acessível. Abra o acesso no Drive e confira de novo.");
-    const counts = { images: list.filter((a) => a.kind === "imagem").length, videos: list.filter((a) => a.kind === "video_drive").length, caption: (item?.caption as string) ?? "" };
+    const counts = { images: list.filter((a) => a.kind === "imagem").length, videos: list.filter((a) => a.kind !== "imagem").length, caption: (item?.caption as string) ?? "" };
+    const wrongFormat = formatProblem(((item?.format as ContentFormat | undefined) ?? "post"), counts);
+    if (wrongFormat) return fail("business_rule", wrongFormat);
     for (const a of ((accounts ?? []) as { id: string; platform: SchedulePlatform; name: string }[]).filter((x) => input.accountIds.includes(x.id))) {
       const problem = publishProblem(a.platform, counts);
       if (problem) return fail("business_rule", `${a.name}: ${problem}`);

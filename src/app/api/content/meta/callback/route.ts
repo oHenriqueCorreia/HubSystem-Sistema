@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     // Reconectar renova os tokens sem perder as contas já escolhidas.
     for (const a of accounts) {
       const { error: accountError } = await admin.from("social_accounts").upsert(
-        { organization_id: user.organizationId, platform: a.platform, external_id: a.externalId, page_id: a.pageId, name: a.name, username: a.username, token_enc: encrypt(a.pageToken), status: "ativa", last_error: null, updated_at: now },
+        { organization_id: user.organizationId, platform: a.platform, external_id: a.externalId, page_id: a.pageId, name: a.name, username: a.username, token_enc: encrypt(a.pageToken), picture_url: a.pictureUrl, picture_checked_at: now, status: "ativa", last_error: null, updated_at: now },
         { onConflict: "organization_id,platform,external_id" },
       );
       if (accountError) throw accountError;

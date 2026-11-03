@@ -110,6 +110,13 @@
   --clock-glow: #38b6ff99;
 
   /* Séries em tons de azul da identidade visual, com contraste entre categorias. */
+  --chat-wallpaper: #efeae2;
+  --chat-panel: #f0f2f5;
+  --chat-in: #ffffff;
+  --chat-out: #d9fdd3;
+  --chat-pill: #ffffff;
+  --chat-input: #ffffff;
+  --chat-dots: rgb(0 0 0 / 0.045);
   --slice-1: #2a78d6;
   --slice-2: #eb6834;
   --slice-3: #1baf7a;
@@ -171,6 +178,13 @@
   --ctx-company: #70b4ff;
   --ctx-personal: #9bbdff;
 
+  --chat-wallpaper: #0b141a;
+  --chat-panel: #202c33;
+  --chat-in: #202c33;
+  --chat-out: #005c4b;
+  --chat-pill: #182229;
+  --chat-input: #2a3942;
+  --chat-dots: rgb(255 255 255 / 0.035);
   --slice-1: #3987e5;
   --slice-2: #d95926;
   --slice-3: #199e70;
@@ -324,4 +338,30 @@
 
 @media (prefers-reduced-motion: reduce) {
   .auth-orbit-ring, .auth-logo, .auth-copy, .auth-panel { animation: none; }
+}
+
+/* Atendimento: papel de parede e pontas dos balões, no estilo do WhatsApp */
+.chat-wallpaper {
+  background-color: var(--chat-wallpaper);
+  background-image: radial-gradient(var(--chat-dots) 1.2px, transparent 1.2px), radial-gradient(var(--chat-dots) 1.2px, transparent 1.2px);
+  background-size: 28px 28px;
+  background-position: 0 0, 14px 14px;
+}
+.chat-tail-in::before,
+.chat-tail-out::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 12px;
+}
+.chat-tail-in::before {
+  left: -8px;
+  background: var(--chat-in);
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+.chat-tail-out::before {
+  right: -8px;
+  background: var(--chat-out);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
 }

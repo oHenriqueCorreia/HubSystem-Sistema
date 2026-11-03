@@ -4,7 +4,7 @@ import { decrypt } from "@/lib/crypto";
 import { isOptOut } from "@/lib/whatsapp";
 import { validWahaSignature, wahaDownload } from "@/lib/waha";
 import { brPhoneVariants } from "@/domain/shared/phone";
-import { displayPhoneFromMe, parseWahaEvent, type WahaMedia } from "@/domain/whatsapp/waha";
+import { bareMessageId, displayPhoneFromMe, parseWahaEvent, type WahaMedia } from "@/domain/whatsapp/waha";
 
 export const maxDuration = 60;
 
@@ -105,6 +105,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } else {
       const { data: messageId, error } = await admin.rpc("whatsapp_receive", { ...common, p_from: event.phone, p_opt_out: isOptOut(event.body) });
       if (error) console.error("[waha-webhook] falha ao gravar mensagem", error.code);
+      const quoted = (json as { payload?: { replyTo?: { id?: unknown } } }).payload?.replyTo?.id;
+      if (messageId && typeof quoted === "string" && quoted) await admin.from("messages").update({ reply_to_wamid: bareMessageId(quoted) }).eq("id", messageId);
       if (event.referral && messageId) {
         const r = event.referral;
         await admin.rpc("whatsapp_referral", { p_message: messageId, p_source_type: r.source_type, p_source_id: r.source_id, p_source_url: r.source_url, p_headline: r.headline, p_body: r.body, p_ctwa_clid: r.ctwa_clid });

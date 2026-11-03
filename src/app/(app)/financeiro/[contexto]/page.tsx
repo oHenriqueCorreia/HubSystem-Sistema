@@ -15,6 +15,7 @@ import { ACCOUNT_TYPE_LABEL } from "@/features/finance/types";
 import { Stat } from "@/features/finance/components/stat";
 import { TxnTable } from "@/features/finance/components/txn-table";
 import { MonthlyChart } from "@/features/finance/components/monthly-chart";
+import { FinanceDashboardCharts } from "@/features/finance/components/finance-dashboard";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Financeiro" };
@@ -29,13 +30,14 @@ export default async function FinanceOverview({ params, searchParams }: PageProp
   // Lista "em aberto": do maior entre hoje e o início do período até o fim do período.
   const openFrom = period.from > today ? period.from : today;
 
-  const [summary, open, lookups, overdue, upcoming, flow] = await Promise.all([
+  const [summary, open, lookups, overdue, upcoming, flow, flowPeriod] = await Promise.all([
     getSummary(scope, period.from, period.to),
     getOpenInPeriod(scope, period.from, period.to, today),
     getLookups(scope),
     listTransactions(scope, { situacao: "vencidos" }, today),
     openFrom <= period.to ? listTransactions(scope, { situacao: "abertos", de: openFrom, ate: period.to }, today) : Promise.resolve({ rows: [], total: 0 }),
     listFlow(scope, sixAgo, month.to),
+    listFlow(scope, period.from, period.to),
   ]);
 
   const monthly = cashFlow(flow, "mes").map((r) => ({
@@ -78,6 +80,8 @@ export default async function FinanceOverview({ params, searchParams }: PageProp
         <Stat label="Pagamentos vencidos" cents={summary.payable_overdue} alert />
       </dl>
       <p className="-mt-5 text-xs text-muted-foreground">Resultado realizado (recebido − pago no período): {formatBRL(result)}.</p>
+
+      {!empty && <FinanceDashboardCharts rows={flowPeriod} evolutionRows={flow} categories={lookups.categories.map((c) => ({ id: c.id, name: c.name }))} />}
 
       {empty ? (
         <EmptyState

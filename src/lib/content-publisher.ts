@@ -11,16 +11,18 @@ type Due = { id: string; organization_id: string; content_id: string; account_id
 async function mediaFor(contentId: string) {
   const admin = createAdminClient();
   const [{ data: item }, { data: assets }] = await Promise.all([
-    admin.from("content_items").select("caption").eq("id", contentId).single(),
+    admin.from("content_items").select("caption, format").eq("id", contentId).single(),
     admin.from("content_assets").select("kind, storage_path, drive_file_id").eq("content_id", contentId).order("position"),
   ]);
   const imagePaths = (assets ?? []).filter((a) => a.kind === "imagem").map((a) => a.storage_path as string);
-  const video = (assets ?? []).find((a) => a.kind === "video_drive");
+  const video = (assets ?? []).find((a) => a.kind !== "imagem");
+  const signedVideo = video?.kind === "video_arquivo" ? await admin.storage.from("content-media").createSignedUrl(video.storage_path as string, SIGNED_SECONDS) : null;
   // A Meta baixa a mídia de um link: o link assinado vale só durante a publicação.
   const signed = imagePaths.length ? await admin.storage.from("content-media").createSignedUrls(imagePaths, SIGNED_SECONDS) : { data: [] };
   const imageUrls = (signed.data ?? []).map((s) => s.signedUrl).filter(Boolean) as string[];
-  const plan: MediaPlan = { caption: (item?.caption as string) ?? "", imageUrls, videoUrl: video ? driveDownloadUrl(video.drive_file_id as string) : null };
-  return { plan, counts: { images: imagePaths.length, videos: (assets ?? []).filter((a) => a.kind === "video_drive").length, caption: plan.caption } };
+  const videoUrl = video ? (video.kind === "video_arquivo" ? (signedVideo?.data?.signedUrl ?? null) : driveDownloadUrl(video.drive_file_id as string)) : null;
+  const plan: MediaPlan = { caption: (item?.caption as string) ?? "", imageUrls, videoUrl, format: ((item?.format as MediaPlan["format"]) ?? "post") };
+  return { plan, counts: { images: imagePaths.length, videos: (assets ?? []).filter((a) => a.kind !== "imagem").length, caption: plan.caption } };
 }
 
 async function expireAccount(organizationId: string, accountId: string, message: string) {

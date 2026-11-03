@@ -1,6 +1,7 @@
 "use client";
 
 import { ChartFigure, DataTable, GroupedBars, HorizontalBars } from "@/components/app/charts";
+import { DonutCard } from "@/components/app/round-charts";
 
 type Named = { name: string; count?: number; amount?: number };
 
@@ -14,6 +15,10 @@ export function StageFunnel({ stages }: { stages: { name: string; count: number;
       <HorizontalBars data={stages} labelKey="name" valueKey="count" />
     </ChartFigure>
   );
+}
+
+export function DonutRank({ title, description, rows, money, valueKey = money ? "amount" : "count", labelHeader = "Nome", centerLabel }: { title: string; description?: string; rows: Named[]; money?: boolean; valueKey?: "amount" | "count"; labelHeader?: string; centerLabel?: string }) {
+  return <DonutCard title={title} description={description} rows={rows.map((r) => ({ name: r.name, value: Number(r[valueKey] ?? 0) }))} money={Boolean(money)} labelHeader={labelHeader} centerLabel={centerLabel} empty="Sem dados no período." />;
 }
 
 export function RankBars({ title, description, rows, money, valueKey = money ? "amount" : "count", labelHeader = "Nome" }: { title: string; description?: string; rows: Named[]; money?: boolean; valueKey?: string; labelHeader?: string }) {

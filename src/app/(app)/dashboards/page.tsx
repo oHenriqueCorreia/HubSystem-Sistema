@@ -15,7 +15,10 @@ import { resolvePeriod } from "@/features/dashboards/period";
 import { DashboardFilters } from "@/features/dashboards/components/dashboard-filters";
 import { DashboardTabs } from "@/features/dashboards/components/dashboard-tabs";
 import { Kpi } from "@/features/dashboards/components/kpi";
-import { SalesByMonth, StageFunnel } from "@/features/dashboards/components/commercial-charts";
+import { DonutRank, SalesByMonth } from "@/features/dashboards/components/commercial-charts";
+import { FinanceRings } from "@/features/finance/components/finance-dashboard";
+import { DonutCard } from "@/components/app/round-charts";
+import { getLookups } from "@/features/finance/queries";
 import { MonthlyChart } from "@/features/finance/components/monthly-chart";
 
 export const metadata: Metadata = { title: "Visão geral" };
@@ -65,8 +68,8 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
     ? (async () => {
         await prepareScope(financeScope);
         const flowFrom = `${addMonthsCivil(period.to, -11).slice(0, 7)}-01`;
-        const [summary, flow] = await Promise.all([getSummary(financeScope, period.from, period.to), listFlow(financeScope, flowFrom, period.to)]);
-        return { summary, flow };
+        const [summary, flow, inPeriod, lookups] = await Promise.all([getSummary(financeScope, period.from, period.to), listFlow(financeScope, flowFrom, period.to), listFlow(financeScope, period.from, period.to), getLookups(financeScope)]);
+        return { summary, flow, inPeriod, lookups };
       })()
     : Promise.resolve(null);
 
@@ -84,6 +87,16 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
 
   const commercial = commercialResult.data as CommercialOverview | null;
   const financial = finance?.summary ?? null;
+  const byCategory = (kind: "receita" | "despesa") => {
+    const names = new Map((finance?.lookups.categories ?? []).map((c) => [c.id, c.name]));
+    const totals = new Map<string, number>();
+    for (const t of finance?.inPeriod ?? []) {
+      if (t.kind !== kind) continue;
+      const name = (t.category_id && names.get(t.category_id)) || "Sem categoria";
+      totals.set(name, (totals.get(name) ?? 0) + Number(t.status === "pago" ? (t.paid_amount_cents ?? t.amount_cents) : t.amount_cents));
+    }
+    return [...totals.entries()].map(([name, value]) => ({ name, value }));
+  };
   const monthly = finance ? cashFlow(finance.flow, "mes").map((row) => ({ mes: MONTH_LABEL(row.period), receitas: row.income, despesas: row.expense, receitasPrev: row.incomeForecast, despesasPrev: row.expenseForecast })) : [];
 
   return (
@@ -122,12 +135,19 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
         {commercial && (
           <section aria-labelledby="grafico-comercial" className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="grafico-comercial" className="text-base font-semibold">Comercial em movimento</h2><Link href="/dashboards/comercial" className="text-sm font-medium text-primary hover:underline">Abrir análise comercial</Link></div>
-            <div className="grid gap-4 lg:grid-cols-2"><StageFunnel stages={commercial.by_stage} /><SalesByMonth rows={commercial.by_month.map((row) => ({ mes: MONTH_LABEL(row.month), vendas: row.amount }))} /></div>
+            <div className="grid gap-4 lg:grid-cols-2"><DonutRank title="Leads por etapa" description="Negócios em cada etapa do funil." rows={commercial.by_stage} labelHeader="Etapa" centerLabel="Negócios" /><SalesByMonth rows={commercial.by_month.map((row) => ({ mes: MONTH_LABEL(row.month), vendas: row.amount }))} /></div>
           </section>
         )}
         {financial && (
           <section aria-labelledby="grafico-financeiro" className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="grafico-financeiro" className="text-base font-semibold">Fluxo financeiro</h2><Link href="/dashboards/financeiro" className="text-sm font-medium text-primary hover:underline">Abrir análise financeira</Link></div>
+            <div className="rounded-xl border bg-surface p-4">
+              <FinanceRings rows={finance?.inPeriod ?? []} />
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <DonutCard title="Receitas por categoria" description="Recebidas e a receber no período." rows={byCategory("receita")} centerLabel="Receitas" />
+              <DonutCard title="Despesas por categoria" description="Pagas e a pagar no período." rows={byCategory("despesa")} centerLabel="Despesas" />
+            </div>
             <MonthlyChart rows={monthly} title="Receitas e despesas" description="Últimos 12 meses: realizado em cor cheia, previsto tracejado." />
           </section>
         )}

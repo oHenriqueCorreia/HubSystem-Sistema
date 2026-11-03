@@ -25,6 +25,7 @@ import type { TaskBoard, TaskColumn } from "@/features/tasks/types";
 import { createContentTask, disconnectSocial, setSocialSelected } from "../actions";
 import type { ContentCard, ScheduleRow, SocialAccount } from "../queries";
 import { ContentStatusBadge } from "./content-status";
+import { AccountAvatar } from "./studio";
 
 type Owner = { id: string; full_name: string; email: string };
 type Connection = { status: string; external_user: string; expires_at: string | null; last_error: string | null } | null;
@@ -380,6 +381,7 @@ export function SocialSetup({ accounts, connection, configured, canManage, notic
           <h2 id="contas-destino" className="text-sm font-semibold">
             Contas de destino
           </h2>
+          <p className="max-w-prose text-sm text-muted-foreground">As contas ligadas aparecem no Planejador e podem receber publicações.</p>
           <ul className="grid gap-1">
             {accounts.map((a) => (
               <li key={a.id} className="flex items-center gap-3 rounded-md border bg-surface px-3 py-2 text-sm">
@@ -395,6 +397,7 @@ export function SocialSetup({ accounts, connection, configured, canManage, notic
                     })
                   }
                 />
+                <AccountAvatar account={a} size="sm" />
                 <span className="min-w-0 flex-1 break-words">
                   {a.name}
                   {a.username && <span className="text-muted-foreground"> @{a.username}</span>}

@@ -62,12 +62,12 @@ export async function numberProvider(numberId: string) {
 
 const to = (e164: string) => e164.replace(/\D/g, "");
 
-export async function sendText(numberId: string, toE164: string, body: string) {
+export async function sendText(numberId: string, toE164: string, body: string, replyTo?: { wamid: string; fromMe: boolean } | null) {
   const n = await numberToken(numberId);
-  if (n.waha) return wahaSendText(n.waha, await wahaChatId(n.waha, toE164), body);
+  if (n.waha) return wahaSendText(n.waha, await wahaChatId(n.waha, toE164), body, replyTo);
   const r = await request<{ messages: { id: string }[] }>(n.token, `/${n.phoneNumberId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: to(toE164), type: "text", text: { body, preview_url: true } }),
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: to(toE164), type: "text", text: { body, preview_url: true }, ...(replyTo ? { context: { message_id: replyTo.wamid } } : {}) }),
   });
   return r.messages[0].id;
 }

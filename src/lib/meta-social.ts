@@ -44,20 +44,20 @@ export async function socialExchangeCode(code: string) {
   return { token: long.access_token, expiresAt: long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString() : null, user: me.name ?? me.id };
 }
 
-export type SocialAccountData = { platform: "facebook" | "instagram"; externalId: string; pageId: string; name: string; username: string | null; pageToken: string };
+export type SocialAccountData = { platform: "facebook" | "instagram"; externalId: string; pageId: string; name: string; username: string | null; pageToken: string; pictureUrl: string | null };
 
 /** Páginas que a pessoa administra e o Instagram profissional ligado a cada uma. */
 export async function socialListAccounts(userToken: string): Promise<SocialAccountData[]> {
   const out: SocialAccountData[] = [];
-  let next: string | null = "/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=100";
+  let next: string | null = "/me/accounts?fields=id,name,access_token,picture.type(large){url},instagram_business_account{id,username,name,profile_picture_url}&limit=100";
   for (let guard = 0; next && guard < 10; guard++) {
-    const page: { data: { id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string; name?: string } }[]; paging?: { cursors?: { after?: string }; next?: string } } = await call(next, { token: userToken });
+    const page: { data: { id: string; name: string; access_token: string; picture?: { data?: { url?: string } }; instagram_business_account?: { id: string; username?: string; name?: string; profile_picture_url?: string } }[]; paging?: { cursors?: { after?: string }; next?: string } } = await call(next, { token: userToken });
     for (const p of page.data) {
-      out.push({ platform: "facebook", externalId: p.id, pageId: p.id, name: p.name, username: null, pageToken: p.access_token });
+      out.push({ platform: "facebook", externalId: p.id, pageId: p.id, name: p.name, username: null, pageToken: p.access_token, pictureUrl: p.picture?.data?.url ?? null });
       const ig = p.instagram_business_account;
-      if (ig) out.push({ platform: "instagram", externalId: ig.id, pageId: p.id, name: ig.name ?? ig.username ?? p.name, username: ig.username ?? null, pageToken: p.access_token });
+      if (ig) out.push({ platform: "instagram", externalId: ig.id, pageId: p.id, name: ig.name ?? ig.username ?? p.name, username: ig.username ?? null, pageToken: p.access_token, pictureUrl: ig.profile_picture_url ?? null });
     }
-    next = page.paging?.next && page.paging.cursors?.after ? `/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=100&after=${encodeURIComponent(page.paging.cursors.after)}` : null;
+    next = page.paging?.next && page.paging.cursors?.after ? `/me/accounts?fields=id,name,access_token,picture.type(large){url},instagram_business_account{id,username,name,profile_picture_url}&limit=100&after=${encodeURIComponent(page.paging.cursors.after)}` : null;
   }
   return out;
 }
@@ -66,11 +66,24 @@ export async function socialRevoke(userToken: string) {
   await call("/me/permissions", { method: "POST", token: userToken, body: { method: "delete" } }).catch(() => null);
 }
 
-export type MediaPlan = { imageUrls: string[]; videoUrl: string | null; caption: string };
+export type MediaPlan = { imageUrls: string[]; videoUrl: string | null; caption: string; format: "post" | "video" | "reels" };
 export type PublishResult = { done: true; externalId: string; permalink: string | null } | { done: false; containerId: string };
 
 export async function publishFacebook(pageId: string, token: string, m: MediaPlan): Promise<PublishResult> {
   const link = (id: string) => `https://www.facebook.com/${id}`;
+  if (m.videoUrl && m.format === "reels") {
+    // Reels do Facebook: abre o envio, a Meta baixa o arquivo do link e depois publica.
+    const started = await call<{ video_id: string; upload_url?: string }>(`/${pageId}/video_reels`, { method: "POST", token, body: { upload_phase: "start" } });
+    const res = await fetch(started.upload_url ?? `https://rupload.facebook.com/video-upload/${version()}/${started.video_id}`, {
+      method: "POST",
+      headers: { Authorization: `OAuth ${token}`, file_url: m.videoUrl },
+      cache: "no-store",
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) throw Object.assign(new Error("meta_api"), { detail: `envio do vídeo recusado (${res.status})` }) as GraphFailure;
+    await call(`/${pageId}/video_reels`, { method: "POST", token, body: { upload_phase: "finish", video_id: started.video_id, video_state: "PUBLISHED", description: m.caption } });
+    return { done: true, externalId: started.video_id, permalink: `https://www.facebook.com/reel/${started.video_id}` };
+  }
   if (m.videoUrl) {
     const r = await call<{ id: string }>(`/${pageId}/videos`, { method: "POST", token, body: { file_url: m.videoUrl, description: m.caption }, timeoutMs: 45_000 });
     return { done: true, externalId: r.id, permalink: link(r.id) };

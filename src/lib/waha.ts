@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { messageIdFromResponse } from "@/domain/whatsapp/waha";
 import { brPhoneVariants } from "@/domain/shared/phone";
+import { wahaReplyId } from "@/domain/whatsapp/chat";
 
 // WAHA: conexão do WhatsApp por QR Code, num servidor próprio. Não é a API oficial da Meta.
 export type WahaConn = { url: string; key: string; session: string };
@@ -72,8 +73,9 @@ export async function wahaChatId(conn: WahaConn, e164: string) {
   throw Object.assign(new Error("waha_numero"), { detail: "Este número não tem WhatsApp." });
 }
 
-export async function wahaSendText(conn: WahaConn, chatId: string, text: string) {
-  const r = await call<unknown>(conn, "/api/sendText", { method: "POST", body: JSON.stringify({ session: conn.session, chatId, text }) });
+export async function wahaSendText(conn: WahaConn, chatId: string, text: string, replyTo?: { wamid: string; fromMe: boolean } | null) {
+  const reply = replyTo ? { reply_to: wahaReplyId(replyTo.fromMe, chatId, replyTo.wamid) } : {};
+  const r = await call<unknown>(conn, "/api/sendText", { method: "POST", body: JSON.stringify({ session: conn.session, chatId, text, ...reply }) });
   return messageIdFromResponse(r);
 }
 

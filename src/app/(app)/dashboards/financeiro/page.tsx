@@ -12,7 +12,8 @@ import { FINANCE_PRESETS, resolvePeriod } from "@/features/dashboards/period";
 import { DashboardFilters } from "@/features/dashboards/components/dashboard-filters";
 import { DashboardTabs } from "@/features/dashboards/components/dashboard-tabs";
 import { Kpi } from "@/features/dashboards/components/kpi";
-import { RankBars } from "@/features/dashboards/components/commercial-charts";
+import { DonutRank } from "@/features/dashboards/components/commercial-charts";
+import { FinanceRings } from "@/features/finance/components/finance-dashboard";
 import { MonthlyChart } from "@/features/finance/components/monthly-chart";
 import { CashFlowCharts } from "@/features/finance/components/cash-flow-charts";
 import type { FinanceScope } from "@/features/finance/types";
@@ -117,10 +118,13 @@ export default async function FinanceiroDashboard({ searchParams }: PageProps<"/
           <Kpi label="Pagamentos vencidos" value={cur.payable_overdue} money invert />
         </dl>
 
+        <div className="rounded-xl border bg-surface p-4">
+          <FinanceRings rows={flowPeriod} />
+        </div>
         <MonthlyChart rows={monthly} title="Resultado mensal" description="Últimos 12 meses: realizado em cor cheia, previsto tracejado." />
         <div className="grid gap-4 lg:grid-cols-2">
-          <RankBars title="Despesas por categoria" description="Pagas e a pagar no período." rows={byCategory("despesa")} money labelHeader="Categoria" />
-          <RankBars title="Receitas por categoria" description="Recebidas e a receber no período." rows={byCategory("receita")} money labelHeader="Categoria" />
+          <DonutRank title="Despesas por categoria" description="Pagas e a pagar no período." rows={byCategory("despesa")} money labelHeader="Categoria" centerLabel="Despesas" />
+          <DonutRank title="Receitas por categoria" description="Recebidas e a receber no período." rows={byCategory("receita")} money labelHeader="Categoria" centerLabel="Receitas" />
         </div>
         <section aria-labelledby="previsao" className="grid gap-2">
           <h2 id="previsao" className="text-sm font-semibold">

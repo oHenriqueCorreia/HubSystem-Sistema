@@ -13,10 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { FormField } from "@/components/app/form-field";
 import { dayKey, minutesOfDay } from "@/domain/calendar";
-import { drivePreviewUrl, IG_CAPTION_MAX, PLATFORM_LABEL, publishProblem, SCHEDULE_STATUS_LABEL, type ContentStatus } from "@/domain/content";
+import { drivePreviewUrl, FORMAT_LABEL, IG_CAPTION_MAX, PLATFORM_LABEL, publishProblem, SCHEDULE_STATUS_LABEL, type ContentFormat, type ContentStatus } from "@/domain/content";
 import { formatDateTime } from "@/domain/shared/dates";
 import { createClient } from "@/lib/supabase/client";
-import { addDriveVideo, cancelSchedule, prepareImageUpload, recheckDriveVideo, registerImage, removeAsset, requestApproval, rescheduleContent, saveCaption, scheduleContent, setContentCampaign } from "../actions";
+import { addDriveVideo, cancelSchedule, prepareImageUpload, recheckDriveVideo, registerImage, removeAsset, requestApproval, rescheduleContent, saveCaption, scheduleContent, setContentCampaign, setContentFormat, approveInternally } from "../actions";
 import type { ContentAsset, SocialAccount } from "../queries";
 import { ContentStatusBadge } from "./content-status";
 
@@ -47,6 +47,7 @@ async function toJpeg(file: File): Promise<Blob> {
 type Props = {
   id: string;
   status: ContentStatus;
+  format: ContentFormat;
   caption: string;
   version: number;
   approvedVersion: number | null;
@@ -79,6 +80,7 @@ export function ContentEditor(p: Props) {
   const approved = p.approvedVersion === p.version && ["aprovado", "agendado", "erro"].includes(p.status);
   const images = p.assets.filter((a) => a.kind === "imagem");
   const videos = p.assets.filter((a) => a.kind === "video_drive");
+  const videoFiles = p.assets.filter((a) => a.kind === "video_arquivo");
   const dirty = caption !== p.caption;
   const wasApproved = p.approvedVersion === p.version;
 
@@ -220,6 +222,16 @@ export function ContentEditor(p: Props) {
           <h2 id="videos" className="text-sm font-semibold">
             Vídeo pelo Google Drive
           </h2>
+          {videoFiles.map((v) => (
+            <div key={v.id} className="grid gap-2 rounded-lg border p-2">
+              {v.url && <video controls preload="metadata" src={v.url} className="max-h-96 w-full rounded bg-black" />}
+              {editable && (
+                <Button size="sm" variant="ghost" className="justify-self-start text-danger" disabled={pending} onClick={() => run(() => removeAsset({ id: v.id, contentId: p.id }))}>
+                  <Trash2 aria-hidden="true" /> Remover vídeo enviado
+                </Button>
+              )}
+            </div>
+          ))}
           {videos.map((v) => (
             <div key={v.id} className="grid gap-2 rounded-lg border p-2">
               {v.drive_status === "inacessivel" ? (
@@ -290,6 +302,23 @@ export function ContentEditor(p: Props) {
           )}
         </section>
 
+        {editable && (
+          <FormField label="Formato" hint="Reels sai em vídeo vertical. Vídeo sai como vídeo na Página e como Reels no Instagram.">
+            <Select value={p.format} disabled={pending} onValueChange={(v) => run(() => setContentFormat({ id: p.id, format: v as ContentFormat }))}>
+              <SelectTrigger className="w-full sm:w-60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(FORMAT_LABEL).map(([k, label]) => (
+                  <SelectItem key={k} value={k}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        )}
+
         {p.canManage && p.campaigns.length > 0 && (
           <FormField label="Campanha" optional>
             <Select value={p.campaignId ?? NONE} disabled={pending} onValueChange={(v) => run(() => setContentCampaign({ id: p.id, campaignId: v === NONE ? null : v }))}>
@@ -322,6 +351,11 @@ export function ContentEditor(p: Props) {
               <Send aria-hidden="true" /> {p.status === "aguardando_aprovacao" ? "Gerar novo link" : "Enviar para aprovação"}
             </Button>
           )}
+          {editable && !approved && !p.clientName && p.canPublish && (
+            <Button variant="outline" disabled={pending || dirty} onClick={() => run(() => approveInternally({ id: p.id }))}>
+              Aprovar pela equipe
+            </Button>
+          )}
           {dirty && <p className="text-xs text-muted-foreground">Salve a legenda antes de enviar.</p>}
           {link && (
             <div className="grid gap-1.5" role="status">
@@ -352,7 +386,7 @@ export function ContentEditor(p: Props) {
           )}
         </section>
 
-        <ScheduleBox {...p} approved={approved} images={images.length} videos={videos.length} caption={p.caption} blockedVideo={videos.some((v) => v.drive_status === "inacessivel")} />
+        <ScheduleBox {...p} approved={approved} images={images.length} videos={videos.length + videoFiles.length} caption={p.caption} blockedVideo={videos.some((v) => v.drive_status === "inacessivel")} />
       </aside>
     </div>
   );

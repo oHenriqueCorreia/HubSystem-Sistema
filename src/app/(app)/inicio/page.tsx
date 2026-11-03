@@ -13,6 +13,10 @@ import { getMyDay } from "@/features/tasks/queries";
 import { getCrmLookups } from "@/features/crm/queries";
 import { MyDay } from "@/features/tasks/components/my-day";
 import { AgendaHub, type SavedAgendaFilter } from "@/features/tasks/components/agenda-hub";
+import { FinanceSnapshot } from "@/features/finance/components/finance-dashboard";
+import { getLookups, listFlow } from "@/features/finance/queries";
+import { monthBounds } from "@/features/finance/server";
+import { addMonthsCivil } from "@/domain/finance";
 import { listClientOptions } from "@/features/tasks/queries";
 import { TaskFormDialog } from "@/features/tasks/components/task-form-dialog";
 import { PRIORITY_LABEL, type TaskPriority } from "@/features/tasks/types";
@@ -132,6 +136,16 @@ export default async function InicioPage() {
     canAgenda && !prefs.hidden.includes("agendas") ? listClientOptions() : Promise.resolve([]),
   ]);
   const visible = prefs.order.filter((k) => !prefs.hidden.includes(k));
+  const month = monthBounds(day);
+  const sixAgo = monthBounds(addMonthsCivil(day, -5)).from;
+  const financeCharts = prefs.hidden.includes("financeiro")
+    ? []
+    : await Promise.all(
+        overview.finance.map(async (f) => {
+          const [evolution, lookups] = await Promise.all([listFlow(f.scope, sixAgo, month.to), getLookups(f.scope)]);
+          return { scope: f.scope, evolution, rows: evolution.filter((t) => (t.status === "pago" ? (t.paid_at ?? "") >= month.from : t.due_date >= month.from)), categories: lookups.categories.map((c) => ({ id: c.id, name: c.name })) };
+        }),
+      );
   const seesOthers = [user.permissions["calendar.read"], user.permissions["tasks.read"]].some((scope) => scope === "team" || scope === "all");
   const agendaOwners = (lookups?.owners ?? []).filter((o) => seesOthers || o.id === user.id);
   const o = overview;
@@ -252,6 +266,11 @@ export default async function InicioPage() {
           {o.finance.map((f) => (
             <div key={f.scope} className="grid gap-2">
               <h3 className="text-xs font-medium text-muted-foreground">{f.scope === "empresa" ? "Empresa" : "Pessoal"}</h3>
+              {financeCharts
+                .filter((c) => c.scope === f.scope)
+                .map((c) => (
+                  <FinanceSnapshot key={c.scope} rows={c.rows} evolutionRows={c.evolution} categories={c.categories} />
+                ))}
               <div className="grid grid-cols-2 gap-2">
                 <Stat label="A receber até o fim do mês" value={formatBRL(f.receivable)} href={`/financeiro/${f.scope}/lancamentos`} tone="success" />
                 <Stat label="A pagar até o fim do mês" value={formatBRL(f.payable)} href={`/financeiro/${f.scope}/lancamentos`} tone={f.payable ? "warning" : undefined} />

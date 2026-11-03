@@ -116,7 +116,7 @@ async function loadConversation(id: string) {
 
 type OutgoingFile = { media_id: string; media_mime: string; media_name: string };
 
-async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | null, type: string, body: string, authorId: string, error?: string, file?: OutgoingFile) {
+async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | null, type: string, body: string, authorId: string, error?: string, file?: OutgoingFile, replyToWamid?: string) {
   const admin = createAdminClient();
   const { error: insertError } = await admin.from("messages").insert({
     organization_id: conv.organization_id,
@@ -129,10 +129,11 @@ async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | 
     status: error ? "erro" : "enviada",
     error: error ?? null,
     author_id: authorId,
+    reply_to_wamid: replyToWamid ?? null,
     ...file,
   });
   // No QR Code o eco do envio pode chegar antes: a mensagem já existe, só falta dizer quem enviou.
-  if (insertError?.code === "23505" && wamid) await admin.from("messages").update({ client_ref: clientRef, author_id: authorId, ...file }).eq("wamid", wamid);
+  if (insertError?.code === "23505" && wamid) await admin.from("messages").update({ client_ref: clientRef, author_id: authorId, reply_to_wamid: replyToWamid ?? null, ...file }).eq("wamid", wamid);
   if (!error) {
     const now = new Date().toISOString();
     await admin
@@ -161,7 +162,7 @@ async function channelBlock(conv: ConvRow) {
   return null;
 }
 
-const sendSchema = z.object({ conversationId: z.uuid(), clientRef: z.uuid(), body: z.string().trim().min(1, "Escreva a mensagem.").max(4096) });
+const sendSchema = z.object({ conversationId: z.uuid(), clientRef: z.uuid(), body: z.string().trim().min(1, "Escreva a mensagem.").max(4096), replyToId: z.uuid().nullable().optional() });
 
 export const sendWhatsAppMessage = defineAction({ schema: sendSchema, permission: "inbox.reply" }, async (input, { user }) => {
   if (!(await withinRateLimit(`wa-send:${user.id}`, 60, 60))) return fail("business_rule", RATE_LIMIT_MESSAGE);
@@ -175,8 +176,11 @@ export const sendWhatsAppMessage = defineAction({ schema: sendSchema, permission
   const { data: dup } = await admin.from("messages").select("id").eq("client_ref", input.clientRef).maybeSingle();
   if (dup) return ok(null); // clique repetido: já enviado
   try {
-    const wamid = await sendText(conv.number_id, conv.contact_e164, input.body);
-    await recordOutgoing(conv, input.clientRef, wamid, "text", input.body, user.id);
+    // Citação: só de mensagem desta mesma conversa, que já tenha id no WhatsApp.
+    const { data: quoted } = input.replyToId ? await admin.from("messages").select("wamid, direction").eq("id", input.replyToId).eq("conversation_id", conv.id).maybeSingle() : { data: null };
+    const replyTo = quoted?.wamid ? { wamid: quoted.wamid as string, fromMe: quoted.direction === "saida" } : null;
+    const wamid = await sendText(conv.number_id, conv.contact_e164, input.body, replyTo);
+    await recordOutgoing(conv, input.clientRef, wamid, "text", input.body, user.id, undefined, undefined, replyTo?.wamid);
   } catch (e) {
     const detail = (e as { detail?: string }).detail;
     await recordOutgoing(conv, input.clientRef, null, "text", input.body, user.id, detail?.slice(0, 300) ?? "Falha no envio");

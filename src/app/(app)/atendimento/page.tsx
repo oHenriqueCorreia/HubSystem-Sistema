@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MessagesSquare, Search } from "lucide-react";
+import { Check, CheckCheck, MessagesSquare, Search, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { requirePermission } from "@/lib/auth/dal";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/states";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatPhone } from "@/domain/shared/phone";
-import { formatRelative } from "@/domain/shared/dates";
+import { todayLocal } from "@/domain/shared/dates";
+import { listTime, messagePreview } from "@/domain/whatsapp/chat";
 import { whatsappConfigured } from "@/lib/whatsapp";
 import { getCrmLookups } from "@/features/crm/queries";
 import { TagChip } from "@/features/crm/components/chips";
@@ -16,7 +15,8 @@ import type { TagColor } from "@/features/crm/types";
 import { getLeadWork, listCadences } from "@/features/tasks/queries";
 import { LeadWorkPanel } from "@/features/tasks/components/lead-work-panel";
 import { getConversation, getInboxSetup, listConversations, listLeadDeals, listQuickReplies, type InboxFilters } from "@/features/inbox/queries";
-import { ConversationView } from "@/features/inbox/components/conversation-view";
+import { ChatAvatar, ChatView } from "@/features/inbox/components/chat-view";
+import { NumbersDialog } from "@/features/inbox/components/numbers-dialog";
 import { WhatsAppSetup } from "@/features/inbox/components/whatsapp-setup";
 import { InboxRealtime } from "@/features/inbox/components/inbox-realtime";
 import { InboxNav } from "@/features/inbox/components/inbox-nav";
@@ -40,6 +40,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
     status: (str(sp.situacao) as InboxFilters["status"]) ?? "abertas",
     responsavel: str(sp.responsavel),
     etiqueta: str(sp.etiqueta),
+    numero: /^[0-9a-f-]{36}$/i.test(str(sp.numero) ?? "") ? str(sp.numero) : undefined,
     de: str(sp.de),
     ate: str(sp.ate),
   };
@@ -62,154 +63,190 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
     return `/atendimento?${q.toString()}`;
   };
   const active = setup.numbers.some((n) => n.status === "ativo");
+  const today = todayLocal();
+  const canManage = Boolean(user.permissions["inbox.manage"]);
+  const hasProblem = setup.numbers.some((n) => n.status !== "ativo" && n.status !== "desconectado");
+  const numberLabel = (id: string) => {
+    const n = setup.numbers.find((x) => x.id === id);
+    return n ? n.verified_name || n.display_phone : "";
+  };
+  const setupPanel = <WhatsAppSetup numbers={setup.numbers} configured={whatsappConfigured()} qrConfigured={Boolean(process.env.WAHA_URL && process.env.WAHA_API_KEY)} canManage={canManage} templateCount={setup.templates.length} />;
 
   return (
     <>
       <InboxRealtime />
-      <div className={cn(selected && "max-md:hidden")}>
-        <PageHeader breadcrumbs={[{ label: "Comercial" }, { label: "Atendimento" }]} title="Atendimento" description="Conversas do WhatsApp ligadas aos leads e ao funil." />
+      <h1 className="sr-only">Atendimento</h1>
+      <div className={cn("px-3 pt-1", selected && "max-md:hidden")}>
+        <InboxNav />
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-4 pb-6 max-md:px-0 max-md:pb-0 sm:px-6">
-        <div className={cn("max-md:px-4", selected && "max-md:hidden")}>
-          <InboxNav />
-        </div>
-        {(!active || user.permissions["inbox.manage"]) && (
-          <details className={cn("rounded-xl border bg-surface p-3 max-md:mx-4", selected && "max-md:hidden")} open={!active}>
-            <summary className="cursor-pointer text-sm font-semibold">Números conectados</summary>
-            <div className="mt-3">
-              <WhatsAppSetup numbers={setup.numbers} configured={whatsappConfigured()} qrConfigured={Boolean(process.env.WAHA_URL && process.env.WAHA_API_KEY)} canManage={Boolean(user.permissions["inbox.manage"])} templateCount={setup.templates.length} />
-            </div>
-          </details>
+      <div
+        className={cn(
+          "grid grid-cols-[minmax(0,1fr)] overflow-hidden border-t bg-surface md:m-3 md:h-[calc(100dvh-7rem)] md:grid-cols-[23rem_minmax(0,1fr)] md:rounded-xl md:border",
+          selected ? "h-[calc(100dvh-3rem-4.5rem-env(safe-area-inset-bottom))]" : "h-[calc(100dvh-5.75rem-4.5rem-env(safe-area-inset-bottom))]",
         )}
-
-        <div className={cn("grid min-h-[28rem] overflow-hidden border-y bg-surface md:h-[calc(100dvh-14rem)] md:grid-cols-[22rem_minmax(0,1fr)] md:rounded-xl md:border-x", selected ? "h-[calc(100dvh-3.5rem)]" : "h-[calc(100dvh-14rem)]")}>
-          <aside aria-label="Conversas" className={cn("flex min-h-0 flex-col border-r", selected && "hidden md:flex")}>
-            <form action="/atendimento" className="relative border-b p-2">
-              <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input name="q" defaultValue={filters.q} placeholder="Buscar nome ou número…" aria-label="Buscar conversas" className="pl-8" />
+      >
+        <aside aria-label="Conversas" className={cn("flex min-h-0 flex-col border-r", selected && "hidden md:flex")}>
+          <div className="grid gap-2 bg-[var(--chat-panel)] px-3 py-2">
+            <div className="flex items-center gap-2">
+              <h2 className="flex-1 text-base font-semibold">Conversas</h2>
+              <span className="text-xs text-muted-foreground tabular">{list.total}</span>
+              {(canManage || !active) && (
+                <NumbersDialog alert={hasProblem || !active} defaultOpen={!active && setup.numbers.length === 0}>
+                  {setupPanel}
+                </NumbersDialog>
+              )}
+            </div>
+            <form action="/atendimento" className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input name="q" type="search" defaultValue={filters.q} placeholder="Pesquisar nome ou número…" aria-label="Pesquisar conversas" className="border-0 bg-[var(--chat-input)] pl-9" />
               {filters.status !== "abertas" && <input type="hidden" name="situacao" value={filters.status} />}
+              {filters.numero && <input type="hidden" name="numero" value={filters.numero} />}
             </form>
-            <nav aria-label="Situação" className="flex gap-1 overflow-x-auto border-b px-2 py-1.5">
-              {TABS.map(([k, label]) => (
-                <Link
-                  key={k}
-                  href={href({ situacao: k === "abertas" ? undefined : k, pagina: undefined, conversa: undefined })}
-                  aria-current={filters.status === k ? "page" : undefined}
-                  className={cn("rounded-md px-2 py-1 text-xs whitespace-nowrap", filters.status === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}
-                >
-                  {label}
+          </div>
+          <nav aria-label="Filtrar conversas" className="flex gap-1.5 overflow-x-auto border-b px-3 py-2">
+            {TABS.map(([k, label]) => (
+              <Link
+                key={k}
+                href={href({ situacao: k === "abertas" ? undefined : k, pagina: undefined, conversa: undefined })}
+                aria-current={filters.status === k ? "page" : undefined}
+                className={cn("rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors", filters.status === k ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-white" : "bg-muted text-muted-foreground hover:bg-accent")}
+              >
+                {label}
+              </Link>
+            ))}
+            <Link
+              href={href({ responsavel: filters.responsavel === "eu" ? undefined : "eu", conversa: undefined })}
+              aria-current={filters.responsavel === "eu" ? "page" : undefined}
+              className={cn("rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors", filters.responsavel === "eu" ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-white" : "bg-muted text-muted-foreground hover:bg-accent")}
+            >
+              Minhas
+            </Link>
+          </nav>
+          {setup.numbers.length > 1 && (
+            <nav aria-label="Filtrar por número" className="flex gap-1.5 overflow-x-auto border-b px-3 py-1.5">
+              <Link href={href({ numero: undefined, conversa: undefined })} aria-current={!filters.numero ? "page" : undefined} className={cn("rounded-md px-2 py-0.5 text-xs whitespace-nowrap", !filters.numero ? "font-semibold" : "text-muted-foreground hover:underline")}>
+                Todos os números
+              </Link>
+              {setup.numbers.map((n) => (
+                <Link key={n.id} href={href({ numero: n.id, conversa: undefined })} aria-current={filters.numero === n.id ? "page" : undefined} className={cn("rounded-md px-2 py-0.5 text-xs whitespace-nowrap", filters.numero === n.id ? "font-semibold" : "text-muted-foreground hover:underline")}>
+                  {n.verified_name || n.display_phone || "Número"}
                 </Link>
               ))}
-              <Link
-                href={href({ responsavel: filters.responsavel === "eu" ? undefined : "eu", conversa: undefined })}
-                aria-current={filters.responsavel === "eu" ? "page" : undefined}
-                className={cn("rounded-md px-2 py-1 text-xs whitespace-nowrap", filters.responsavel === "eu" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}
-              >
-                Minhas
-              </Link>
             </nav>
-            {list.items.length === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground">{active ? "Nenhuma conversa com estes filtros." : "Conecte um número para começar a receber mensagens."}</p>
-            ) : (
-              <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                {list.items.map((c) => (
+          )}
+          {list.items.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">{active ? "Nenhuma conversa com estes filtros." : "Conecte um número para começar a receber mensagens."}</p>
+          ) : (
+            <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {list.items.map((c) => {
+                const name = c.contact_name || formatPhone(c.contact_e164);
+                const mine = c.preview?.direction === "saida";
+                const unread = c.unread_count > 0;
+                return (
                   <li key={c.id}>
-                    <Link
-                      href={href({ conversa: c.id })}
-                      aria-current={selected?.id === c.id ? "true" : undefined}
-                      className={cn("grid gap-0.5 border-b px-3 py-2.5 text-sm hover:bg-accent", selected?.id === c.id && "bg-accent")}
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className={cn("truncate", c.unread_count > 0 && "font-semibold")}>{c.contact_name || formatPhone(c.contact_e164)}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">{c.last_message_at ? formatRelative(c.last_message_at) : ""}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        {c.waiting_reply && c.status === "aberta" && <span className="rounded bg-warning-soft px-1 text-warning">Aguardando</span>}
-                        {c.unread_count > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground tabular">{c.unread_count}</span>}
-                        <span className="truncate">{c.lead ? c.lead.name : "Sem lead"}</span>
-                        {c.assignee_id && <span className="truncate">· {names[c.assignee_id] ?? ""}</span>}
-                      </span>
-                      {c.tags.length > 0 && (
-                        <span className="flex flex-wrap gap-1">
-                          {c.tags.slice(0, 3).map((t) => (
-                            <TagChip key={t.id} name={t.name} color={t.color as TagColor} />
-                          ))}
+                    <Link href={href({ conversa: c.id })} aria-current={selected?.id === c.id ? "true" : undefined} className={cn("flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent", selected?.id === c.id && "bg-accent")}>
+                      <ChatAvatar name={c.contact_name} seed={c.contact_e164} className="size-12 text-base" />
+                      <span className="grid min-w-0 flex-1 gap-0.5 border-b pb-2.5">
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="truncate font-medium">{name}</span>
+                          <span className={cn("shrink-0 text-xs tabular", unread ? "font-semibold text-[#00a884]" : "text-muted-foreground")}>{c.last_message_at ? listTime(c.last_message_at, today) : ""}</span>
                         </span>
-                      )}
+                        <span className="flex items-center gap-1.5">
+                          {mine && (c.preview?.status === "lida" ? <CheckCheck className="size-4 shrink-0 text-[#53bdeb]" aria-label="Lida" /> : c.preview?.status === "entregue" ? <CheckCheck className="size-4 shrink-0 text-muted-foreground" aria-label="Entregue" /> : c.preview?.status === "erro" ? <TriangleAlert className="size-3.5 shrink-0 text-danger" aria-label="Erro no envio" /> : <Check className="size-4 shrink-0 text-muted-foreground" aria-label="Enviada" />)}
+                          <span className={cn("min-w-0 flex-1 truncate text-sm", unread ? "font-medium text-foreground" : "text-muted-foreground")}>{messagePreview(c.preview) || (c.lead ? c.lead.name : "Sem mensagens")}</span>
+                          {unread && <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-[#00a884] px-1.5 text-[11px] font-semibold text-white tabular">{c.unread_count}</span>}
+                        </span>
+                        {(c.tags.length > 0 || (setup.numbers.length > 1 && numberLabel(c.number_id)) || (c.assignee_id && names[c.assignee_id])) && (
+                          <span className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+                            {c.status === "encerrada" && <span className="rounded bg-muted px-1">Encerrada</span>}
+                            {setup.numbers.length > 1 && <span className="max-w-28 truncate rounded bg-muted px-1">{numberLabel(c.number_id)}</span>}
+                            {c.assignee_id && names[c.assignee_id] && <span className="max-w-28 truncate">{names[c.assignee_id]}</span>}
+                            {c.tags.slice(0, 2).map((t) => (
+                              <TagChip key={t.id} name={t.name} color={t.color as TagColor} />
+                            ))}
+                          </span>
+                        )}
+                      </span>
                     </Link>
                   </li>
-                ))}
-              </ul>
-            )}
-            {(page > 0 || list.hasMore) && (
-              <div className="flex justify-between border-t p-2">
-                <Button asChild variant="ghost" size="sm" disabled={page === 0}>
-                  <Link href={href({ pagina: page > 1 ? String(page - 1) : undefined })} aria-disabled={page === 0}>
-                    Anteriores
-                  </Link>
+                );
+              })}
+            </ul>
+          )}
+          {(page > 0 || list.hasMore) && (
+            <div className="flex justify-between border-t p-2">
+              {page > 0 ? (
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={href({ pagina: page > 1 ? String(page - 1) : undefined })}>Mais recentes</Link>
                 </Button>
-                {list.hasMore && (
-                  <Button asChild variant="ghost" size="sm">
-                    <Link href={href({ pagina: String(page + 1) })}>Mais antigas</Link>
-                  </Button>
-                )}
-              </div>
-            )}
-          </aside>
-          <div className={cn("min-h-0", !selected && "hidden md:block")}>
-            {selected ? (
-              <ConversationView
-                key={selected.id}
-                conversation={selected}
-                owners={lookups.owners}
-                templates={setup.templates}
-                tags={lookups.tags}
-                pipelines={lookups.pipelines.map((p) => ({ id: p.id, name: p.name }))}
-                names={names}
-                canReply={Boolean(user.permissions["inbox.reply"])}
-                canManage={Boolean(user.permissions["inbox.manage"])}
-                canCreateLead={Boolean(user.permissions["crm.leads.create"])}
-                provider={channel?.provider ?? "cloud"}
-                online={channel?.status === "ativo"}
-                quickReplies={quickReplies}
-                leadPanel={
-                  selectedLead && leadWork ? (
-                    <LeadSidePanel
+              ) : (
+                <span />
+              )}
+              {list.hasMore && (
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={href({ pagina: String(page + 1) })}>Mais antigas</Link>
+                </Button>
+              )}
+            </div>
+          )}
+        </aside>
+        <div className={cn("min-h-0 min-w-0", !selected && "hidden md:block")}>
+          {selected ? (
+            <ChatView
+              key={selected.id}
+              conversation={selected}
+              owners={lookups.owners}
+              templates={setup.templates}
+              tags={lookups.tags}
+              pipelines={lookups.pipelines.map((p) => ({ id: p.id, name: p.name }))}
+              names={names}
+              canReply={Boolean(user.permissions["inbox.reply"])}
+              canManage={canManage}
+              canCreateLead={Boolean(user.permissions["crm.leads.create"])}
+              provider={channel?.provider ?? "cloud"}
+              online={channel?.status === "ativo"}
+              quickReplies={quickReplies}
+              leadPanel={
+                selectedLead && leadWork ? (
+                  <LeadSidePanel
+                    lead={{ id: selectedLead.id, name: selectedLead.name }}
+                    nextContactAt={selectedLead.next_contact_at}
+                    canMove={Boolean(user.permissions["crm.pipeline.move"])}
+                    canUpdate={Boolean(user.permissions["crm.leads.update"])}
+                    deals={leadDeals.map((d) => {
+                      const pipeline = lookups.pipelines.find((p) => p.id === d.pipeline_id);
+                      return { id: d.id, stage_id: d.stage_id, pipeline_name: pipeline?.name ?? "Funil", stages: (pipeline?.stages ?? []).map((s) => ({ id: s.id, name: s.name, kind: s.kind })) };
+                    })}
+                  >
+                    <LeadWorkPanel
                       lead={{ id: selectedLead.id, name: selectedLead.name }}
-                      nextContactAt={selectedLead.next_contact_at}
-                      canMove={Boolean(user.permissions["crm.pipeline.move"])}
-                      canUpdate={Boolean(user.permissions["crm.leads.update"])}
-                      deals={leadDeals.map((d) => {
-                        const pipeline = lookups.pipelines.find((p) => p.id === d.pipeline_id);
-                        return { id: d.id, stage_id: d.stage_id, pipeline_name: pipeline?.name ?? "Funil", stages: (pipeline?.stages ?? []).map((s) => ({ id: s.id, name: s.name, kind: s.kind })) };
-                      })}
-                    >
-                      <LeadWorkPanel
-                        lead={{ id: selectedLead.id, name: selectedLead.name }}
-                        tasks={leadWork.tasks}
-                        events={leadWork.events}
-                        enrollments={leadWork.enrollments}
-                        cadences={cadences}
-                        owners={lookups.owners}
-                        meId={user.id}
-                        perms={{
-                          createTask: Boolean(user.permissions["tasks.create"]),
-                          assignTask: Boolean(user.permissions["tasks.create"] && user.permissions["tasks.create"] !== "own"),
-                          deleteTask: Boolean(user.permissions["tasks.delete"]),
-                          manageCalendar: Boolean(user.permissions["calendar.manage"]),
-                          assignCalendar: Boolean(user.permissions["calendar.manage"] && user.permissions["calendar.manage"] !== "own"),
-                        }}
-                      />
-                    </LeadSidePanel>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <div className="grid h-full place-items-center p-6">
-                <EmptyState icon={MessagesSquare} title="Escolha uma conversa" description="As mensagens aparecem aqui, com as observações internas da equipe destacadas." />
+                      tasks={leadWork.tasks}
+                      events={leadWork.events}
+                      enrollments={leadWork.enrollments}
+                      cadences={cadences}
+                      owners={lookups.owners}
+                      meId={user.id}
+                      perms={{
+                        createTask: Boolean(user.permissions["tasks.create"]),
+                        assignTask: Boolean(user.permissions["tasks.create"] && user.permissions["tasks.create"] !== "own"),
+                        deleteTask: Boolean(user.permissions["tasks.delete"]),
+                        manageCalendar: Boolean(user.permissions["calendar.manage"]),
+                        assignCalendar: Boolean(user.permissions["calendar.manage"] && user.permissions["calendar.manage"] !== "own"),
+                      }}
+                    />
+                  </LeadSidePanel>
+                ) : undefined
+              }
+            />
+          ) : (
+            <div className="chat-wallpaper grid h-full place-items-center p-6">
+              <div className="grid justify-items-center gap-2 rounded-2xl bg-[var(--chat-pill)]/90 px-8 py-6 text-center shadow-xs">
+                <MessagesSquare className="size-10 text-[#00a884]" aria-hidden="true" />
+                <p className="font-semibold">Escolha uma conversa</p>
+                <p className="max-w-xs text-sm text-muted-foreground">As mensagens chegam aqui na hora, e as observações internas ficam só para a equipe.</p>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </>

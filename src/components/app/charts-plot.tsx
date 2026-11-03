@@ -3,6 +3,7 @@
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipContentProps } from "recharts";
 import { formatBRL } from "@/domain/shared/money";
 import type { Datum, Series } from "./charts";
+import { useMotionOk } from "./use-motion";
 
 // Parte pesada dos gráficos (Recharts): carregada sob demanda por charts.tsx.
 
@@ -50,6 +51,7 @@ function Legend({ series }: { series: Series[] }) {
 
 /** Barras verticais agrupadas (ex.: receitas × despesas por mês). Uma escala só. */
 export function GroupedBars({ data, xKey, series, money = true, height = 260 }: { data: Datum[]; xKey: string; series: Series[]; money?: boolean; height?: number }) {
+  const motion = useMotionOk();
   const fmt = money ? formatBRL : (v: number) => v.toLocaleString("pt-BR");
   return (
     <div className="grid gap-2">
@@ -77,7 +79,8 @@ export function GroupedBars({ data, xKey, series, money = true, height = 260 }: 
               strokeDasharray={s.forecast ? "4 3" : undefined}
               radius={[4, 4, 0, 0]}
               maxBarSize={28}
-              isAnimationActive={false}
+              isAnimationActive={motion}
+              animationDuration={600}
             />
           ))}
         </BarChart>

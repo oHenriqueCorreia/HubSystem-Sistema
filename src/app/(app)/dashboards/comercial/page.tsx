@@ -12,7 +12,7 @@ import { resolvePeriod } from "@/features/dashboards/period";
 import { DashboardFilters } from "@/features/dashboards/components/dashboard-filters";
 import { DashboardTabs } from "@/features/dashboards/components/dashboard-tabs";
 import { Kpi } from "@/features/dashboards/components/kpi";
-import { RankBars, SalesByMonth, StageFunnel } from "@/features/dashboards/components/commercial-charts";
+import { DonutRank, RankBars, SalesByMonth, StageFunnel } from "@/features/dashboards/components/commercial-charts";
 import { MONTH_LABEL } from "@/features/finance/server";
 
 export const metadata: Metadata = { title: "Dashboard comercial" };
@@ -116,10 +116,10 @@ export default async function ComercialPage({ searchParams }: PageProps<"/dashbo
 
         <div className="grid gap-4 lg:grid-cols-2">
           <StageFunnel stages={d.by_stage} />
-          <RankBars title="Leads por responsável" rows={d.by_owner.map((o) => ({ name: o.name, count: o.count }))} labelHeader="Responsável" />
+          <DonutRank title="Leads por responsável" centerLabel="Leads" rows={d.by_owner.map((o) => ({ name: o.name, count: o.count }))} labelHeader="Responsável" />
           <SalesByMonth rows={d.by_month.map((m) => ({ mes: MONTH_LABEL(m.month), vendas: m.amount }))} />
-          <RankBars title="Vendas por serviço" description="Contratos iniciados no período." rows={d.by_service} money labelHeader="Serviço" />
-          <RankBars title="Motivos de perda" rows={d.lost_reasons} labelHeader="Motivo" />
+          <DonutRank title="Vendas por serviço" centerLabel="Vendas" description="Contratos iniciados no período." rows={d.by_service} money labelHeader="Serviço" />
+          <DonutRank title="Motivos de perda" centerLabel="Perdas" rows={d.lost_reasons} labelHeader="Motivo" />
           {d.forecast.length > 0 && (
             <RankBars title="Previsão de fechamento" description="Valor dos negócios abertos por mês previsto." rows={d.forecast.map((f) => ({ name: MONTH_LABEL(f.month), amount: f.amount }))} money labelHeader="Mês" />
           )}

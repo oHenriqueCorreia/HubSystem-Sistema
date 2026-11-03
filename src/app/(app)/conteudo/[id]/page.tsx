@@ -25,6 +25,7 @@ export default async function ConteudoItemPage({ params }: { params: Promise<{ i
           key={`${content.id}-${content.version}`}
           id={content.id}
           status={content.status}
+          format={content.format}
           caption={content.caption}
           version={content.version}
           approvedVersion={content.approved_version}

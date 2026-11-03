@@ -1,5 +1,20 @@
 export type ContentStatus = "em_producao" | "aguardando_aprovacao" | "ajustes_solicitados" | "aprovado" | "agendado" | "publicado" | "erro";
 export type SchedulePlatform = "facebook" | "instagram";
+export type ContentFormat = "post" | "video" | "reels";
+
+export const FORMAT_LABEL: Record<ContentFormat, string> = { post: "Post", video: "Vídeo", reels: "Reels" };
+
+/** O que cada formato pede, antes de olhar a plataforma. */
+export function formatProblem(format: ContentFormat, m: PublishMedia): string | null {
+  if (format === "post") return m.videos > 0 ? "Post leva imagens. Para vídeo, crie um Vídeo ou Reels." : null;
+  if (m.images > 0) return `${FORMAT_LABEL[format]} leva só o vídeo: remova as imagens.`;
+  if (m.videos !== 1) return `${FORMAT_LABEL[format]} precisa de um vídeo.`;
+  return null;
+}
+
+/** Limites de arquivo do armazenamento. */
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+export const VIDEO_TYPES = ["video/mp4", "video/quicktime"];
 
 export const CONTENT_STATUS_LABEL: Record<ContentStatus, string> = {
   em_producao: "Em produção",
