@@ -22,21 +22,29 @@ export type ConversationListItem = {
   preview: { direction: string; type: string; body: string | null; media_name: string | null; status: string; sender_name: string | null } | null;
 };
 
-export type InboxFilters = { q?: string; status?: "abertas" | "aguardando" | "grupos" | "encerradas" | "todas"; responsavel?: string; etiqueta?: string; numero?: string; de?: string; ate?: string };
+export type InboxFilters = { q?: string; status?: "abertas" | "aguardando" | "grupos" | "encerradas" | "todas" | "excluidas"; responsavel?: string; etiqueta?: string; numero?: string; de?: string; ate?: string };
 
 const PAGE = 50;
+
+/** Por QR Code, a conversa só aparece depois de a pessoa compilar. A API oficial não tem essa etapa. */
+export async function visibleNumberIds(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data } = await supabase.rpc("my_whatsapp_numbers");
+  return ((data ?? []) as { id: string; provider: string; compiled_at: string | null }[]).filter((n) => n.provider !== "waha" || n.compiled_at).map((n) => n.id);
+}
 
 /** Conversas paginadas (mais recentes primeiro), nunca todas de uma vez. */
 export async function listConversations(f: InboxFilters, userId: string, page = 0) {
   const supabase = await createClient();
   const cols = `id, number_id, kind, contact_e164, group_jid, contact_name, status, waiting_reply, unread_count, last_message_at, last_inbound_at, assignee_id,
     lead:leads(id, name), conversation_tags(tag:tags(id, name, color))${f.etiqueta ? ", tag_filter:conversation_tags!inner(tag_id)" : ""}`;
-  let q = supabase.from("conversations").select(cols, { count: "exact" });
+  let q = supabase.from("conversations").select(cols, { count: "exact" }).in("number_id", await visibleNumberIds(supabase));
   const status = f.status ?? "abertas";
   if (status === "abertas") q = q.eq("status", "aberta");
   if (status === "aguardando") q = q.eq("status", "aberta").eq("waiting_reply", true);
   if (status === "encerradas") q = q.eq("status", "encerrada");
   if (status === "grupos") q = q.eq("kind", "grupo");
+  if (status === "excluidas") q = q.not("excluded_at", "is", null);
+  else q = q.is("excluded_at", null);
   if (f.responsavel === "eu") q = q.eq("assignee_id", userId);
   else if (f.responsavel === "sem") q = q.is("assignee_id", null);
   else if (f.responsavel) q = q.eq("assignee_id", f.responsavel);
@@ -70,7 +78,7 @@ export async function getConversation(id: string) {
   const [conv, msgs] = await Promise.all([
     supabase
       .from("conversations")
-      .select("id, number_id, kind, contact_e164, group_jid, client_id, contact_name, status, assignee_id, last_inbound_at, outcome, lead:leads(id, name, company_name, next_contact_at, contact_opt_out_at, whatsapp_consent_at, owner_id), conversation_tags(tag_id)")
+      .select("id, number_id, kind, contact_e164, group_jid, client_id, excluded_at, contact_name, status, assignee_id, last_inbound_at, outcome, lead:leads(id, name, company_name, email, notes, next_contact_at, contact_opt_out_at, whatsapp_consent_at, owner_id), conversation_tags(tag_id)")
       .eq("id", id)
       .maybeSingle(),
     // Últimas mensagens; as anteriores carregam sob demanda na própria conversa.
@@ -78,10 +86,11 @@ export async function getConversation(id: string) {
   ]);
   if (conv.error) throw conv.error;
   if (!conv.data) return null;
+  if (conv.data.excluded_at || !(await visibleNumberIds(supabase)).includes(conv.data.number_id as string)) return null;
   const lead = Array.isArray(conv.data.lead) ? conv.data.lead[0] : conv.data.lead;
   return {
     ...conv.data,
-    lead: (lead ?? null) as { id: string; name: string; company_name: string | null; next_contact_at: string | null; contact_opt_out_at: string | null; whatsapp_consent_at: string | null; owner_id: string | null } | null,
+    lead: (lead ?? null) as { id: string; name: string; company_name: string | null; email: string | null; notes: string | null; next_contact_at: string | null; contact_opt_out_at: string | null; whatsapp_consent_at: string | null; owner_id: string | null } | null,
     tagIds: ((conv.data.conversation_tags as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id),
     messages: ((msgs.data ?? []) as unknown as Message[]).reverse(),
     hasOlder: (msgs.data ?? []).length === MESSAGE_PAGE,
@@ -119,15 +128,17 @@ async function getConversationOrigin(conversationId: string): Promise<Conversati
 
 export async function getInboxSetup() {
   const supabase = await createClient();
-  const [numbers, templates, imports] = await Promise.all([
+  const [numbers, templates, imports, finished] = await Promise.all([
     supabase.rpc("my_whatsapp_numbers"),
     supabase.from("whatsapp_templates").select("id, name, language, category, status, components").order("name"),
     supabase.from("whatsapp_imports").select("number_id, contacts_done, groups_done, messages_done").in("status", ["importando", "aguardando"]),
+    supabase.from("whatsapp_imports").select("number_id").eq("status", "concluida"),
   ]);
   return {
-    numbers: (numbers.data ?? []) as { id: string; provider: "cloud" | "waha"; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null }[],
+    numbers: (numbers.data ?? []) as { id: string; provider: "cloud" | "waha"; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null; compiled_at: string | null }[],
     templates: (templates.data ?? []) as { id: string; name: string; language: string; category: string | null; status: string; components: { type: string; text?: string }[] }[],
     activeImports: (imports.data ?? []) as { number_id: string; contacts_done: number; groups_done: number; messages_done: number }[],
+    importedNumbers: ((finished.data ?? []) as { number_id: string }[]).map((j) => j.number_id),
   };
 }
 
@@ -136,6 +147,15 @@ export async function listClientOptions() {
   const supabase = await createClient();
   const { data } = await supabase.from("clients").select("id, legal_name, lead:leads(name)").order("legal_name").limit(500);
   return ((data ?? []) as unknown as { id: string; legal_name: string | null; lead: { name: string } | { name: string }[] | null }[]).map((c) => ({ id: c.id, name: c.legal_name || (Array.isArray(c.lead) ? c.lead[0]?.name : c.lead?.name) || "Cliente sem nome" }));
+}
+
+/** Quantos grupos estão na lista, para o "manter só os marcados" dizer quantos saem. */
+export async function countGroups(numberId?: string) {
+  const supabase = await createClient();
+  let q = supabase.from("conversations").select("id", { count: "exact", head: true }).in("number_id", await visibleNumberIds(supabase)).eq("kind", "grupo").is("excluded_at", null);
+  if (numberId) q = q.eq("number_id", numberId);
+  const { count } = await q;
+  return count ?? 0;
 }
 
 export async function listQuickReplies() {
@@ -154,6 +174,6 @@ export async function listLeadDeals(leadId: string) {
 /** Conversas de um lead (para o painel do lead). */
 export async function listLeadConversations(leadId: string) {
   const supabase = await createClient();
-  const { data } = await supabase.from("conversations").select("id, status, waiting_reply, unread_count, last_message_at").eq("lead_id", leadId).order("last_message_at", { ascending: false, nullsFirst: false }).limit(10);
+  const { data } = await supabase.from("conversations").select("id, status, waiting_reply, unread_count, last_message_at").eq("lead_id", leadId).is("excluded_at", null).order("last_message_at", { ascending: false, nullsFirst: false }).limit(10);
   return (data ?? []) as { id: string; status: string; waiting_reply: boolean; unread_count: number; last_message_at: string | null }[];
 }

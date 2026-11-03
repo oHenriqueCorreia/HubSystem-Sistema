@@ -77,7 +77,7 @@ export async function sendMedia(numberId: string, toE164: string, media: Outgoin
   const n = await numberToken(numberId);
   if (n.waha) return wahaSendMedia(n.waha, await wahaChatId(n.waha, toE164), media);
   const content: Record<string, unknown> = { link: media.url };
-  if (media.caption && media.kind !== "audio") content.caption = media.caption;
+  if (media.caption && media.kind !== "audio" && media.kind !== "sticker") content.caption = media.caption;
   if (media.kind === "document") content.filename = media.name;
   const r = await request<{ messages: { id: string }[] }>(n.token, `/${n.phoneNumberId}/messages`, {
     method: "POST",

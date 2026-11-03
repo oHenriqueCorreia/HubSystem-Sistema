@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { ArrowDown, ArrowLeft, Ban, Check, CheckCheck, ChevronDown, Clock, CornerUpLeft, FileText, Info, Lock, Megaphone, Paperclip, RefreshCw, Search, Send, Smile, Star, TriangleAlert, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "cn";
@@ -21,10 +23,12 @@ import { fillQuickReply, matchQuickReplies, shortcutQuery, type QuickReply } fro
 import { createClient } from "@/lib/supabase/client";
 import { TagPicker } from "@/features/tags/components/tag-picker";
 import type { Tag } from "@/features/crm/types";
-import { addInternalNote, assignConversation, loadOlderMessages, markConversationRead, prepareWhatsAppUpload, sendWhatsAppMedia, sendWhatsAppMessage, setConversationClient, setConversationStatus, setConversationTags, toggleImportant } from "../actions";
+import { addInternalNote, assignConversation, excludeConversations, listStickers, loadOlderMessages, markConversationRead, prepareWhatsAppUpload, sendImageAsSticker, sendSavedSticker, sendWhatsAppMedia, sendWhatsAppMessage, setConversationClient, setConversationStatus, setConversationTags, toggleImportant } from "../actions";
 import type { ConversationOrigin, Message } from "../queries";
 import { AttachButton, AudioRecorder, QuickReplyMenu } from "./composer-tools";
 import { CloseDialog, CreateLeadDialog, TemplateDialog } from "./conversation-dialogs";
+import { ContactCard } from "./contact-card";
+import type { PanelDeal } from "./lead-side-panel";
 
 type Owner = { id: string; full_name: string; email: string };
 type Template = { id: string; name: string; language: string; status: string; components: { type: string; text?: string }[] };
@@ -39,7 +43,7 @@ type Conversation = {
   status: string;
   assignee_id: string | null;
   last_inbound_at: string | null;
-  lead: { id: string; name: string; company_name?: string | null; contact_opt_out_at: string | null } | null;
+  lead: { id: string; name: string; company_name?: string | null; email?: string | null; notes?: string | null; contact_opt_out_at: string | null } | null;
   tagIds: string[];
   messages: Message[];
   origin: ConversationOrigin | null;
@@ -94,6 +98,9 @@ export function ChatView({
   tags,
   pipelines,
   clients,
+  deals = [],
+  canUpdateLead = false,
+  canMoveDeal = false,
   names,
   canReply,
   canManage,
@@ -109,6 +116,9 @@ export function ChatView({
   tags: Tag[];
   pipelines: { id: string; name: string }[];
   clients: { id: string; name: string }[];
+  deals?: PanelDeal[];
+  canUpdateLead?: boolean;
+  canMoveDeal?: boolean;
   names: Record<string, string>;
   canReply: boolean;
   canManage: boolean;
@@ -138,6 +148,11 @@ export function ChatView({
   const [older, setOlder] = useState<Message[]>([]);
   const [hasOlder, setHasOlder] = useState(conversation.hasOlder);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const mobile = useIsMobile();
+  const [pickerTab, setPickerTab] = useState<"emoji" | "figurinha">("emoji");
+  const [stickers, setStickers] = useState<string[] | null>(null);
+  const stickerInput = useRef<HTMLInputElement>(null);
   const [busy, startTransition] = useTransition();
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -214,6 +229,41 @@ export function ChatView({
       after?.();
       router.refresh();
     });
+  }
+
+  async function openStickers() {
+    setPickerTab("figurinha");
+    const res = await listStickers({}).catch(() => null);
+    setStickers(res?.ok ? res.data.ids : []);
+  }
+
+  /** Imagem escolhida vira figurinha no servidor: o celular nem sempre sabe gerar WebP. */
+  async function stickerFromImage(image: File) {
+    if (!image.type.startsWith("image/")) return void toast.error("Escolha uma imagem para virar figurinha.");
+    setUploading(true);
+    try {
+      const prepared = await prepareWhatsAppUpload({ conversationId: conversation.id, mime: image.type, size: image.size });
+      if (!prepared.ok) return void toast.error(prepared.message);
+      const { error } = await createClient().storage.from("whatsapp-media").uploadToSignedUrl(prepared.data.path, prepared.data.token, image, { contentType: image.type });
+      if (error) return void toast.error("Não foi possível enviar a imagem. Confira a conexão e tente de novo.");
+      const res = await sendImageAsSticker({ conversationId: conversation.id, clientRef: crypto.randomUUID(), path: prepared.data.path });
+      if (!res.ok) toast.error(res.message);
+      setStickers(null);
+      router.refresh();
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function resendSticker(messageId: string) {
+    setUploading(true);
+    try {
+      const res = await sendSavedSticker({ conversationId: conversation.id, clientRef: crypto.randomUUID(), messageId });
+      if (!res.ok) toast.error(res.message);
+      router.refresh();
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function showOlder() {
@@ -369,7 +419,7 @@ export function ChatView({
           <span className="grid min-w-0">
             <span className="truncate font-semibold">{display}</span>
             <span className="truncate text-xs text-muted-foreground">
-              {group ? "Grupo" : conversation.status === "encerrada" ? "Atendimento encerrado" : conversation.lead ? conversation.lead.name : formatPhone(conversation.contact_e164 ?? "")}
+              {group ? "Grupo" : conversation.status === "encerrada" ? "Atendimento encerrado" : conversation.lead && conversation.lead.name !== display ? conversation.lead.name : formatPhone(conversation.contact_e164 ?? "")}
             </span>
           </span>
         </button>
@@ -446,12 +496,13 @@ export function ChatView({
               const mine = m.direction === "saida";
               const firstOfRun = g.items[i - 1]?.direction !== m.direction || g.items[i - 1]?.sender_jid !== m.sender_jid;
               const fileNote = historyFileNote(m);
+              const isSticker = m.type === "sticker" && Boolean(m.media_id);
               const quoted = m.reply_to_wamid ? byWamid.get(m.reply_to_wamid) : null;
               const media = `/api/whatsapp/media/${m.id}`;
               return (
                 <div key={m.id} {...(canReply ? swipeToReply(m) : {})} className={cn("group flex touch-pan-y items-center gap-1", mine ? "justify-end" : "justify-start", firstOfRun && "mt-1.5")}>
                   {mine && canReply && <BubbleMenu message={m} onReply={() => { setReplyTo(m); input.current?.focus(); }} onStar={() => run(() => toggleImportant({ id: m.id, important: !m.important }))} />}
-                  <div className={cn("chat-bubble relative max-w-[85%] rounded-lg px-2 pt-1.5 pb-1 text-sm shadow-xs sm:max-w-[65%]", mine ? "bg-[var(--chat-out)]" : "bg-[var(--chat-in)]", firstOfRun && (mine ? "rounded-tr-none chat-tail-out" : "rounded-tl-none chat-tail-in"))}>
+                  <div className={cn("chat-bubble relative max-w-[85%] rounded-lg px-2 pt-1.5 pb-1 text-sm sm:max-w-[65%]", isSticker ? "bg-transparent" : cn("shadow-xs", mine ? "bg-[var(--chat-out)]" : "bg-[var(--chat-in)]", firstOfRun && (mine ? "rounded-tr-none chat-tail-out" : "rounded-tl-none chat-tail-in")))}>
                     {group && !mine && firstOfRun && (
                       <p className="mb-0.5 truncate text-xs font-semibold" style={{ color: `color-mix(in oklab, ${avatarColor(m.sender_jid ?? m.sender_name ?? "")} 70%, var(--foreground))` }}>
                         {senderLabel(m.sender_name, m.sender_jid, formatPhone)}
@@ -466,7 +517,10 @@ export function ChatView({
                     )}
                     {m.media_id && (
                       <div className="mb-1">
-                        {m.media_mime?.startsWith("image/") ? (
+                        {isSticker ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- mídia privada servida pela rota autenticada
+                          <img src={media} alt="Figurinha" width={144} height={144} loading="lazy" className="size-36 object-contain" />
+                        ) : m.media_mime?.startsWith("image/") ? (
                           <button type="button" className="block" aria-label="Ampliar imagem" onClick={() => setLightbox({ src: media, alt: m.body || "Imagem da conversa" })}>
                             {/* eslint-disable-next-line @next/next/no-img-element -- mídia privada servida pela rota autenticada */}
                             <img src={media} alt={m.body || "Imagem da conversa"} width={320} height={320} className="max-h-72 w-auto max-w-full rounded-md object-cover" loading="lazy" />
@@ -595,27 +649,75 @@ export function ChatView({
           )}
 
           <div className="flex items-end gap-0.5 sm:gap-1">
+            <div className={cn("contents", recording && "hidden")}>
             <Popover>
               <PopoverTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label="Emojis" disabled={composerDisabled}>
+                <Button type="button" variant="ghost" size="icon" aria-label="Emojis e figurinhas" disabled={composerDisabled}>
                   <Smile aria-hidden="true" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="grid w-72 grid-cols-8 gap-0.5 p-2" align="start">
-                {EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    aria-label={`Inserir ${e}`}
-                    className="grid size-8 place-items-center rounded text-lg hover:bg-accent"
-                    onClick={() => {
-                      setText((t) => t + e);
-                      input.current?.focus();
-                    }}
-                  >
-                    {e}
+              <PopoverContent className="grid w-[min(20rem,calc(100vw-1rem))] gap-2 p-2" align="start">
+                <div role="group" aria-label="Tipo" className="grid grid-cols-2 gap-1">
+                  <button type="button" aria-pressed={pickerTab === "emoji"} onClick={() => setPickerTab("emoji")} className={cn("rounded-md px-2 py-1.5 text-sm font-medium", pickerTab === "emoji" ? "bg-accent" : "text-muted-foreground hover:text-foreground")}>
+                    Emojis
                   </button>
-                ))}
+                  <button type="button" aria-pressed={pickerTab === "figurinha"} onClick={() => void openStickers()} className={cn("rounded-md px-2 py-1.5 text-sm font-medium", pickerTab === "figurinha" ? "bg-accent" : "text-muted-foreground hover:text-foreground")}>
+                    Figurinhas
+                  </button>
+                </div>
+                {pickerTab === "emoji" ? (
+                  <div className="grid max-h-56 grid-cols-7 gap-0.5 overflow-y-auto overscroll-contain">
+                    {EMOJIS.map((e) => (
+                      <button
+                        key={e}
+                        type="button"
+                        aria-label={`Inserir ${e}`}
+                        className="grid size-10 place-items-center rounded text-xl hover:bg-accent"
+                        onClick={() => {
+                          setText((t) => t + e);
+                          input.current?.focus();
+                        }}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    <input
+                      ref={stickerInput}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="sr-only"
+                      tabIndex={-1}
+                      aria-label="Imagem para virar figurinha"
+                      onChange={(e) => {
+                        const image = e.target.files?.[0];
+                        e.target.value = "";
+                        if (image) void stickerFromImage(image);
+                      }}
+                    />
+                    <Button type="button" variant="outline" disabled={uploading || composerDisabled} onClick={() => stickerInput.current?.click()}>
+                      Criar figurinha com uma imagem
+                    </Button>
+                    {stickers === null ? (
+                      <p className="p-2 text-center text-sm text-muted-foreground">Carregando…</p>
+                    ) : stickers.length === 0 ? (
+                      <p className="p-2 text-center text-sm text-muted-foreground">As figurinhas que chegarem ou forem enviadas ficam aqui.</p>
+                    ) : (
+                      <ul className="grid max-h-56 grid-cols-4 gap-1 overflow-y-auto overscroll-contain">
+                        {stickers.map((id) => (
+                          <li key={id}>
+                            <button type="button" aria-label="Enviar esta figurinha" disabled={uploading || composerDisabled} onClick={() => void resendSticker(id)} className="block aspect-square w-full rounded p-0.5 hover:bg-accent disabled:opacity-50">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- mídia privada servida pela rota autenticada */}
+                              <img src={`/api/whatsapp/media/${id}`} alt="" width={72} height={72} loading="lazy" className="size-full object-contain" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
             {!noteMode && <AttachButton disabled={!canSend || uploading} onPick={pickFile} />}
@@ -636,7 +738,7 @@ export function ChatView({
               aria-controls={matches.length > 0 ? "respostas-rapidas" : undefined}
               aria-activedescendant={matches.length > 0 ? `respostas-rapidas-${activeReply}` : undefined}
               aria-label={noteMode ? "Observação interna" : "Mensagem para o cliente"}
-              placeholder={noteMode ? "Observação só para a equipe…" : file ? "Legenda (opcional)…" : "Digite uma mensagem ou / para respostas…"}
+              placeholder={noteMode ? "Observação só para a equipe…" : file ? "Legenda (opcional)…" : mobile ? "Mensagem…" : "Digite uma mensagem ou / para respostas…"}
               onChange={(e) => {
                 setText(e.target.value);
                 setActiveReply(0);
@@ -669,12 +771,13 @@ export function ChatView({
               }}
               className={cn("max-h-36 min-h-10 min-w-0 flex-1 resize-none rounded-lg border-0 bg-[var(--chat-input)] px-3 py-2.5 text-base outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:text-sm", noteMode && "bg-warning-soft")}
             />
+            </div>
             {showSend || noteMode ? (
               <button type="button" onClick={send} disabled={!showSend || (composerDisabled && !noteMode)} aria-label="Enviar" className="grid size-10 shrink-0 place-items-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#008f72] disabled:opacity-50">
                 <Send className="size-5" aria-hidden="true" />
               </button>
             ) : (
-              <AudioRecorder disabled={!canSend || uploading} onRecorded={(blob, mime) => void sendFile(blob, `audio.${baseMime(mime).split("/")[1]}`, mime, "")} />
+              <AudioRecorder disabled={!canSend || uploading} onRecording={setRecording} onRecorded={(blob, mime) => void sendFile(blob, `audio.${baseMime(mime).split("/")[1]}`, mime, "")} />
             )}
           </div>
         </footer>
@@ -700,6 +803,19 @@ export function ChatView({
             <p className="text-sm text-muted-foreground tabular">{group ? "Grupo do WhatsApp" : formatPhone(conversation.contact_e164 ?? "")}</p>
           </div>
           <div className="grid gap-5 px-4 pb-6 text-sm">
+            {!group && <ContactCard key={conversation.lead?.id ?? "sem-lead"} conversationId={conversation.id} name={conversation.contact_name} lead={conversation.lead} deals={deals} canEdit={canReply} canEditLead={canUpdateLead} canMove={canMoveDeal} />}
+            <div className="grid gap-1.5">
+              <p className="font-medium">Etiquetas</p>
+              <TagPicker
+                value={tagIds}
+                options={tags}
+                disabled={!canReply || busy}
+                onChange={(ids) => {
+                  setTagIds(ids);
+                  run(() => setConversationTags({ id: conversation.id, tagIds: ids }));
+                }}
+              />
+            </div>
             <div className="flex flex-wrap justify-center gap-2">
               {conversation.lead && (
                 <Button asChild variant="outline" size="sm">
@@ -755,18 +871,6 @@ export function ChatView({
                 )}
               </div>
             )}
-            <div className="grid gap-1.5">
-              <p className="font-medium">Etiquetas</p>
-              <TagPicker
-                value={tagIds}
-                options={tags}
-                disabled={!canReply || busy}
-                onChange={(ids) => {
-                  setTagIds(ids);
-                  run(() => setConversationTags({ id: conversation.id, tagIds: ids }));
-                }}
-              />
-            </div>
             {conversation.origin && (
               <div className="grid gap-0.5">
                 <p className="font-medium">Origem</p>
@@ -789,6 +893,27 @@ export function ChatView({
                     ))}
                 </ul>
               </div>
+            )}
+            {canManage && (
+              <ConfirmDialog
+                trigger={
+                  <Button variant="outline" className="justify-self-start text-danger">
+                    {group ? "Excluir grupo" : "Excluir conversa"}
+                  </Button>
+                }
+                title={group ? "Excluir este grupo do Atendimento?" : "Excluir esta conversa?"}
+                description={group ? "As mensagens saem do sistema, e o grupo não volta sozinho. No WhatsApp do celular nada muda. Dá para restaurar em Excluídas." : "As mensagens saem do sistema. No WhatsApp do celular nada muda. A conversa volta se a pessoa escrever de novo. O lead continua."}
+                confirmLabel="Excluir"
+                onConfirm={async () => {
+                  const res = await excludeConversations({ ids: [conversation.id] });
+                  if (!res.ok) {
+                    toast.error(res.message);
+                    return false;
+                  }
+                  toast.success(res.message);
+                  router.push("/atendimento");
+                }}
+              />
             )}
           </div>
         </SheetContent>

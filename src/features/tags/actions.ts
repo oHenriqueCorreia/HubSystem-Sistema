@@ -17,7 +17,7 @@ function revalidateTags() {
 // Quem cria tarefas ou edita leads pode criar etiquetas na hora; gerenciar
 // (editar, arquivar, excluir) exige tags.manage. A RLS confirma as duas regras.
 export const createTag = defineAction(
-  { schema: tagSchema, permission: ["tags.manage", "crm.leads.update", "tasks.create"] },
+  { schema: tagSchema, permission: ["tags.manage", "crm.leads.update", "tasks.create", "inbox.reply"] },
   async (input) => {
     const supabase = await createClient();
     const { data, error } = await supabase

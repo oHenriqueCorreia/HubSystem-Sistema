@@ -12,7 +12,9 @@ import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
 import { baseMime, checkOutgoingMedia, isOutgoingPath, outgoingPath } from "@/domain/whatsapp/media";
 import { scopedWamid, unscopedWamid } from "@/domain/whatsapp/waha";
 import { wahaDeleteSession } from "@/lib/waha";
+import { purgeNumberData } from "@/lib/whatsapp-import";
 import { MESSAGE_COLUMNS, MESSAGE_PAGE, type Message } from "./message-columns";
+import { visibleNumberIds } from "./queries";
 import { fetchTemplates, markRead, numberInfo, numberProvider, sendMedia, sendTemplate, sendText, whatsappConfigured } from "@/lib/whatsapp";
 
 const NOT_CONFIGURED = "O WhatsApp ainda não foi configurado no servidor (META_APP_SECRET e WHATSAPP_VERIFY_TOKEN).";
@@ -77,11 +79,13 @@ export const disconnectWhatsAppNumber = defineAction({ schema: z.object({ id: z.
   const { data: number } = await admin.from("whatsapp_numbers").select("provider, waha_url, waha_session, token_enc").eq("id", id).eq("organization_id", user.organizationId).maybeSingle();
   // QR Code: encerra a sessão no servidor e desliga o aparelho.
   if (number?.provider === "waha") await wahaDeleteSession({ url: number.waha_url as string, key: decrypt(number.token_enc), session: number.waha_session as string }).catch(() => null);
-  // As conversas ficam (histórico); o token é apagado.
-  must(await admin.from("whatsapp_numbers").update({ status: "desconectado", token_enc: encrypt("revogado") }).eq("id", id).eq("organization_id", user.organizationId));
+  if (!number) return fail("not_found", "Número não encontrado.");
+  // Primeiro para de receber; depois apaga. Leads, negócios e etiquetas continuam.
+  must(await admin.from("whatsapp_numbers").update({ status: "desconectado", token_enc: encrypt("revogado"), compiled_at: null, purge_pending: true }).eq("id", id).eq("organization_id", user.organizationId));
+  await purgeNumberData(id, 40_000);
   revalidatePath("/atendimento");
   revalidatePath("/configuracoes/integracoes");
-  return ok(null, "Número desconectado. O histórico de conversas foi mantido.");
+  return ok(null, "Número desconectado. As conversas dele foram apagadas do sistema.");
 });
 
 export const syncWhatsAppTemplates = defineAction({ schema: z.object({ numberId: z.uuid() }), permission: "inbox.manage" }, async ({ numberId }, { user }) => {
@@ -444,4 +448,159 @@ export const loadOlderMessages = defineAction({ schema: z.object({ conversationI
   const supabase = await createClient();
   const rows = must(await supabase.from("messages").select(MESSAGE_COLUMNS).eq("conversation_id", conversationId).lt("created_at", before).order("created_at", { ascending: false }).limit(MESSAGE_PAGE)) as unknown as Message[];
   return ok({ messages: rows.reverse(), hasMore: rows.length === MESSAGE_PAGE });
+});
+
+/** Salva a ficha do contato. Com lead, o nome e os dados valem para o lead: funil e leads mostram o mesmo. */
+export const saveContact = defineAction(
+  {
+    schema: z.object({
+      conversationId: z.uuid(),
+      name: z.string().trim().min(2, "Informe o nome.").max(120),
+      company: z.string().trim().max(160).default(""),
+      email: z.union([z.literal(""), z.email("E-mail inválido.")]).default(""),
+      notes: z.string().trim().max(2000).default(""),
+    }),
+    permission: "inbox.reply",
+  },
+  async (input) => {
+    const supabase = await createClient();
+    const res = must(await supabase.from("conversations").update({ contact_name: input.name }).eq("id", input.conversationId).select("lead_id")) as { lead_id: string | null }[];
+    if (!res.length) return fail("forbidden", "Você não pode alterar este contato.");
+    if (res[0].lead_id) {
+      const lead = must(await supabase.from("leads").update({ name: input.name, company_name: input.company || null, email: input.email || null, notes: input.notes || null }).eq("id", res[0].lead_id).select("id")) as { id: string }[];
+      if (!lead.length) return fail("forbidden", "O nome da conversa mudou, mas você não pode editar este lead.");
+      revalidatePath("/crm", "layout");
+    }
+    done(input.conversationId);
+    return ok(null, "Contato salvo.");
+  },
+);
+
+async function deliverSticker(conv: ConvRow, clientRef: string, path: string, authorId: string) {
+  const admin = createAdminClient();
+  const file = { media_id: `storage:${path}`, media_mime: "image/webp", media_name: "figurinha.webp" };
+  const { data: signed } = await admin.storage.from("whatsapp-media").createSignedUrl(path, 3600);
+  if (!signed) return fail("network", "A figurinha não foi encontrada. Tente de novo.");
+  try {
+    const wamid = await sendMedia(conv.number_id, addressOf(conv), { url: signed.signedUrl, mime: "image/webp", name: "figurinha.webp", kind: "sticker" });
+    await recordOutgoing(conv, clientRef, storedWamid(conv, wamid), "sticker", "", authorId, undefined, file);
+  } catch (e) {
+    await recordOutgoing(conv, clientRef, null, "sticker", "", authorId, (e as { detail?: string }).detail?.slice(0, 300) ?? "Falha no envio", file);
+    done(conv.id);
+    return fail("network", "O WhatsApp recusou a figurinha. A mensagem ficou marcada com erro.");
+  }
+  done(conv.id);
+  return ok(null);
+}
+
+async function loadForSending(conversationId: string, clientRef: string) {
+  const loaded = await loadConversation(conversationId);
+  if (!loaded) return fail("not_found", "Conversa não encontrada.");
+  if (loaded.optOut) return fail("business_rule", "Este contato pediu para não receber mensagens. O envio está bloqueado.");
+  const blocked = await channelBlock(loaded.conv);
+  if (blocked) return fail("business_rule", blocked);
+  const { data: dup } = await createAdminClient().from("messages").select("id").eq("client_ref", clientRef).maybeSingle();
+  return dup ? null : loaded.conv;
+}
+
+/** Vira figurinha uma imagem que a pessoa escolheu: quadrada, 512 px e em WebP, como o WhatsApp pede. */
+export const sendImageAsSticker = defineAction({ schema: z.object({ conversationId: z.uuid(), clientRef: z.uuid(), path: z.string().max(200) }), permission: "inbox.reply" }, async (input, { user }) => {
+  if (!(await withinRateLimit(`wa-send:${user.id}`, 60, 60))) return fail("business_rule", RATE_LIMIT_MESSAGE);
+  if (!isOutgoingPath(input.path, user.organizationId)) return fail("forbidden", "Arquivo inválido.");
+  const conv = await loadForSending(input.conversationId, input.clientRef);
+  if (!conv) return ok(null);
+  if ("ok" in conv) return conv;
+  const admin = createAdminClient();
+  const { data: original } = await admin.storage.from("whatsapp-media").download(input.path);
+  if (!original) return fail("network", "A imagem não foi encontrada. Tente de novo.");
+  let sticker: Buffer;
+  try {
+    const { default: sharp } = await import("sharp");
+    sticker = await sharp(Buffer.from(await original.arrayBuffer())).rotate().resize(512, 512, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
+  } catch {
+    return fail("validation", "Não foi possível transformar este arquivo em figurinha. Use uma imagem JPG ou PNG.");
+  }
+  const path = outgoingPath(user.organizationId, crypto.randomUUID());
+  const { error } = await admin.storage.from("whatsapp-media").upload(path, sticker, { contentType: "image/webp" });
+  await admin.storage.from("whatsapp-media").remove([input.path]);
+  if (error) return fail("network", "Não foi possível preparar a figurinha.");
+  return deliverSticker(conv, input.clientRef, path, user.id);
+});
+
+/** Reenvia uma figurinha que já passou por aqui, como as recentes do WhatsApp. */
+export const sendSavedSticker = defineAction({ schema: z.object({ conversationId: z.uuid(), clientRef: z.uuid(), messageId: z.uuid() }), permission: "inbox.reply" }, async (input, { user }) => {
+  if (!(await withinRateLimit(`wa-send:${user.id}`, 60, 60))) return fail("business_rule", RATE_LIMIT_MESSAGE);
+  const conv = await loadForSending(input.conversationId, input.clientRef);
+  if (!conv) return ok(null);
+  if ("ok" in conv) return conv;
+  const supabase = await createClient();
+  const { data: source } = await supabase.from("messages").select("media_id").eq("id", input.messageId).eq("type", "sticker").maybeSingle();
+  if (!source?.media_id?.startsWith("storage:")) return fail("not_found", "Esta figurinha não está mais disponível.");
+  const admin = createAdminClient();
+  // Cópia própria: se o número de origem for desconectado, esta conversa não perde a figurinha.
+  const path = outgoingPath(user.organizationId, crypto.randomUUID());
+  const { error } = await admin.storage.from("whatsapp-media").copy(source.media_id.slice("storage:".length), path);
+  if (error) return fail("network", "Esta figurinha não está mais disponível.");
+  return deliverSticker(conv, input.clientRef, path, user.id);
+});
+
+/** Figurinhas recentes da empresa, enviadas ou recebidas. */
+export const listStickers = defineAction({ schema: z.object({}), permission: "inbox.read" }, async () => {
+  const supabase = await createClient();
+  const { data } = await supabase.from("messages").select("id").eq("type", "sticker").like("media_id", "storage:%").order("created_at", { ascending: false }).limit(40);
+  return ok({ ids: (data ?? []).map((m) => m.id as string) });
+});
+
+const EXCLUDE_BATCH = 50;
+
+/** Tira as conversas do Atendimento: mensagens e arquivos saem; a linha fica para o grupo não voltar sozinho. */
+async function excludeIds(ids: string[]) {
+  const admin = createAdminClient();
+  for (let i = 0; i < ids.length; i += EXCLUDE_BATCH) {
+    const part = ids.slice(i, i + EXCLUDE_BATCH);
+    for (let more = true; more; ) {
+      const { data: files } = await admin.from("messages").select("id, media_id").in("conversation_id", part).like("media_id", "storage:%").limit(500);
+      const paths = (files ?? []).map((m) => (m.media_id as string).slice("storage:".length));
+      if (paths.length) await admin.storage.from("whatsapp-media").remove(paths).catch(() => null);
+      if (files?.length) await admin.from("messages").update({ media_id: null }).in("id", files.map((m) => m.id as string));
+      more = (files?.length ?? 0) === 500;
+    }
+    must(await admin.from("messages").delete().in("conversation_id", part));
+    must(await admin.from("conversations").update({ excluded_at: new Date().toISOString(), unread_count: 0, waiting_reply: false, last_message_at: null, last_inbound_at: null }).in("id", part));
+  }
+}
+
+const conversationIds = z.array(z.uuid()).min(1, "Selecione ao menos uma conversa.").max(200, "Selecione até 200 conversas por vez.");
+
+export const excludeConversations = defineAction({ schema: z.object({ ids: conversationIds }), permission: "inbox.manage" }, async ({ ids }) => {
+  const supabase = await createClient();
+  // Só o que a pessoa enxerga pode ser excluído: a leitura passa pela RLS.
+  const visible = must(await supabase.from("conversations").select("id").in("id", ids)) as { id: string }[];
+  if (!visible.length) return fail("not_found", "Conversa não encontrada.");
+  await excludeIds(visible.map((c) => c.id));
+  done();
+  return ok(null, visible.length === 1 ? "Conversa excluída." : `${visible.length} conversas excluídas.`);
+});
+
+/** Para quem tem muitos grupos: marca os que quer manter e o resto sai. */
+export const excludeAllGroupsExcept = defineAction({ schema: z.object({ keep: conversationIds, numberId: z.uuid().optional() }), permission: "inbox.manage" }, async ({ keep, numberId }) => {
+  const supabase = await createClient();
+  // Só os que aparecem na lista: número ainda não compilado fica de fora.
+  let q = supabase.from("conversations").select("id").in("number_id", await visibleNumberIds(supabase)).eq("kind", "grupo").is("excluded_at", null);
+  if (numberId) q = q.eq("number_id", numberId);
+  const groups = must(await q.limit(5000)) as { id: string }[];
+  const kept = new Set(keep);
+  const drop = groups.map((g) => g.id).filter((id) => !kept.has(id));
+  await excludeIds(drop);
+  done();
+  return ok(null, `${drop.length} ${drop.length === 1 ? "grupo excluído" : "grupos excluídos"}. Ficaram os que você marcou.`);
+});
+
+export const restoreConversations = defineAction({ schema: z.object({ ids: conversationIds }), permission: "inbox.manage" }, async ({ ids }) => {
+  const supabase = await createClient();
+  const visible = must(await supabase.from("conversations").select("id").in("id", ids)) as { id: string }[];
+  if (!visible.length) return fail("not_found", "Conversa não encontrada.");
+  must(await createAdminClient().from("conversations").update({ excluded_at: null }).in("id", visible.map((c) => c.id)));
+  done();
+  return ok(null, visible.length === 1 ? "Conversa restaurada. Compile de novo para trazer as mensagens antigas." : `${visible.length} conversas restauradas. Compile de novo para trazer as mensagens antigas.`);
 });

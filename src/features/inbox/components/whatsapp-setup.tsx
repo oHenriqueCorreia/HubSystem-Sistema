@@ -75,12 +75,8 @@ export function WhatsAppSetup({ numbers, configured, qrConfigured, canManage, te
                   </Button>
                 }
                 title="Desconectar este número?"
-                description={
-                  qr
-                    ? "O aparelho sai da lista de conectados e o sistema para de enviar e receber por este número. O histórico de conversas continua disponível."
-                    : "O token é apagado e o sistema para de enviar e receber por este número. O histórico de conversas continua disponível."
-                }
-                confirmLabel="Desconectar"
+                description="As conversas, as mensagens e os arquivos deste número serão apagados do sistema, e não dá para desfazer. Leads, negócios e etiquetas continuam. O WhatsApp do celular não é afetado."
+                confirmLabel="Desconectar e apagar conversas"
                 onConfirm={async () => {
                   const res = await disconnectWhatsAppNumber({ id: n.id });
                   if (res.ok) toast.success(res.message);

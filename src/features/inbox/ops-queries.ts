@@ -32,12 +32,14 @@ export type RadarItem = { id: string; contact_e164: string; contact_name: string
 /** Conversas abertas paradas: as de quem espera resposta e as que esperam o cliente. */
 export async function getRadar(settings: InboxSettings, nowMs: number) {
   const supabase = await createClient();
+  const { data: numbers } = await supabase.rpc("my_whatsapp_numbers");
+  const visible = ((numbers ?? []) as { id: string; provider: string; compiled_at: string | null }[]).filter((n) => n.provider !== "waha" || n.compiled_at).map((n) => n.id);
   const columns = "id, contact_e164, contact_name, last_message_at, assignee_id, last_inbound_at, number_id, lead:leads(id, name, contact_opt_out_at)";
   const clientLimit = new Date(nowMs - settings.radar_client_minutes * 60_000).toISOString();
   const contactLimit = new Date(nowMs - settings.radar_contact_hours * 3600_000).toISOString();
   const [waitingUs, waitingClient] = await Promise.all([
-    supabase.from("conversations").select(columns).eq("kind", "contato").eq("status", "aberta").eq("waiting_reply", true).lt("last_message_at", clientLimit).order("last_message_at").limit(100),
-    supabase.from("conversations").select(columns).eq("kind", "contato").eq("only_history", false).eq("status", "aberta").eq("waiting_reply", false).lt("last_message_at", contactLimit).order("last_message_at").limit(100),
+    supabase.from("conversations").select(columns).in("number_id", visible).is("excluded_at", null).eq("kind", "contato").eq("status", "aberta").eq("waiting_reply", true).lt("last_message_at", clientLimit).order("last_message_at").limit(100),
+    supabase.from("conversations").select(columns).in("number_id", visible).is("excluded_at", null).eq("kind", "contato").eq("only_history", false).eq("status", "aberta").eq("waiting_reply", false).lt("last_message_at", contactLimit).order("last_message_at").limit(100),
   ]);
   if (waitingUs.error) throw waitingUs.error;
   if (waitingClient.error) throw waitingClient.error;

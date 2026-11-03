@@ -15,9 +15,11 @@ import { TagChip } from "@/features/crm/components/chips";
 import type { TagColor } from "@/features/crm/types";
 import { getLeadWork, listCadences } from "@/features/tasks/queries";
 import { LeadWorkPanel } from "@/features/tasks/components/lead-work-panel";
-import { getConversation, getInboxSetup, listClientOptions, listConversations, listLeadDeals, listQuickReplies, type InboxFilters } from "@/features/inbox/queries";
+import { countGroups, getConversation, getInboxSetup, listClientOptions, listConversations, listLeadDeals, listQuickReplies, type InboxFilters } from "@/features/inbox/queries";
 import { ChatAvatar, ChatView } from "@/features/inbox/components/chat-view";
 import { NumbersDialog } from "@/features/inbox/components/numbers-dialog";
+import { HistoryBanner, HistoryDialog } from "@/features/inbox/components/history-import";
+import { SelectionBar, SelectionProvider, SelectRow, SelectToggle } from "@/features/inbox/components/conversation-select";
 import { WhatsAppSetup } from "@/features/inbox/components/whatsapp-setup";
 import { InboxRealtime } from "@/features/inbox/components/inbox-realtime";
 import { InboxNav } from "@/features/inbox/components/inbox-nav";
@@ -60,6 +62,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
   ]);
   const selectedLead = selected?.lead ?? null;
   const clients = selected ? await listClientOptions() : [];
+  const groupCount = filters.status === "grupos" ? await countGroups(filters.numero) : 0;
   const [leadDeals, leadWork, cadences] = selectedLead ? await Promise.all([listLeadDeals(selectedLead.id), getLeadWork(selectedLead.id), listCadences()]) : [[], null, []];
   const channel = selected ? setup.numbers.find((n) => n.id === selected.number_id) : undefined;
   const names = Object.fromEntries(lookups.owners.map((o) => [o.id, o.full_name || o.email]));
@@ -76,6 +79,9 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
     const n = setup.numbers.find((x) => x.id === id);
     return n ? n.verified_name || n.display_phone : "";
   };
+  const liveNumbers = setup.numbers.filter((n) => n.status !== "desconectado");
+  // Número conectado que ainda não trouxe nada: o caminho aparece na lista, sem precisar procurar.
+  const pendingHistory = canManage ? setup.numbers.filter((n) => n.provider === "waha" && n.status !== "desconectado" && !n.compiled_at) : [];
   const setupPanel = <WhatsAppSetup numbers={setup.numbers} configured={whatsappConfigured()} qrConfigured={Boolean(process.env.WAHA_URL && process.env.WAHA_API_KEY)} canManage={canManage} templateCount={setup.templates.length} />;
 
   return (
@@ -93,10 +99,12 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
         )}
       >
         <aside aria-label="Conversas" className={cn("flex min-h-0 flex-col border-r", selected && "hidden md:flex")}>
+          <SelectionProvider key={`${filters.status}-${filters.numero ?? ""}`} always={canManage && filters.status === "excluidas"}>
           <div className="grid gap-2 bg-[var(--chat-panel)] px-3 py-2">
             <div className="flex items-center gap-2">
               <h2 className="flex-1 text-base font-semibold">Conversas</h2>
               <span className="text-xs text-muted-foreground tabular">{list.total}</span>
+              {canManage && list.items.length > 0 && <SelectToggle />}
               {(canManage || !active) && (
                 <NumbersDialog alert={hasProblem || !active} defaultOpen={!active && setup.numbers.length === 0}>
                   {setupPanel}
@@ -111,7 +119,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
             </form>
           </div>
           <nav aria-label="Filtrar conversas" className="flex items-center gap-1.5 overflow-x-auto border-b px-3 py-1 md:py-2">
-            {TABS.map(([k, label]) => (
+            {[...TABS, ...(canManage ? ([["excluidas", "Excluídas"]] as typeof TABS) : [])].map(([k, label]) => (
               <Link
                 key={k}
                 href={href({ situacao: k === "abertas" ? undefined : k, pagina: undefined, conversa: undefined })}
@@ -129,14 +137,24 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
               Minhas
             </Link>
           </nav>
-          {setup.numbers.length > 1 && (
+          {liveNumbers.length > 1 && (
             <nav aria-label="Filtrar por número" className="flex gap-1.5 overflow-x-auto border-b px-3 py-1.5">
               <Link href={href({ numero: undefined, conversa: undefined })} aria-current={!filters.numero ? "page" : undefined} className={cn("rounded-md px-2 py-0.5 text-xs whitespace-nowrap", !filters.numero ? "font-semibold" : "text-muted-foreground hover:underline")}>
                 Todos os números
               </Link>
-              {setup.numbers.map((n) => (
+              {liveNumbers.map((n) => (
                 <Link key={n.id} href={href({ numero: n.id, conversa: undefined })} aria-current={filters.numero === n.id ? "page" : undefined} className={cn("rounded-md px-2 py-0.5 text-xs whitespace-nowrap", filters.numero === n.id ? "font-semibold" : "text-muted-foreground hover:underline")}>
                   {n.verified_name || n.display_phone || "Número"}
+                </Link>
+              ))}
+            </nav>
+          )}
+          {pendingHistory[0] && !selected && <HistoryBanner numberId={pendingHistory[0].id} name={pendingHistory[0].verified_name || pendingHistory[0].display_phone || "este número"} />}
+          {lookups.tags.length > 0 && (
+            <nav aria-label="Filtrar por etiqueta" className="flex items-center gap-1.5 overflow-x-auto border-b px-3 py-1">
+              {lookups.tags.slice(0, 30).map((t) => (
+                <Link key={t.id} href={href({ etiqueta: filters.etiqueta === t.id ? undefined : t.id, pagina: undefined, conversa: undefined })} aria-current={filters.etiqueta === t.id ? "true" : undefined} className={cn("shrink-0 rounded-full p-0.5", filters.etiqueta === t.id && "ring-2 ring-ring")}>
+                  <TagChip name={t.name} color={t.color as TagColor} />
                 </Link>
               ))}
             </nav>
@@ -148,7 +166,10 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
             </p>
           )}
           {list.items.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">{!active ? "Conecte um número para começar a receber mensagens." : filters.status === "grupos" ? "Nenhum grupo por aqui. Compile as conversas em Números conectados para trazer os grupos." : "Nenhuma conversa com estes filtros."}</p>
+            <div className="grid justify-items-center gap-3 p-6 text-center">
+              <p className="text-sm text-muted-foreground">{!active && !pendingHistory.length ? "Conecte um número para começar a receber mensagens." : pendingHistory.length && !setup.numbers.some((n) => n.compiled_at) ? "As conversas aparecem aqui depois de compilar." : filters.status === "grupos" ? "Nenhum grupo por aqui ainda. Ative os grupos para eles aparecerem." : filters.status === "excluidas" ? "Nada excluído por enquanto." : "Nenhuma conversa com estes filtros."}</p>
+              {filters.status === "grupos" && canManage && setup.numbers.filter((n) => n.provider === "waha" && n.status !== "desconectado").map((n) => <HistoryDialog key={n.id} numberId={n.id} size="default" label={setup.numbers.length > 1 ? `Trazer grupos de ${n.verified_name || n.display_phone}` : "Trazer os grupos"} />)}
+            </div>
           ) : (
             <ScrollMemory id={`atendimento-${filters.status}`} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {list.items.map((c) => {
@@ -159,6 +180,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
                 const unread = c.unread_count > 0;
                 return (
                   <li key={c.id}>
+                    <SelectRow id={c.id} name={name}>
                     <Link href={href({ conversa: c.id })} aria-current={selected?.id === c.id ? "true" : undefined} className={cn("flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent", selected?.id === c.id && "bg-accent")}>
                       <ChatAvatar name={c.contact_name} seed={c.contact_e164 ?? c.group_jid ?? c.id} group={group} className="size-12 text-base" />
                       <span className="grid min-w-0 flex-1 gap-0.5 border-b pb-2.5">
@@ -183,11 +205,13 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
                         )}
                       </span>
                     </Link>
+                    </SelectRow>
                   </li>
                 );
               })}
             </ScrollMemory>
           )}
+          {canManage && <SelectionBar allIds={list.items.map((c) => c.id)} mode={filters.status === "excluidas" ? "restaurar" : "excluir"} groupsTab={filters.status === "grupos"} totalGroups={groupCount} numberId={filters.numero} />}
           {(page > 0 || list.hasMore) && (
             <div className="flex justify-between border-t p-2">
               {page > 0 ? (
@@ -204,6 +228,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
               )}
             </div>
           )}
+          </SelectionProvider>
         </aside>
         <div className={cn("min-h-0 min-w-0", !selected && "hidden md:block")}>
           {selected ? (
@@ -215,6 +240,12 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
               tags={lookups.tags}
               pipelines={lookups.pipelines.map((p) => ({ id: p.id, name: p.name }))}
               clients={clients}
+              deals={leadDeals.map((d) => {
+                const pipeline = lookups.pipelines.find((p) => p.id === d.pipeline_id);
+                return { id: d.id, stage_id: d.stage_id, pipeline_name: pipeline?.name ?? "Funil", stages: (pipeline?.stages ?? []).map((st) => ({ id: st.id, name: st.name, kind: st.kind })) };
+              })}
+              canUpdateLead={Boolean(user.permissions["crm.leads.update"])}
+              canMoveDeal={Boolean(user.permissions["crm.pipeline.move"])}
               names={names}
               canReply={Boolean(user.permissions["inbox.reply"])}
               canManage={canManage}

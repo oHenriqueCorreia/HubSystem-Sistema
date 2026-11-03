@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { LoaderCircle, QrCode, RefreshCw, TriangleAlert } from "lucide-react";
+import { LoaderCircle, QrCode, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { PasswordInput } from "@/components/app/password-input";
 import { connectQrNumber, getQrState, reconnectQrNumber, type QrState } from "../qr-actions";
-import { HistoryPanel } from "./history-import";
+import { HistoryPanel, PairingBlock } from "./history-import";
 
 const POLL_MS = 4000;
 
@@ -149,26 +149,9 @@ export function QrConnectDialog({ numberId, needsServer, newSession = false, lab
         {!connectedId && !scanning && !needsServer && <FormAlert>{error}</FormAlert>}
 
         {scanning && (
-          <div className="grid justify-items-center gap-3" aria-live="polite">
+          <div className="grid gap-3">
             <FormAlert>{error}</FormAlert>
-            {state.state === "qr" ? (
-              // eslint-disable-next-line @next/next/no-img-element -- imagem gerada na hora pelo servidor de conexão
-              <img src={state.image} alt="QR Code para conectar o WhatsApp" width={264} height={264} className="size-66 rounded-lg border bg-white p-2" />
-            ) : state.state === "failed" ? (
-              <p className="max-w-prose text-center text-sm text-muted-foreground">O QR Code expirou sem ser lido.</p>
-            ) : state.state === "unreachable" ? (
-              <p className="max-w-prose text-center text-sm text-danger">Não foi possível falar com o servidor. Tentando de novo…</p>
-            ) : (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> Gerando o QR Code…
-              </p>
-            )}
-            {state.state === "qr" && <p className="text-xs text-muted-foreground">O código muda sozinho. Depois de ler, a conexão leva alguns segundos.</p>}
-            {state.state === "failed" && (
-              <Button variant="outline" disabled={pending} onClick={() => activeId && restart(activeId)}>
-                {pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />} Gerar outro QR Code
-              </Button>
-            )}
+            {activeId && <PairingBlock numberId={activeId} state={state} onRetry={() => restart(activeId)} retrying={pending} />}
           </div>
         )}
 

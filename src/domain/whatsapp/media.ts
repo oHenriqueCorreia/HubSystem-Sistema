@@ -1,9 +1,10 @@
-export type MediaKind = "image" | "video" | "audio" | "document";
+export type MediaKind = "image" | "video" | "audio" | "document" | "sticker";
 
 const MB = 1024 * 1024;
 
 const RULES: { test: RegExp; kind: MediaKind; maxBytes: number }[] = [
   { test: /^image\/(jpeg|png)$/, kind: "image", maxBytes: 5 * MB },
+  { test: /^image\/webp$/, kind: "sticker", maxBytes: 1 * MB },
   { test: /^video\/(mp4|3gpp)$/, kind: "video", maxBytes: 16 * MB },
   { test: /^audio\/(ogg|mpeg|mp4|aac|amr|webm)$/, kind: "audio", maxBytes: 16 * MB },
   { test: /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.[\w.]+|text\/plain)$/, kind: "document", maxBytes: 50 * MB },

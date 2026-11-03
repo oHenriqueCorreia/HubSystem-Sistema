@@ -57,6 +57,13 @@ describe("parseWahaEvent", () => {
     expect(e).toMatchObject({ kind: "group_message", fromMe: true, groupJid: "120363000@g.us", senderJid: null });
   });
 
+  it("figurinha recebida é figurinha, não foto", () => {
+    const e = parseWahaEvent(message({ id: "false_5548999990000@c.us_ABC", from: "5548999990000@c.us", fromMe: false, hasMedia: true, media: { url: "http://x/a.webp", mimetype: "image/webp" }, _data: { message: { stickerMessage: {} } } }));
+    expect(e).toMatchObject({ kind: "message", type: "sticker" });
+    const g = parseWahaEvent(message({ id: "false_120363000@g.us_ABC_55@c.us", from: "120363000@g.us", fromMe: false, hasMedia: true, media: { url: "http://x/a.webp", mimetype: "image/webp" }, _data: { key: { remoteJid: "120363000@g.us" }, message: { stickerMessage: {} } } }));
+    expect(g).toMatchObject({ kind: "group_message", type: "sticker" });
+  });
+
   it("reação em grupo não vira mensagem", () => {
     const e = parseWahaEvent(message({ id: "false_120363000@g.us_ABC_55@c.us", from: "120363000@g.us", fromMe: false, _data: { key: { remoteJid: "120363000@g.us" }, message: { reactionMessage: { text: "👍" } } } }));
     expect(e.kind).toBe("ignored");
@@ -167,6 +174,11 @@ describe("histórico", () => {
   it("em grupo, guarda quem escreveu e o prefixo do número", () => {
     const item = historyItem({ id: "false_120363000@g.us_ABC_5548@c.us", timestamp: 1790000000, fromMe: false, body: "Oi", participant: "5548@c.us", replyTo: { id: "DEF" }, _data: { pushName: "Ana", message: { conversation: "Oi" } } }, "11111111-aaaa-4aaa-aaaa-aaaaaaaaaaaa");
     expect(item).toMatchObject({ wamid: "11111111:ABC", sender_name: "Ana", sender_jid: "5548@c.us", reply_to: "11111111:DEF" });
+  });
+
+  it("guarda o nome que a pessoa usa no WhatsApp, só de quem escreveu", () => {
+    expect(historyItem({ id: "false_5548@c.us_A", timestamp: 1, fromMe: false, body: "Oi", _data: { pushName: "Ana" } }, null)?.push_name).toBe("Ana");
+    expect(historyItem({ id: "true_5548@c.us_B", timestamp: 1, fromMe: true, body: "Oi", _data: { pushName: "Eu" } }, null)?.push_name).toBeNull();
   });
 
   it("guarda o telefone alternativo de quem tem id oculto", () => {

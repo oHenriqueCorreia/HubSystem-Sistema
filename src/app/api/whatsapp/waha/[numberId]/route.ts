@@ -8,7 +8,8 @@ import { bareMessageId, displayPhoneFromMe, parseWahaEvent, scopedWamid, type Wa
 
 export const maxDuration = 60;
 
-const SESSION_STATUS: Record<string, string> = { WORKING: "ativo", SCAN_QR_CODE: "aguardando_qr", STARTING: "aguardando_qr", FAILED: "erro", STOPPED: "erro" };
+// STARTING fica de fora de propósito: toda reconexão passa por ele, e o aviso pode chegar depois do WORKING.
+const SESSION_STATUS: Record<string, string> = { WORKING: "ativo", SCAN_QR_CODE: "aguardando_qr", FAILED: "erro", STOPPED: "erro" };
 
 /** Guarda a mídia no nosso armazenamento (o arquivo do servidor WAHA expira). */
 async function storeMedia(conn: { url: string; key: string }, organizationId: string, numberId: string, wamid: string, media: WahaMedia) {
@@ -89,6 +90,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const wamid = scopedWamid(number.id, event.wamid);
     const { data: known } = await admin.from("messages").select("id").eq("wamid", wamid).maybeSingle();
     if (known) return NextResponse.json({ ok: true });
+    // Grupo que a pessoa excluiu não volta sozinho: nem grava, nem baixa arquivo.
+    const { data: existing } = await admin.from("conversations").select("contact_name, excluded_at").eq("number_id", number.id).eq("group_jid", event.groupJid).maybeSingle();
+    if (existing?.excluded_at) return NextResponse.json({ ok: true });
     const conn = { url: number.waha_url as string, key: decrypt(number.token_enc) };
     let mediaId: string | null = null;
     if (event.media) {
@@ -99,7 +103,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
     // O nome do grupo não vem na mensagem: busca uma vez, na primeira.
-    const { data: existing } = await admin.from("conversations").select("contact_name").eq("number_id", number.id).eq("group_jid", event.groupJid).maybeSingle();
     const groupName = existing?.contact_name ? null : await wahaGroupName({ ...conn, session: number.waha_session as string }, event.groupJid).catch(() => null);
     const { error } = await admin.rpc("whatsapp_group_message", {
       p_number: number.id,

@@ -9,7 +9,8 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { publicEnv } from "@/lib/env";
 import { fail, ok } from "@/domain/shared/result";
 import { displayPhoneFromMe, sessionNameFor, validWahaUrl } from "@/domain/whatsapp/waha";
-import { wahaHistoryReady, wahaPing, wahaQr, wahaResetForHistory, wahaRestart, wahaSession, wahaStartSession, type WahaConn } from "@/lib/waha";
+import { wahaEnableGroups, wahaGroups, wahaHistoryReady, wahaPing, wahaQr, wahaRequestCode, wahaResetForHistory, wahaRestart, wahaSession, wahaStartSession, type WahaConn } from "@/lib/waha";
+import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
 import { runImportStep } from "@/lib/whatsapp-import";
 
 const webhookUrl = (numberId: string) => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/whatsapp/waha/${numberId}`;
@@ -55,8 +56,9 @@ export const connectQrNumber = defineAction(
 
     const admin = createAdminClient();
     if (input.numberId) {
-      const { data: old } = await admin.from("whatsapp_numbers").select("organization_id, provider").eq("id", input.numberId).maybeSingle();
+      const { data: old } = await admin.from("whatsapp_numbers").select("organization_id, provider, purge_pending").eq("id", input.numberId).maybeSingle();
       if (!old || old.organization_id !== user.organizationId || old.provider !== "waha") return fail("not_found", "Número não encontrado.");
+      if (old.purge_pending) return fail("business_rule", "Ainda estamos limpando as conversas antigas deste número. Tente de novo em instantes.");
     }
     const id = input.numberId ?? randomUUID();
     const session = sessionNameFor(id);
@@ -154,7 +156,11 @@ export const getHistoryState = defineAction({ schema: z.object({ id: z.uuid() })
   if (!number) return fail("not_found", "Número não encontrado.");
   try {
     const session = await wahaSession(number.conn);
-    return ok({ ready: wahaHistoryReady(session) && session.status === "WORKING", job: await latestJob(id) });
+    const admin = createAdminClient();
+    // Aparelho conectado com o sistema achando que não: corrige aqui também.
+    if (session.status === "WORKING" && number.status === "aguardando_qr") await admin.from("whatsapp_numbers").update({ status: "ativo", last_error: null, updated_at: new Date().toISOString() }).eq("id", id);
+    const { data: own } = await admin.from("whatsapp_numbers").select("display_phone").eq("id", id).maybeSingle();
+    return ok({ ready: wahaHistoryReady(session) && session.status === "WORKING", groupsOn: session.config?.ignore?.groups === false, phone: (own?.display_phone as string | null) ?? "", job: await latestJob(id) });
   } catch {
     return fail("network", "Não foi possível falar com o servidor do WhatsApp. Confira se ele está ligado.");
   }
@@ -186,6 +192,9 @@ export const startHistoryImport = defineAction({ schema: z.object({ id: z.uuid()
     .maybeSingle();
   // Já existe uma em andamento: acompanha a que está rodando em vez de começar outra.
   if (error && error.code !== "23505") return fail("network", "Não foi possível começar a compilação.");
+  // A partir daqui as conversas deste número aparecem no Atendimento.
+  await admin.from("whatsapp_numbers").update({ compiled_at: new Date().toISOString() }).eq("id", id).is("compiled_at", null);
+  refresh();
   const job = (created as ImportJob | null) ?? (await latestJob(id));
   return job ? ok(job) : fail("network", "Não foi possível começar a compilação.");
 });
@@ -204,4 +213,51 @@ export const cancelHistoryImport = defineAction({ schema: z.object({ jobId: z.uu
   await createAdminClient().from("whatsapp_imports").update({ status: "cancelada", finished_at: new Date().toISOString(), lease_until: null }).eq("id", jobId).eq("organization_id", user.organizationId).in("status", ["importando", "aguardando"]);
   revalidatePath("/atendimento");
   return ok(null, "Compilação interrompida. O que já entrou continua no Atendimento.");
+});
+
+/** Grupos sem pedir QR Code: a sessão reinicia conectada, e a lista de grupos entra no Atendimento. */
+export const enableGroupsNow = defineAction({ schema: z.object({ id: z.uuid() }), permission: "inbox.manage" }, async ({ id }, { user }) => {
+  const number = await loadQrNumber(id, user.organizationId);
+  if (!number) return fail("not_found", "Número não encontrado.");
+  try {
+    let session = await wahaSession(number.conn);
+    if (session.status !== "WORKING") return fail("business_rule", "Este WhatsApp não está conectado agora. Conecte de novo para ativar os grupos.");
+    if (session.config?.ignore?.groups !== false) {
+      await wahaEnableGroups(number.conn, webhookUrl(id), number.secret, session.config?.noweb?.store?.enabled === true);
+      for (let i = 0; i < 12; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        session = await wahaSession(number.conn);
+        if (session.status === "WORKING" && session.config?.ignore?.groups === false) break;
+      }
+      if (session.status !== "WORKING") return fail("network", "O WhatsApp ainda está reconectando. Tente de novo em instantes.");
+    }
+    const groups = await wahaGroups(number.conn);
+    const admin = createAdminClient();
+    for (const g of groups) {
+      if (!/^[0-9-]+@g\.us$/.test(g.id)) continue;
+      const { error } = await admin.rpc("whatsapp_import_chat", { p_number: id, p_kind: "grupo", p_e164: null, p_variants: null, p_group_jid: g.id, p_name: g.name, p_messages: [] });
+      if (error) throw new Error("import_rpc");
+    }
+    await admin.from("whatsapp_numbers").update({ status: "ativo", last_error: null, compiled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
+    refresh();
+    return ok({ groups: groups.length }, groups.length ? `${groups.length} ${groups.length === 1 ? "grupo ativado" : "grupos ativados"}.` : "Grupos ativados. Nenhum grupo encontrado neste número.");
+  } catch {
+    return fail("network", "Não foi possível falar com o servidor do WhatsApp. Confira se ele está ligado.");
+  }
+});
+
+/** Conexão por código: para quem está no próprio celular do número e não tem como escanear a tela. */
+export const requestPairingCode = defineAction({ schema: z.object({ id: z.uuid(), phone: z.string().trim().max(30) }), permission: "inbox.manage" }, async ({ id, phone }, { user }) => {
+  if (!(await withinRateLimit(`wa-code:${id}`, 5, 300))) return fail("business_rule", RATE_LIMIT_MESSAGE);
+  const number = await loadQrNumber(id, user.organizationId);
+  if (!number) return fail("not_found", "Número não encontrado.");
+  const digits = phone.replace(/\D/g, "");
+  const full = digits.length <= 11 ? `55${digits}` : digits;
+  if (full.length < 12 || full.length > 15) return fail("validation", "Informe o número com DDD.");
+  try {
+    const code = await wahaRequestCode(number.conn, full);
+    return code ? ok({ code }) : fail("network", "O WhatsApp não gerou o código. Tente de novo ou use o QR Code.");
+  } catch {
+    return fail("network", "Não foi possível gerar o código agora. Tente de novo ou use o QR Code.");
+  }
 });

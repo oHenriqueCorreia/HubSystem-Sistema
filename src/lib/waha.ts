@@ -30,9 +30,9 @@ export async function wahaPing(conn: Pick<WahaConn, "url" | "key">) {
 }
 
 // O histórico só vem com o store ligado antes do QR Code: mudar depois exige ler o código de novo.
-const sessionConfig = (webhookUrl: string, secret: string) => ({
+const sessionConfig = (webhookUrl: string, secret: string, store = true) => ({
   ignore: { status: true, groups: false, channels: true, broadcast: true },
-  noweb: { store: { enabled: true, fullSync: true } },
+  noweb: { store: { enabled: store, fullSync: store } },
   webhooks: [{ url: webhookUrl, events: EVENTS, hmac: { key: secret } }],
 });
 
@@ -71,6 +71,27 @@ export async function wahaResetForHistory(conn: WahaConn, webhookUrl: string, se
     if ((e as { status?: number }).status !== 404) throw e;
   });
   await wahaStartSession(conn, webhookUrl, secret);
+}
+
+/** Liga os grupos sem sair do aparelho: a sessão reinicia e continua conectada. O histórico continua como estava. */
+export async function wahaEnableGroups(conn: WahaConn, webhookUrl: string, secret: string, store: boolean) {
+  await call(conn, `/api/sessions/${conn.session}`, { method: "PUT", body: JSON.stringify({ config: sessionConfig(webhookUrl, secret, store) }) });
+}
+
+/** Grupos de que o número participa. O WAHA devolve um objeto por id ou uma lista, conforme o motor. */
+export async function wahaGroups(conn: WahaConn) {
+  const raw = await call<unknown>(conn, `/api/${conn.session}/groups?exclude=participants`, { timeoutMs: 30000 });
+  const list = Array.isArray(raw) ? raw : Object.values((raw ?? {}) as Record<string, unknown>);
+  return (list as { id?: unknown; subject?: unknown; name?: unknown }[]).flatMap((g) => {
+    const id = typeof g.id === "string" ? g.id : (g.id as { _serialized?: string } | undefined)?._serialized;
+    return id ? [{ id, name: String(g.subject ?? g.name ?? "") }] : [];
+  });
+}
+
+/** Código de 8 letras que substitui o QR Code. Só vale com a sessão esperando conexão. */
+export async function wahaRequestCode(conn: WahaConn, phone: string) {
+  const r = await call<{ code?: string }>(conn, `/api/${conn.session}/auth/request-code`, { method: "POST", body: JSON.stringify({ phoneNumber: phone }), timeoutMs: 15000 });
+  return r.code ?? null;
 }
 
 export type WahaChat = { id: string; name?: string | null };
@@ -118,7 +139,7 @@ export async function wahaSendText(conn: WahaConn, chatId: string, text: string,
   return messageIdFromResponse(r);
 }
 
-export type OutgoingMedia = { url: string; mime: string; name: string; caption?: string | null; kind: "image" | "video" | "audio" | "document" };
+export type OutgoingMedia = { url: string; mime: string; name: string; caption?: string | null; kind: "image" | "video" | "audio" | "document" | "sticker" };
 
 export async function wahaSendMedia(conn: WahaConn, chatId: string, media: OutgoingMedia) {
   const file = { url: media.url, mimetype: media.mime, filename: media.name };
@@ -126,6 +147,8 @@ export async function wahaSendMedia(conn: WahaConn, chatId: string, media: Outgo
   const plan =
     media.kind === "image"
       ? { path: "/api/sendImage", body: { file, ...caption } }
+      : media.kind === "sticker"
+        ? { path: "/api/sendSticker", body: { file } }
       : media.kind === "video"
         ? { path: "/api/sendVideo", body: { file, convert: true, ...caption } }
         : media.kind === "audio"

@@ -38,7 +38,7 @@ const MAX_SECONDS = 300;
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-export function AudioRecorder({ disabled, onRecorded }: { disabled?: boolean; onRecorded: (blob: Blob, mime: string) => void }) {
+export function AudioRecorder({ disabled, onRecorded, onRecording }: { disabled?: boolean; onRecorded: (blob: Blob, mime: string) => void; onRecording?: (on: boolean) => void }) {
   const [seconds, setSeconds] = useState<number | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const discard = useRef(false);
@@ -49,6 +49,11 @@ export function AudioRecorder({ disabled, onRecorded }: { disabled?: boolean; on
   }, [onRecorded]);
 
   const recording = seconds !== null;
+
+  useEffect(() => {
+    onRecording?.(recording);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- avisa só quando muda
+  }, [recording]);
 
   useEffect(() => {
     if (!recording) return;
@@ -103,7 +108,7 @@ export function AudioRecorder({ disabled, onRecorded }: { disabled?: boolean; on
     );
   }
   return (
-    <div className="flex items-center gap-1 rounded-md bg-danger/10 pl-2 text-sm text-danger" role="status">
+    <div className="flex flex-1 items-center justify-between gap-1 rounded-md bg-danger/10 pl-3 text-sm text-danger" role="status">
       <span className="tabular" aria-label={`Gravando: ${seconds} segundos`}>
         {clock(seconds)}
       </span>

@@ -124,7 +124,7 @@ export function parseWahaEvent(input: unknown): WahaEvent {
   if (groupJid) {
     const content = rawContent(data?.message);
     // Reação, voto e aviso de sistema não são mensagem: sem texto, sem mídia e sem tipo conhecido, não entra.
-    const type = media ? messageType(media.mime, str(payload.type)) : ((content ? typeFromRaw(content) : null) ?? (str(payload.body) ? "text" : null));
+    const type = media ? messageType(media.mime, content?.stickerMessage ? "sticker" : str(payload.type)) : ((content ? typeFromRaw(content) : null) ?? (str(payload.body) ? "text" : null));
     if (!type) return { kind: "ignored" };
     return {
       kind: "group_message",
@@ -147,7 +147,7 @@ export function parseWahaEvent(input: unknown): WahaEvent {
     fromMe,
     phone,
     name: str(data?.pushName) ?? "",
-    type: messageType(payload.hasMedia === true ? (mime ?? "application/octet-stream") : null, str(payload.type)),
+    type: messageType(payload.hasMedia === true ? (mime ?? "application/octet-stream") : null, rawContent(data?.message)?.stickerMessage ? "sticker" : str(payload.type)),
     body: str(payload.body),
     media,
     at: new Date(seconds ? seconds * 1000 : Date.now()).toISOString(),
@@ -187,7 +187,7 @@ function typeFromRaw(content: Record<string, unknown>) {
   return RAW_TYPES.find(([key]) => content[key])?.[1] ?? null;
 }
 
-export type HistoryItem = { wamid: string; direction: "entrada" | "saida"; type: string; body: string | null; at: string; sender_jid: string | null; sender_name: string | null; reply_to: string | null; alt: string | null };
+export type HistoryItem = { wamid: string; direction: "entrada" | "saida"; type: string; body: string | null; at: string; sender_jid: string | null; sender_name: string | null; reply_to: string | null; alt: string | null; push_name: string | null };
 
 /**
  * Mensagem do histórico pronta para gravar. A mídia antiga não é baixada: fica o tipo e a legenda.
@@ -218,6 +218,7 @@ export function historyItem(raw: unknown, numberId: string | null): HistoryItem 
     sender_name: numberId && !fromMe ? str(data?.pushName) : null,
     reply_to: quoted ? wrap(bareMessageId(quoted)) : null,
     alt: str(key?.remoteJidAlt),
+    push_name: fromMe ? null : str(data?.pushName),
   };
 }
 
