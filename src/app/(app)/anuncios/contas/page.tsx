@@ -4,6 +4,8 @@ import { FormAlert } from "@/components/app/form-field";
 import { metaConfigured } from "@/lib/ads/meta";
 import { googleAdsConfigured } from "@/lib/ads/google-ads";
 import { getAdsSetup } from "@/features/ads/queries";
+import { getSocialSetup } from "@/features/content/queries";
+import Link from "next/link";
 import { AccountsList, ProviderCard } from "@/features/ads/components/ads-setup";
 
 export const metadata: Metadata = { title: "Contas e alertas · Anúncios" };
@@ -22,7 +24,7 @@ export default async function ContasPage({ searchParams }: PageProps<"/anuncios/
   const user = await requirePermission("ads.read");
   const sp = await searchParams;
   const canManage = Boolean(user.permissions["ads.manage"]);
-  const { connections, accounts, clients } = await getAdsSetup();
+  const [{ connections, accounts, clients }, social] = await Promise.all([getAdsSetup(), getSocialSetup()]);
   const erro = typeof sp.erro === "string" ? ERRORS[sp.erro] : null;
 
   return (
@@ -34,6 +36,25 @@ export default async function ContasPage({ searchParams }: PageProps<"/anuncios/
         <ProviderCard provider="google_ads" configured={googleAdsConfigured()} connection={connections.find((c) => c.provider === "google_ads")} canManage={canManage} />
       </div>
       <AccountsList accounts={accounts} clients={clients} canManage={canManage} />
+      <section aria-labelledby="contas-publicacao" className="grid gap-2 rounded-xl border bg-surface p-4 text-sm">
+        <h2 id="contas-publicacao" className="font-semibold">
+          Páginas e Instagram para publicar
+        </h2>
+        {social.accounts.length ? (
+          <ul className="grid gap-1">
+            {social.accounts.map((a) => (
+              <li key={a.id} className="break-words">
+                {a.name} ({a.platform === "facebook" ? "Facebook" : "Instagram"}){a.status !== "ativa" ? ", requer reconexão" : a.selected ? "" : ", não selecionada"}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-muted-foreground">Nenhuma conta conectada para publicação.</p>
+        )}
+        <Link href="/conteudo?aba=contas" className="text-primary hover:underline">
+          Gerenciar em Conteúdo
+        </Link>
+      </section>
     </>
   );
 }

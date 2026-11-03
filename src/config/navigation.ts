@@ -38,6 +38,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/inicio", label: "Início", icon: "home", mobile: true },
       { href: "/tarefas", label: "Tarefas", icon: "tasks", anyOf: ["tasks.read"], mobile: true },
       { href: "/agenda", label: "Agenda", icon: "calendar", anyOf: ["calendar.read"], mobile: true },
+      { href: "/conteudo", label: "Conteúdo", icon: "ads", anyOf: ["content.read"] },
       { href: "/anuncios", label: "Anúncios", icon: "ads", anyOf: ["ads.read"] },
     ],
   },

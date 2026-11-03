@@ -10,6 +10,7 @@ import { cn } from "cn";
 import { formatDate, formatDateTime } from "@/domain/shared/dates";
 import { whatsappLink, fillTemplate } from "@/domain/shared/phone";
 import { setTaskStatus } from "../actions";
+import { ContentStatusBadge } from "@/features/content/components/content-status";
 import { checklistProgress, isOverdue, PRIORITY_LABEL, type Task } from "../types";
 
 const PRIORITY_STYLE: Record<Task["priority"], string> = {
@@ -95,6 +96,11 @@ export function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Ta
           {task.lead && (
             <Link href={`/crm/leads/${task.lead.id}`} className="truncate text-primary hover:underline">
               {task.lead.name}
+            </Link>
+          )}
+          {task.content && (
+            <Link href={`/conteudo/${task.content.id}`} className="hover:underline">
+              <ContentStatusBadge status={task.content.status} />
             </Link>
           )}
           {task.client && <span className="truncate">{task.client.legal_name}</span>}

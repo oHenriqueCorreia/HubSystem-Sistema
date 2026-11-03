@@ -269,7 +269,7 @@ export const deleteEvent = defineAction({ schema: idSchema, permission: "calenda
 
 // --- Agenda unificada --------------------------------------------------------------
 
-export const getAgenda = defineAction({ schema: agendaRangeSchema, permission: ["calendar.read", "tasks.read"] }, async ({ from, to }) => {
+export const getAgenda = defineAction({ schema: agendaRangeSchema, permission: ["calendar.read", "tasks.read", "content.read"] }, async ({ from, to }) => {
   if (!validRange(from, to)) return fail("validation", `Escolha um período de até ${MAX_RANGE_DAYS} dias.`);
   // Sem filtro: a tela filtra na hora, inclusive pelos cancelados.
   return ok(await listAgendaEntries({ start: new Date(zonedIso(from, "00:00")), end: new Date(zonedIso(addDays(to, 1), "00:00")) }));
@@ -282,7 +282,7 @@ export const getWorkspaceOptions = defineAction({ schema: z.object({}), permissi
 });
 
 /** Reagendar: muda só a data e o horário da origem, então todas as telas acompanham. */
-export const rescheduleAgendaItem = defineAction({ schema: rescheduleSchema, permission: ["calendar.manage", "tasks.update"] }, async (input, { user }) => {
+export const rescheduleAgendaItem = defineAction({ schema: rescheduleSchema, permission: ["calendar.manage", "tasks.update", "content.publish"] }, async (input, { user }) => {
   const supabase = await createClient();
   if (input.source === "tarefa") {
     const row = { due_at: zonedIso(input.date, input.time ?? "23:59"), has_time: Boolean(input.time) };
@@ -303,10 +303,14 @@ export const rescheduleAgendaItem = defineAction({ schema: rescheduleSchema, per
     revalidateWork(res[0].lead_id);
     return ok(null, "Compromisso reagendado.");
   }
-  return fail("business_rule", "Reagende a publicação pela tarefa de conteúdo.");
+  if (!input.time) return fail("validation", "Informe o horário da publicação.");
+  if (!user.permissions["content.publish"]) return fail("forbidden", "Você não pode reagendar publicações.");
+  must(await supabase.rpc("content_reschedule", { p_schedule: input.id, p_at: zonedIso(input.date, input.time) }));
+  revalidateWork();
+  return ok(null, "Publicação reagendada.");
 });
 
-export const cancelAgendaItem = defineAction({ schema: cancelAgendaSchema, permission: ["calendar.manage", "tasks.update"] }, async (input, { user }) => {
+export const cancelAgendaItem = defineAction({ schema: cancelAgendaSchema, permission: ["calendar.manage", "tasks.update", "content.publish"] }, async (input, { user }) => {
   const supabase = await createClient();
   if (input.source === "tarefa") {
     const res = must(await supabase.from("tasks").update({ status: "cancelada" }).eq("id", input.id).select("id, lead_id, owner_id")) as { lead_id: string | null; owner_id: string | null }[];
@@ -322,7 +326,10 @@ export const cancelAgendaItem = defineAction({ schema: cancelAgendaSchema, permi
     revalidateWork(res[0].lead_id);
     return ok(null, "Compromisso cancelado.");
   }
-  return fail("business_rule", "Cancele a publicação pela tarefa de conteúdo.");
+  if (!user.permissions["content.publish"]) return fail("forbidden", "Você não pode cancelar publicações.");
+  must(await supabase.rpc("content_cancel_schedule", { p_schedule: input.id }));
+  revalidateWork();
+  return ok(null, "Publicação cancelada.");
 });
 
 async function saveFilters(userId: string, change: (list: SavedFilter[]) => SavedFilter[]) {

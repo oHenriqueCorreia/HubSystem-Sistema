@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decrypt } from "@/lib/crypto";
 import { SendBlocked, sendAutomated } from "@/lib/inbox-send";
+import { runContentPublisher } from "@/lib/content-publisher";
 import { inSendWindow } from "@/domain/crm/cadence";
 import { todayLocal } from "@/domain/shared/dates";
 import { actionSchema, conditionSchema, matchesCondition, type AutomationAction } from "@/domain/whatsapp/automations";
@@ -342,6 +343,7 @@ export async function runInboxJobs() {
     ["webhooks", () => runWebhooks(deadline)],
     ["conversoes", () => runConversions(deadline)],
     ["cobranca", () => runBilling(deadline)],
+    ["publicacoes", runContentPublisher],
     ["campanhas", () => runCampaigns(deadline)],
   ];
   const failed: string[] = [];

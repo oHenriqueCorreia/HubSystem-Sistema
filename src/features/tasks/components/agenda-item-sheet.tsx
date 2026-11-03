@@ -49,6 +49,7 @@ export function AgendaItemSheet({
   canManageEvents,
   canAssignEvents,
   canEditTasks,
+  canPublish = false,
 }: {
   entry: AgendaEntry | null;
   onClose: () => void;
@@ -58,17 +59,18 @@ export function AgendaItemSheet({
   canManageEvents: boolean;
   canAssignEvents: boolean;
   canEditTasks: boolean;
+  canPublish?: boolean;
 }) {
   return (
     <Sheet open={Boolean(entry)} onOpenChange={(v) => !v && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-md">
-        {entry && <Details key={entry.id} entry={entry} onClose={onClose} onChanged={onChanged} owners={owners} meId={meId} canManageEvents={canManageEvents} canAssignEvents={canAssignEvents} canEditTasks={canEditTasks} />}
+        {entry && <Details key={entry.id} entry={entry} onClose={onClose} onChanged={onChanged} owners={owners} meId={meId} canManageEvents={canManageEvents} canAssignEvents={canAssignEvents} canEditTasks={canEditTasks} canPublish={canPublish} />}
       </SheetContent>
     </Sheet>
   );
 }
 
-function Details({ entry, onClose, onChanged, owners, meId, canManageEvents, canAssignEvents, canEditTasks }: { entry: AgendaEntry; onClose: () => void; onChanged?: () => void; owners: Owner[]; meId: string; canManageEvents: boolean; canAssignEvents: boolean; canEditTasks: boolean }) {
+function Details({ entry, onClose, onChanged, owners, meId, canManageEvents, canAssignEvents, canEditTasks, canPublish }: { entry: AgendaEntry; onClose: () => void; onChanged?: () => void; owners: Owner[]; meId: string; canManageEvents: boolean; canAssignEvents: boolean; canEditTasks: boolean; canPublish: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [rescheduling, setRescheduling] = useState(false);
@@ -78,7 +80,7 @@ function Details({ entry, onClose, onChanged, owners, meId, canManageEvents, can
   const style = AGENDA_STYLE[entry.type];
   const owner = owners.find((o) => o.id === entry.ownerId);
   const closed = statusGroup(entry) !== "aberto";
-  const canChange = entry.source === "evento" ? canManageEvents : entry.source === "tarefa" ? canEditTasks : false;
+  const canChange = entry.source === "evento" ? canManageEvents : entry.source === "tarefa" ? canEditTasks : canPublish && entry.status === "agendado";
 
   function finish(message?: string) {
     if (message) toast.success(message);
@@ -179,6 +181,13 @@ function Details({ entry, onClose, onChanged, owners, meId, canManageEvents, can
               </Link>
             </Button>
           )}
+          {entry.contentId && (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/conteudo/${entry.contentId}`}>
+                <Send aria-hidden="true" /> Abrir conteúdo
+              </Link>
+            </Button>
+          )}
           {entry.source === "evento" && canManageEvents && (
             <Button variant="outline" size="sm" disabled={pending} onClick={edit}>
               <Pencil aria-hidden="true" /> Editar
@@ -221,7 +230,7 @@ function Details({ entry, onClose, onChanged, owners, meId, canManageEvents, can
               <FormField label="Nova data" required>
                 <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </FormField>
-              <FormField label="Horário" optional={entry.source === "tarefa"}>
+              <FormField label="Horário" optional={entry.source === "tarefa"} required={entry.source === "publicacao"}>
                 <Input type="time" value={time} disabled={entry.source === "evento" && entry.allDay} onChange={(e) => setTime(e.target.value)} />
               </FormField>
             </div>

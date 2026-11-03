@@ -25,6 +25,7 @@ export type AgendaEntry = {
   boardId: string | null;
   boardName: string | null;
   listName: string | null;
+  contentId?: string;
 };
 
 export const AGENDA_TYPE_LABEL: Record<AgendaType, string> = {

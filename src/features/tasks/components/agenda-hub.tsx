@@ -59,6 +59,7 @@ export function AgendaHub({
   canManageEvents,
   canAssignEvents,
   canEditTasks,
+  canPublish = false,
   savedFilters,
   initialTab = "hoje",
 }: {
@@ -68,6 +69,7 @@ export function AgendaHub({
   canManageEvents: boolean;
   canAssignEvents: boolean;
   canEditTasks: boolean;
+  canPublish?: boolean;
   savedFilters: SavedAgendaFilter[];
   initialTab?: Tab;
 }) {
@@ -362,6 +364,7 @@ export function AgendaHub({
         canManageEvents={canManageEvents}
         canAssignEvents={canAssignEvents}
         canEditTasks={canEditTasks}
+        canPublish={canPublish}
       />
     </div>
   );

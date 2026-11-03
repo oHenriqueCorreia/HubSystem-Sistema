@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { todayLocal } from "@/domain/shared/dates";
 import type { CalItem } from "@/domain/calendar";
 import { filterAgenda, sortAgenda, EVENT_STATUS_LABEL, type AgendaEntry, type AgendaFilter } from "@/domain/calendar/agenda";
+import { CONTENT_STATUS_LABEL, PLATFORM_LABEL, SCHEDULE_STATUS_LABEL, type ContentStatus } from "@/domain/content";
 import type { Task, TaskBoard, TaskColumn, TaskComment } from "./types";
 import { STATUS_LABEL, type TaskStatus } from "./types";
 
@@ -12,6 +13,7 @@ const TASK_COLUMNS = `
   client_id,
   lead:leads(id, name, whatsapp_e164),
   client:clients(id, legal_name),
+  content:content_items(id, status),
   list:task_columns(id, name, board:task_boards(id, name)),
   checklist:task_checklist_items(id, title, position, done_at),
   task_tags(tag:tags(id, name, color)),
@@ -30,6 +32,7 @@ function toTask(r: Row): Task {
     ...(r as unknown as Task),
     lead: (lead as Task["lead"]) ?? null,
     client: (client as Task["client"]) ?? null,
+    content: ((Array.isArray(r.content) ? r.content[0] : r.content) as Task["content"]) ?? null,
     list,
     checklist: ((r.checklist as Task["checklist"]) ?? []).sort((a, b) => a.position - b.position),
     tags,
@@ -197,7 +200,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
   const supabase = await createClient();
   const startIso = range.start.toISOString();
   const endIso = range.end.toISOString();
-  const [events, tasks] = await Promise.all([
+  const [events, tasks, publications, socialAccounts] = await Promise.all([
     supabase
       .from("calendar_events")
       .select("id, title, description, kind, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name)")
@@ -208,12 +211,19 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
       .limit(1000),
     supabase
       .from("tasks")
-      .select("id, title, description, due_at, has_time, duration_minutes, owner_id, status, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name), list:task_columns(id, name, board:task_boards(id, name))")
+      .select("id, title, description, due_at, has_time, duration_minutes, owner_id, status, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name), content:content_items(status), list:task_columns(id, name, board:task_boards(id, name))")
       .is("deleted_at", null)
       .not("due_at", "is", null)
       .gte("due_at", startIso)
       .lt("due_at", endIso)
       .limit(1000),
+    supabase
+      .from("content_schedules")
+      .select("id, content_id, account_id, scheduled_at, status, error, content:content_items(client:clients(id, legal_name), task:tasks(id, title, owner_id, list:task_columns(name, board:task_boards(id, name))))")
+      .gte("scheduled_at", startIso)
+      .lt("scheduled_at", endIso)
+      .limit(500),
+    supabase.rpc("my_social_accounts"),
   ]);
   if (events.error) throw events.error;
   if (tasks.error) throw tasks.error;
@@ -250,6 +260,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
     const client = one(t.client as { id: string; legal_name: string } | null);
     const list = one(t.list as { id: string; name: string; board: unknown } | null);
     const board = list ? one(list.board as { id: string; name: string } | null) : null;
+    const content = one(t.content as { status: ContentStatus } | null);
     const due = t.due_at as string;
     const hasTime = t.has_time as boolean;
     return {
@@ -262,7 +273,8 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
       allDay: !hasTime,
       ownerId: t.owner_id as string | null,
       status: t.status as string,
-      statusLabel: STATUS_LABEL[t.status as TaskStatus] ?? (t.status as string),
+      // Tarefa de produção mostra a situação do conteúdo, que diz mais que "em andamento".
+      statusLabel: content ? CONTENT_STATUS_LABEL[content.status] : (STATUS_LABEL[t.status as TaskStatus] ?? (t.status as string)),
       description: t.description as string | null,
       clientId: client?.id ?? null,
       clientName: client?.legal_name ?? null,
@@ -276,7 +288,45 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
       listName: list?.name ?? null,
     };
   });
-  const all = [...fromEvents, ...fromTasks];
+  // Publicações: vêm do agendamento; a conta e a situação ficam visíveis no próprio item.
+  const socials = (socialAccounts.data ?? []) as { id: string; name: string; platform: "facebook" | "instagram" }[];
+  const fromPublications: AgendaEntry[] = ((publications.data ?? []) as Row[]).flatMap((p) => {
+    const content = one(p.content as { client: unknown; task: unknown } | null);
+    const task = content ? one(content.task as { id: string; title: string; owner_id: string | null; list: unknown } | null) : null;
+    if (!task) return [];
+    const client = content ? one(content.client as { id: string; legal_name: string } | null) : null;
+    const list = one(task.list as { name: string; board: unknown } | null);
+    const board = list ? one(list.board as { id: string; name: string } | null) : null;
+    const account = socials.find((a) => a.id === p.account_id);
+    const at = p.scheduled_at as string;
+    return [
+      {
+        id: p.id as string,
+        source: "publicacao" as const,
+        type: "publicacao" as const,
+        title: task.title,
+        start: at,
+        end: new Date(new Date(at).getTime() + 15 * 60_000).toISOString(),
+        allDay: false,
+        ownerId: task.owner_id,
+        status: p.status === "cancelado" ? "cancelado" : (p.status as string),
+        statusLabel: SCHEDULE_STATUS_LABEL[p.status as string] ?? (p.status as string),
+        description: [account ? `Destino: ${account.name} (${PLATFORM_LABEL[account.platform]})` : null, p.error as string | null].filter(Boolean).join("\n") || null,
+        clientId: client?.id ?? null,
+        clientName: client?.legal_name ?? null,
+        leadId: null,
+        leadName: null,
+        location: null,
+        meetUrl: null,
+        taskId: task.id,
+        boardId: board?.id ?? null,
+        boardName: board?.name ?? null,
+        listName: list?.name ?? null,
+        contentId: p.content_id as string,
+      },
+    ];
+  });
+  const all = [...fromEvents, ...fromTasks, ...fromPublications];
   return sortAgenda(filter ? filterAgenda(all, filter) : all);
 }
 

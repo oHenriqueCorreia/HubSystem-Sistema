@@ -42,6 +42,7 @@ export function CalendarViewClient({
   canAssign,
   canSeeOthers,
   canEditTasks,
+  canPublish,
   clients,
 }: {
   view: CalendarView;
@@ -54,6 +55,7 @@ export function CalendarViewClient({
   canAssign: boolean;
   canSeeOthers: boolean;
   canEditTasks: boolean;
+  canPublish: boolean;
   clients: { id: string; legal_name: string }[];
 }) {
   const router = useRouter();
@@ -282,6 +284,7 @@ export function CalendarViewClient({
         canManageEvents={canManage}
         canAssignEvents={canAssign}
         canEditTasks={canEditTasks}
+        canPublish={canPublish}
       />
 
       {dialog && (

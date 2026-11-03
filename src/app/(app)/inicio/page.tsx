@@ -163,6 +163,7 @@ export default async function InicioPage() {
             canManageEvents={Boolean(user.permissions["calendar.manage"])}
             canAssignEvents={user.permissions["calendar.manage"] === "team" || user.permissions["calendar.manage"] === "all"}
             canEditTasks={Boolean(user.permissions["tasks.update"])}
+            canPublish={Boolean(user.permissions["content.publish"])}
             savedFilters={(user.preferences.agenda_filters as SavedAgendaFilter[] | undefined) ?? []}
           />
         </Panel>

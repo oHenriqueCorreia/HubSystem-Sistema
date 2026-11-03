@@ -22,6 +22,7 @@ import { TagChip } from "@/features/crm/components/chips";
 import type { TagColor } from "@/features/crm/types";
 import { getTaskDetails } from "../actions-read";
 import { Attachments } from "@/features/clients/components/attachments";
+import { ContentStatusBadge } from "@/features/content/components/content-status";
 
 type Owner = { id: string; full_name: string; email: string };
 
@@ -178,6 +179,16 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
                   "Quadro"
                 )}
                 {` › ${task.list.name}`}
+              </dd>
+            </div>
+          )}
+          {task.content && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Conteúdo</dt>
+              <dd>
+                <Link href={`/conteudo/${task.content.id}`} className="hover:underline">
+                  <ContentStatusBadge status={task.content.status} />
+                </Link>
               </dd>
             </div>
           )}

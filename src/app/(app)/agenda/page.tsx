@@ -60,6 +60,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
             canManageEvents={canManage}
             canAssignEvents={canAssign}
             canEditTasks={Boolean(user.permissions["tasks.update"])}
+            canPublish={Boolean(user.permissions["content.publish"])}
             savedFilters={(user.preferences.agenda_filters as SavedAgendaFilter[] | undefined) ?? []}
             initialTab="semana"
           />
@@ -76,6 +77,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
             canAssign={canAssign}
             canSeeOthers={scope === "team" || scope === "all"}
             canEditTasks={Boolean(user.permissions["tasks.update"])}
+            canPublish={Boolean(user.permissions["content.publish"])}
             clients={clients}
           />
         </Suspense>

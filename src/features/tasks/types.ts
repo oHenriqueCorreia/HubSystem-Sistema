@@ -1,3 +1,5 @@
+import type { ContentStatus } from "@/domain/content";
+
 export type TaskPriority = "baixa" | "media" | "alta" | "urgente";
 export type TaskStatus = "a_fazer" | "em_andamento" | "concluida" | "cancelada";
 export type Channel = "whatsapp" | "ligacao" | "email" | "reuniao" | "outro";
@@ -33,6 +35,7 @@ export type Task = {
   /** Onde a tarefa está: mostrado em todas as visualizações. */
   list: { id: string; name: string; board: { id: string; name: string } | null } | null;
   client: { id: string; legal_name: string } | null;
+  content: { id: string; status: ContentStatus } | null;
   lead: { id: string; name: string; whatsapp_e164: string | null } | null;
   checklist: ChecklistItem[];
   tags: { id: string; name: string; color: string }[];

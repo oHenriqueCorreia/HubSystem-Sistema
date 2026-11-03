@@ -18,6 +18,7 @@ const PUBLIC_PATHS = [
   "/api/whatsapp/webhook",
   "/api/whatsapp/waha",
   "/api/inbox/jobs",
+  "/aprovar",
   "/api/hooks/in",
 ];
 
