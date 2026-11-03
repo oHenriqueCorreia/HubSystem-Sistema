@@ -25,7 +25,6 @@ import {
   taskColumnMoveSchema,
   taskColumnSchema,
   taskColumnUpdateSchema,
-  taskDependencySchema,
   taskMoveSchema,
   taskStatusSchema,
 } from "./schemas";
@@ -369,23 +368,6 @@ export const deleteTaskColumn = defineAction({ schema: taskColumnDeleteSchema, p
 });
 
 // --- Dependências e histórico ---------------------------------------------------
-
-export const addTaskDependency = defineAction({ schema: taskDependencySchema, permission: "tasks.update" }, async (input) => {
-  if (input.taskId === input.dependsOnId) return fail("validation", "Uma tarefa não pode depender dela mesma.");
-  const supabase = await createClient();
-  const { error } = await supabase.from("task_dependencies").insert({ task_id: input.taskId, depends_on_id: input.dependsOnId });
-  if (error?.code === "23505") return fail("conflict", "Esta dependência já existe.");
-  if (error) throw error;
-  revalidateWork();
-  return ok(null, "Dependência adicionada.");
-});
-
-export const removeTaskDependency = defineAction({ schema: taskDependencySchema, permission: "tasks.update" }, async (input) => {
-  const supabase = await createClient();
-  must(await supabase.from("task_dependencies").delete().eq("task_id", input.taskId).eq("depends_on_id", input.dependsOnId));
-  revalidateWork();
-  return ok(null, "Dependência removida.");
-});
 
 export type TaskHistoryEntry = { created_at: string; action: string; actor_name: string; changes: Record<string, unknown> };
 

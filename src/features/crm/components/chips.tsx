@@ -4,7 +4,7 @@ import { formatDateTime, formatRelative } from "@/domain/shared/dates";
 import { nextContactState, type TagColor } from "../types";
 
 // Pares de fundo/texto com contraste AA nos dois temas.
-export const TAG_STYLES: Record<TagColor, string> = {
+const TAG_STYLES: Record<TagColor, string> = {
   slate: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100",
   teal: "bg-teal-100 text-teal-900 dark:bg-teal-900/60 dark:text-teal-100",
   blue: "bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-100",

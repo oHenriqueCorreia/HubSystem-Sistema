@@ -3,7 +3,7 @@
 Gestão comercial, operacional e financeira para agência de sites e tráfego pago, multiempresa: CRM com funil configurável, central de atendimento do WhatsApp (API oficial), cadências automáticas, tarefas com etiquetas e quadro personalizável, agenda sincronizada com o Google, anúncios (Meta Ads e Google Ads), clientes e contratos, financeiro pessoal e empresarial, notificações e dashboards.
 
 - **Produção:** https://hubsystem-phi.vercel.app (o domínio `hubsystem.vercel.app` está em outra conta da Vercel; ao liberá-lo, aponte-o para este projeto e atualize `NEXT_PUBLIC_SITE_URL`)
-- **Stack:** Next.js 16 (App Router) · React 19 · TypeScript estrito · Tailwind CSS 4 · shadcn/ui (Radix) · Supabase (Postgres 17, Auth, Storage, RLS) · React Hook Form + Zod · TanStack Query · dnd-kit · Recharts · Vitest · pgTAP
+- **Stack:** Next.js 16 (App Router) · React 19 · TypeScript estrito · Tailwind CSS 4 · shadcn/ui (Radix) · Supabase (Postgres 17, Auth, Storage, RLS) · React Hook Form + Zod · dnd-kit · Recharts · Vitest · pgTAP · Web Push
 - **Arquitetura e decisões:** [docs/fase-0-arquitetura.md](docs/fase-0-arquitetura.md) e [docs/adr/](docs/adr/README.md)
 - **Configuração das integrações, crons, permissões e solução de problemas:** [docs/integracoes.md](docs/integracoes.md)
 - **Prospectador local com Docker sob demanda:** [docs/prospectador-local.md](docs/prospectador-local.md)
@@ -58,16 +58,12 @@ Referências: [chaves do Supabase](https://supabase.com/docs/guides/getting-star
 
 ## Banco de dados
 
-As migrations ficam em `supabase/migrations/` (versionadas, nunca editadas depois de aplicadas). Três formas de aplicar:
-
-1. `npm run db:migrate` — com `SUPABASE_DB_URL` no `.env.local` (não usa Docker).
-2. **SQL Editor do Supabase:** para um banco já em uso, cole `supabase/aplicar-pendentes.sql` (migrations 080000 em diante, numa transação). `supabase/aplicar-no-sql-editor.sql` é o script da instalação original.
-3. Ferramenta MCP do Supabase.
+As migrations ficam em `supabase/migrations/` (versionadas, nunca editadas depois de aplicadas). **O deploy de produção aplica as pendentes sozinho** antes de gerar o site (`scripts/vercel-build.mjs`); se uma falhar, o deploy para e a versão atual continua no ar. Para aplicar à mão: `npm run db:migrate`, com `SUPABASE_DB_URL` no `.env.local`.
 
 Depois de aplicar, configure em **Authentication**:
 - **URL Configuration:** Site URL `https://hubsystem-phi.vercel.app`; Redirect URLs `https://hubsystem-phi.vercel.app/**`, `https://hubsystem.vercel.app/**` e `http://localhost:3000/**`.
 - **Sign In / Providers:** desligue *Allow new users to sign up* (acesso só por convite).
-- **Primeiro acesso:** Authentication → Users → *Invite user* com o seu e-mail. O primeiro usuário vira **Administrador** automaticamente.
+- **Novos acessos:** só por convite, em **Configurações → Usuários**. Conta sem convite é recusada pelo banco.
 
 ## Qualidade
 

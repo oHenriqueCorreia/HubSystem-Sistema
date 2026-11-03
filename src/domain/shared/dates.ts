@@ -5,7 +5,7 @@ import { ptBR } from "date-fns/locale";
 export const APP_TIMEZONE = "America/Sao_Paulo";
 
 /** Instante (timestamptz) → data/hora no fuso de São Paulo. */
-export function toLocal(value: string | Date | number): TZDate {
+function toLocal(value: string | Date | number): TZDate {
   return new TZDate(new Date(value).getTime(), APP_TIMEZONE);
 }
 

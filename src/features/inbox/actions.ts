@@ -263,13 +263,6 @@ export const setConversationStatus = defineAction(
   },
 );
 
-export const linkConversationLead = defineAction({ schema: z.object({ id: z.uuid(), leadId: z.uuid().nullable() }), permission: "inbox.reply" }, async (input) => {
-  const supabase = await createClient();
-  must(await supabase.from("conversations").update({ lead_id: input.leadId }).eq("id", input.id));
-  done(input.id);
-  return ok(null, input.leadId ? "Conversa vinculada ao lead." : "Vínculo removido.");
-});
-
 export const createLeadFromConversation = defineAction(
   {
     schema: z.object({

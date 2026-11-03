@@ -83,7 +83,7 @@ const TXN_COLUMNS = `id, scope, kind, description, amount_cents, paid_amount_cen
   payment_method, competence_date, due_date, paid_at, status, installment_number, installment_total, installment_group_id, recurrence_id,
   client_id, contract_id, reconciled_at, notes, created_at, client:clients(id, lead:leads(name))`;
 
-export const TXN_PAGE = 100;
+const TXN_PAGE = 100;
 
 export async function listTransactions(scope: FinanceScope, f: TxnFilters, today: string) {
   const supabase = await createClient();

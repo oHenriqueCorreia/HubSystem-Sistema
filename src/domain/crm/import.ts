@@ -33,7 +33,7 @@ export const UFS = [
   "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
 ] as const;
 
-export function normalizeHeader(h: string): string {
+function normalizeHeader(h: string): string {
   return h
     .replace(/^﻿/, "")
     .normalize("NFD")

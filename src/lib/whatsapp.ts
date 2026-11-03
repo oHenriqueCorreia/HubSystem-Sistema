@@ -44,7 +44,7 @@ export async function numberInfo(phoneNumberId: string, token: string) {
   return request<{ display_phone_number: string; verified_name: string; quality_rating?: string }>(token, `/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`);
 }
 
-export async function numberToken(numberId: string) {
+async function numberToken(numberId: string) {
   const { data } = await createAdminClient().from("whatsapp_numbers").select("phone_number_id, waba_id, token_enc").eq("id", numberId).single();
   if (!data) throw new Error("numero");
   return { phoneNumberId: data.phone_number_id as string, wabaId: data.waba_id as string, token: decrypt(data.token_enc) };

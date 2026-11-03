@@ -22,7 +22,7 @@ export type AdAccount = {
 export type AdClient = { id: string; name: string };
 
 /** Clientes de anúncios (agrupam contas). Antes da migration, devolve lista vazia. */
-export async function getAdClients() {
+async function getAdClients() {
   const supabase = await createClient();
   const { data, error } = await supabase.from("ad_clients").select("id, name").order("name");
   if (error) {
@@ -112,7 +112,7 @@ export async function getClientsSummary(accounts: AdAccount[], clients: AdClient
 }
 
 export type Totals = { impressions: number; reach: number; clicks: number; spend: number; conversions: number; conversionValue: number };
-export const emptyTotals = (): Totals => ({ impressions: 0, reach: 0, clicks: 0, spend: 0, conversions: 0, conversionValue: 0 });
+const emptyTotals = (): Totals => ({ impressions: 0, reach: 0, clicks: 0, spend: 0, conversions: 0, conversionValue: 0 });
 
 type AggRow = { impressions: number | string; reach: number | string; clicks: number | string; spend_cents: number | string; conversions: number | string; conversion_value_cents: number | string };
 
@@ -135,7 +135,7 @@ export const ratio = (num: number, den: number) => (den > 0 ? num / den : null);
 
 /** Do anúncio à venda: conversas de "Clique para WhatsApp", leads e negócios ganhos (valores do CRM). */
 export type CrmTotals = { conversations: number; leads: number; won: number; wonValue: number };
-export const emptyCrm = (): CrmTotals => ({ conversations: 0, leads: 0, won: 0, wonValue: 0 });
+const emptyCrm = (): CrmTotals => ({ conversations: 0, leads: 0, won: 0, wonValue: 0 });
 
 type CrmRow = { ad_id: string; campaign_id: string; conversations: number | string; leads: number | string; won: number | string; won_cents: number | string };
 

@@ -1,7 +1,7 @@
 export type MetaAction = { action_type: string; value: string };
 
 // Ações da Meta contadas como conversão.
-export const CONVERSION_ACTIONS = new Set([
+const CONVERSION_ACTIONS = new Set([
   "offsite_conversion.fb_pixel_purchase",
   "purchase",
   "lead",

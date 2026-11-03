@@ -12,10 +12,10 @@ const API = "https://www.googleapis.com/calendar/v3";
 
 // Escopos mínimos: eventos (criar/editar/convidar), disponibilidade (somente
 // livre/ocupado, sem detalhes) e lista de agendas (para escolher quais contam).
-export const SCOPE_EVENTS = "https://www.googleapis.com/auth/calendar.events";
-export const SCOPE_FREEBUSY = "https://www.googleapis.com/auth/calendar.freebusy";
-export const SCOPE_CALENDAR_LIST = "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
-export const GOOGLE_SCOPES = ["openid", "email", SCOPE_EVENTS, SCOPE_FREEBUSY, SCOPE_CALENDAR_LIST];
+const SCOPE_EVENTS = "https://www.googleapis.com/auth/calendar.events";
+const SCOPE_FREEBUSY = "https://www.googleapis.com/auth/calendar.freebusy";
+const SCOPE_CALENDAR_LIST = "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
+const GOOGLE_SCOPES = ["openid", "email", SCOPE_EVENTS, SCOPE_FREEBUSY, SCOPE_CALENDAR_LIST];
 
 const TASK_PREFIX = "Tarefa: ";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,7 +24,7 @@ export function googleConfigured() {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.TOKEN_ENCRYPTION_KEY && process.env.SUPABASE_SECRET_KEY);
 }
 
-export const redirectUri = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/google/oauth/callback`;
+const redirectUri = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/google/oauth/callback`;
 const webhookUrl = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/google/webhook`;
 
 export function authUrl(state: string) {

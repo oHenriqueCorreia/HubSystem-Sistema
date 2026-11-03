@@ -7,8 +7,8 @@ import { cookies } from "next/headers";
  * HUB_SESSAO (cookie de sessão, sem validade) existe enquanto o navegador está aberto.
  * O proxy encerra a sessão quando o primeiro existe e o segundo sumiu.
  */
-export const REMEMBER_COOKIE = "hub_lembrar";
-export const SESSION_COOKIE = "hub_sessao";
+const REMEMBER_COOKIE = "hub_lembrar";
+const SESSION_COOKIE = "hub_sessao";
 
 const base = { httpOnly: true, secure: true, sameSite: "lax" as const, path: "/" };
 

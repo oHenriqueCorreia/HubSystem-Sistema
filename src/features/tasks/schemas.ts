@@ -41,7 +41,6 @@ export const taskColumnSchema = z.object({
 export const taskColumnUpdateSchema = taskColumnSchema.extend({ id: z.uuid() });
 export const taskColumnMoveSchema = z.object({ id: z.uuid(), position: z.number().finite() });
 export const taskColumnDeleteSchema = z.object({ id: z.uuid(), targetId: z.uuid().nullable().default(null), archiveTasks: z.boolean().default(false) });
-export const taskDependencySchema = z.object({ taskId: z.uuid(), dependsOnId: z.uuid() });
 export const checklistAddSchema = z.object({ taskId: z.uuid(), title: z.string().trim().min(1, "Escreva o item.").max(200) });
 export const checklistToggleSchema = z.object({ id: z.uuid(), done: z.boolean() });
 export const commentSchema = z.object({ taskId: z.uuid(), body: z.string().trim().min(1, "Escreva o comentário.").max(5000) });

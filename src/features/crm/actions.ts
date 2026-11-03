@@ -144,14 +144,6 @@ export const addActivity = defineAction({ schema: activitySchema, permission: "c
   return ok(null, "Interação registrada.");
 });
 
-export const deleteActivity = defineAction({ schema: idSchema.extend({ leadId: z.uuid() }), permission: "crm.leads.read" }, async (input) => {
-  const supabase = await createClient();
-  const res = must(await supabase.from("activities").delete().eq("id", input.id).select("id")) as { id: string }[];
-  if (!res.length) return fail("forbidden", "Só é possível excluir as próprias anotações.");
-  revalidateCrm(input.leadId);
-  return ok(null, "Interação excluída.");
-});
-
 export const setNextContact = defineAction({ schema: nextContactSchema, permission: "crm.leads.update" }, async (input) => {
   const supabase = await createClient();
   const res = must(

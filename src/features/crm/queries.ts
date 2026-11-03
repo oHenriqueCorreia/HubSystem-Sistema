@@ -13,7 +13,7 @@ import type {
   Tag,
 } from "./types";
 
-export const PAGE_SIZE = 50;
+const PAGE_SIZE = 50;
 
 export type LeadFilters = {
   q?: string;

@@ -3,7 +3,6 @@ import { hourInSaoPaulo } from "@/domain/home";
 import { todayLocal } from "@/domain/shared/dates";
 
 export type SendWindow = { start: string; end: string; days: number[] };
-export const DEFAULT_SEND_WINDOW: SendWindow = { start: "08:00", end: "20:00", days: [1, 2, 3, 4, 5] };
 
 /** Agora está dentro da janela de envio (horário e dia da semana em São Paulo)? */
 export function inSendWindow(w: SendWindow, now = new Date()): boolean {

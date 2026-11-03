@@ -8,7 +8,7 @@ const API = () => `https://googleads.googleapis.com/${version()}`;
 
 export const googleAdsConfigured = () =>
   Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.TOKEN_ENCRYPTION_KEY && process.env.SUPABASE_SECRET_KEY);
-export const googleAdsRedirectUri = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/ads/google/callback`;
+const googleAdsRedirectUri = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/ads/google/callback`;
 
 export function googleAdsAuthUrl(state: string) {
   const q = new URLSearchParams({

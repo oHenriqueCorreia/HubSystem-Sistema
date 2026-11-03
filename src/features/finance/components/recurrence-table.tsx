@@ -15,7 +15,7 @@ import { setRecurrenceState } from "../actions";
 import type { RecurrenceRow } from "../queries";
 
 /** Como o vencimento é calculado: "todo 5º dia útil" ou "todo dia 10". */
-export function dueRuleLabel(r: Pick<RecurrenceRow, "due_rule" | "business_day" | "start_date" | "frequency">) {
+function dueRuleLabel(r: Pick<RecurrenceRow, "due_rule" | "business_day" | "start_date" | "frequency">) {
   if (r.due_rule === "dia_util" && r.business_day) return `Vence no ${r.business_day}º dia útil`;
   if (r.frequency === "semanal") return "Toda semana, no mesmo dia";
   return `Vence todo dia ${Number(r.start_date.slice(8, 10))}`;

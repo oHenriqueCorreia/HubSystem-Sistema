@@ -13,7 +13,6 @@ Para aplicar à mão, escolha **uma** das formas:
 | Forma | Quando usar |
 |---|---|
 | `npm run db:migrate` | `SUPABASE_DB_URL` preenchida com a URL do **Session pooler** (com a senha do banco) |
-| SQL Editor do Supabase | Cole `supabase/aplicar-pendentes.sql` inteiro e clique em Run (roda numa transação; se algo falhar, nada é aplicado) |
 | MCP do Supabase | Pelo Claude Code, aprovando cada `apply_migration` |
 
 Depois de aplicar, rode os testes do banco (sempre com ROLLBACK, não alteram dados): `npm run db:test`.
@@ -127,6 +126,12 @@ O Google Ads não informa saldo nem limite de faturamento pela API de relatório
 
 - **Clima:** Open-Meteo (gratuita, sem chave). Cache de 30 minutos. Padrão: Araranguá/SC; cada usuário pode trocar a cidade ou usar a localização (pede permissão do navegador).
 - **Passagem bíblica e mensagem:** trocam a cada 2 horas no horário de Brasília (00h, 02h, 04h…), sem repetir até percorrer a lista, inclusive com a tela aberta. Os textos da Bíblia Portuguesa Mundial (domínio público, eBible.org) ficam em `src/features/home/content.ts`, sem depender de serviço externo.
+
+## Notificações
+
+O banco gera os lembretes a cada minuto (`pg_cron` → `private.notifications_tick`), sem depender do plano da Vercel: tarefas, agenda, contas, retornos de leads, fim de contrato e convites parados, além dos avisos na hora (tarefa ou lead atribuído, mensagem recebida, convite aceito). Havendo notificação nova para um aparelho inscrito, ele chama `/api/push/dispatch`, que envia por Web Push. As chaves VAPID são criadas no primeiro uso e ficam no banco (a privada, cifrada com `TOKEN_ENCRYPTION_KEY`); não há variável para configurar. Se o domínio mudar, atualize `site_url` em `private.app_settings`.
+
+Cada pessoa ativa em **Configurações → Notificações**, em cada aparelho. No Android, o Chrome basta. No iPhone (iOS 16.4 ou mais novo), é preciso antes **Adicionar à Tela de Início** pelo Safari e abrir por esse ícone.
 
 ## 8. Tarefas agendadas (Vercel Cron)
 

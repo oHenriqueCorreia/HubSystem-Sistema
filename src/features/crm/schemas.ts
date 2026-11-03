@@ -88,11 +88,6 @@ export const moveDealSchema = z.object({
 export const assignSchema = z.object({ leadId: z.uuid(), ownerId: z.uuid().nullable() });
 export const bulkAssignSchema = z.object({ leadIds: z.array(z.uuid()).min(1).max(500), ownerId: z.uuid().nullable() });
 
-export const tagSchema = z.object({
-  name: z.string().trim().min(1, "Informe o nome.").max(40),
-  color: z.enum(["slate", "teal", "blue", "violet", "rose", "amber", "green", "orange"]).default("slate"),
-});
-
 export const leadTagsSchema = z.object({ leadId: z.uuid(), tagIds: z.array(z.uuid()).max(30) });
 
 export const dealValueSchema = z.object({
@@ -102,7 +97,7 @@ export const dealValueSchema = z.object({
   expectedCloseDate: z.iso.date().nullable(),
 });
 
-export const importRowSchema = z.object({
+const importRowSchema = z.object({
   _line: z.number().int(),
   name: z.string().min(1).max(160),
   company_name: z.string().max(160).nullable(),

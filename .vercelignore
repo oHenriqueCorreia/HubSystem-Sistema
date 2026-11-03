@@ -1,0 +1,7 @@
+# Não vão para o deploy: material de marca, documentação e ferramentas locais.
+Hub-System-Identidade-Visual
+docs
+scripts/prospectador
+csv leads
+supabase/tests
+supabase/limpar-acessos.sql

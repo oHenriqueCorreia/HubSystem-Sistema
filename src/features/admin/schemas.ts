@@ -2,8 +2,8 @@ import { z } from "zod";
 import { emailSchema, passwordSchema } from "@/features/auth/schemas";
 import { PERMISSION_KEYS } from "@/domain/permissions";
 
-export const uuid = z.uuid("Identificador inválido.");
-export const scopeSchema = z.enum(["own", "team", "all"]);
+const uuid = z.uuid("Identificador inválido.");
+const scopeSchema = z.enum(["own", "team", "all"]);
 
 export const inviteSchema = z
   .object({

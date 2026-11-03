@@ -66,7 +66,7 @@ export function isPermissionKey(value: string): value is PermissionKey {
   return (PERMISSION_KEYS as readonly string[]).includes(value);
 }
 
-export function can(perms: PermissionMap, key: PermissionKey): boolean {
+function can(perms: PermissionMap, key: PermissionKey): boolean {
   return perms[key] !== undefined;
 }
 
@@ -87,5 +87,3 @@ export function canOnRecord(
   return ownerId === userId;
 }
 
-export const ROLE_KEYS = ["admin", "gestor", "vendedor", "financeiro", "colaborador", "atendente", "leitura"] as const;
-export type RoleKey = (typeof ROLE_KEYS)[number];

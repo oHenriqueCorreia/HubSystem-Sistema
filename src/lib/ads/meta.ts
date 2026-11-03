@@ -13,7 +13,7 @@ const appId = () => env("META_APP_ID");
 const appSecret = () => env("META_APP_SECRET");
 
 export const metaConfigured = () => Boolean(appId() && appSecret() && process.env.TOKEN_ENCRYPTION_KEY && process.env.SUPABASE_SECRET_KEY);
-export const metaRedirectUri = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/ads/meta/callback`;
+const metaRedirectUri = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/ads/meta/callback`;
 
 export function metaAuthUrl(state: string) {
   const q = new URLSearchParams({
@@ -194,8 +194,8 @@ export type AdInfo = {
 };
 
 // Só guardamos URLs https (a tabela também recusa outras).
-export const httpsOnly = (u: string | null | undefined) => (u && /^https:\/\//.test(u) ? u : null);
-export const clip = (v: string | null | undefined, max: number) => (v ? v.slice(0, max) : null);
+const httpsOnly = (u: string | null | undefined) => (u && /^https:\/\//.test(u) ? u : null);
+const clip = (v: string | null | undefined, max: number) => (v ? v.slice(0, max) : null);
 
 type StoryData = { name?: string; title?: string; message?: string; picture?: string; image_url?: string };
 type MetaCreative = { title?: string; body?: string; image_url?: string; thumbnail_url?: string; object_type?: string; object_story_spec?: { link_data?: StoryData; video_data?: StoryData } };

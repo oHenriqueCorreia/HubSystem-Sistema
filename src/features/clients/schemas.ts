@@ -50,7 +50,7 @@ export const clientUpdateSchema = convertSchema.pick({ legalName: true, document
 });
 
 /** Cliente do novo contrato: um cliente existente, um lead do CRM ou um cliente novo. */
-export const contractClientSchema = z.discriminatedUnion("mode", [
+const contractClientSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("cliente"), clientId: z.uuid({ error: "Escolha o cliente." }) }),
   z.object({ mode: z.literal("lead"), leadId: z.uuid({ error: "Escolha o lead." }) }),
   z.object({

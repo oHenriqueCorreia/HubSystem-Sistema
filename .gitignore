@@ -48,8 +48,6 @@ next-env.d.ts
 /supabase/.branches/
 # Testes
 /test-results/
-/playwright-report/
-/playwright/.cache/
 /coverage/
 
 # Conector local do prospectador

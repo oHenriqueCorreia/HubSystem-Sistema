@@ -58,17 +58,6 @@ export const reorderStages = defineAction({ schema: z.object({ pipelineId: z.uui
   return ok(null);
 });
 
-export const setStageArchived = defineAction({ schema: z.object({ id: z.uuid(), archived: z.boolean() }), permission: PERM }, async (input) => {
-  const supabase = await createClient();
-  if (input.archived) {
-    const { count } = await supabase.from("deals").select("id", { count: "exact", head: true }).eq("stage_id", input.id).is("deleted_at", null);
-    if (count) return fail("business_rule", "Mova os negócios desta etapa antes de arquivá-la.");
-  }
-  must(await supabase.from("stages").update({ archived_at: input.archived ? new Date().toISOString() : null }).eq("id", input.id));
-  done();
-  return ok(null, input.archived ? "Etapa arquivada." : "Etapa reativada.");
-});
-
 export const deleteStage = defineAction(
   { schema: z.object({ id: z.uuid(), targetId: z.uuid().nullable().default(null), archiveDeals: z.boolean().default(false) }), permission: PERM },
   async (input) => {
