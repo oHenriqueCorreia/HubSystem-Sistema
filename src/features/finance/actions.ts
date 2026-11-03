@@ -60,6 +60,9 @@ export const createTransaction = defineAction({ schema: txnFormSchema }, async (
     client_id: input.clientId ?? "",
     contract_id: input.contractId ?? "",
     notes: input.notes ?? "",
+    counterparty: input.counterparty ?? "",
+    charge_reason: input.kind === "receita" ? (input.chargeReason ?? "") : "",
+    charge_note: input.kind === "receita" ? (input.chargeNote ?? "") : "",
   };
 
   if (input.recurrence !== "nenhuma") {
@@ -128,6 +131,9 @@ export const updateTransaction = defineAction({ schema: txnUpdateSchema }, async
     competence_date: input.competenceDate,
     due_date: input.dueDate,
     notes: input.notes || null,
+    counterparty: input.counterparty || null,
+    charge_reason: input.chargeReason ?? null,
+    charge_note: input.chargeNote || null,
   };
   must(await supabase.from("financial_transactions").update(patch).eq("id", input.id));
 
@@ -164,9 +170,10 @@ export const markPaid = defineAction({ schema: paySchema }, async (input) => {
       .from("financial_transactions")
       .update({ status: "pago", paid_at: input.paidAt, paid_amount_cents: input.paidAmountCents, ...(input.accountId ? { account_id: input.accountId } : {}) })
       .eq("id", input.id)
+      .eq("status", "previsto")
       .select("scope, kind"),
   ) as { scope: FinanceScope; kind: string }[];
-  if (!res.length) return fail("forbidden", "Você não pode alterar este lançamento.");
+  if (!res.length) return fail("business_rule", "Este lançamento já foi baixado ou não pode ser alterado. Atualize a página.");
   revalidateFinance(res[0].scope);
   return ok(null, res[0].kind === "receita" ? "Recebimento registrado." : "Pagamento registrado.");
 });

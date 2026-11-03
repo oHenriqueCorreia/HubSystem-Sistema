@@ -12,7 +12,7 @@ const TASK_COLUMNS = `
   position, lead_id, deal_id, channel, suggested_message, outcome, completed_at, created_by, created_at, cadence_enrollment_id, column_id,
   client_id,
   lead:leads(id, name, whatsapp_e164),
-  client:clients(id, legal_name),
+  client:clients(id, legal_name, lead:leads(name)),
   content:content_items(id, status),
   list:task_columns(id, name, board:task_boards(id, name)),
   checklist:task_checklist_items(id, title, position, done_at),
@@ -21,6 +21,14 @@ const TASK_COLUMNS = `
 `;
 
 type Row = Record<string, unknown>;
+
+/** O nome legal é opcional: sem ele, vale o nome do lead que originou o cliente. */
+function clientOption(raw: unknown): { id: string; legal_name: string } | null {
+  const c = (Array.isArray(raw) ? raw[0] : raw) as { id: string; legal_name: string | null; lead?: unknown } | null | undefined;
+  if (!c) return null;
+  const lead = (Array.isArray(c.lead) ? c.lead[0] : c.lead) as { name?: string } | null | undefined;
+  return { id: c.id, legal_name: c.legal_name || lead?.name || "Cliente" };
+}
 
 function toTask(r: Row): Task {
   const lead = Array.isArray(r.lead) ? r.lead[0] : r.lead;
@@ -31,7 +39,7 @@ function toTask(r: Row): Task {
   return {
     ...(r as unknown as Task),
     lead: (lead as Task["lead"]) ?? null,
-    client: (client as Task["client"]) ?? null,
+    client: clientOption(client),
     content: ((Array.isArray(r.content) ? r.content[0] : r.content) as Task["content"]) ?? null,
     list,
     checklist: ((r.checklist as Task["checklist"]) ?? []).sort((a, b) => a.position - b.position),
@@ -61,8 +69,8 @@ export async function listTaskColumns(boardId?: string): Promise<TaskColumn[]> {
 /** Clientes que a pessoa pode ver, para escolher em tarefas, eventos e quadros. */
 export async function listClientOptions() {
   const supabase = await createClient();
-  const { data } = await supabase.from("clients").select("id, legal_name").is("deleted_at", null).order("legal_name").limit(500);
-  return (data ?? []) as { id: string; legal_name: string }[];
+  const { data } = await supabase.from("clients").select("id, legal_name, lead:leads(name)").is("deleted_at", null).limit(500);
+  return (data ?? []).map(clientOption).filter((c): c is { id: string; legal_name: string } => Boolean(c)).sort((a, b) => a.legal_name.localeCompare(b.legal_name, "pt-BR"));
 }
 
 export type TaskFilters = {
@@ -203,7 +211,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
   const [events, tasks, publications, socialAccounts] = await Promise.all([
     supabase
       .from("calendar_events")
-      .select("id, title, description, kind, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name)")
+      .select("id, title, description, kind, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name))")
       .is("deleted_at", null)
       .lt("starts_at", endIso)
       .gt("ends_at", startIso)
@@ -211,7 +219,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
       .limit(1000),
     supabase
       .from("tasks")
-      .select("id, title, description, due_at, has_time, duration_minutes, owner_id, status, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name), content:content_items(status), list:task_columns(id, name, board:task_boards(id, name))")
+      .select("id, title, description, due_at, has_time, duration_minutes, owner_id, status, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name)), content:content_items(status), list:task_columns(id, name, board:task_boards(id, name))")
       .is("deleted_at", null)
       .not("due_at", "is", null)
       .gte("due_at", startIso)
@@ -219,7 +227,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
       .limit(1000),
     supabase
       .from("content_schedules")
-      .select("id, content_id, account_id, scheduled_at, status, error, content:content_items(client:clients(id, legal_name), task:tasks(id, title, owner_id, list:task_columns(name, board:task_boards(id, name))))")
+      .select("id, content_id, account_id, scheduled_at, status, error, content:content_items(client:clients(id, legal_name, lead:leads(name)), task:tasks(id, title, owner_id, list:task_columns(name, board:task_boards(id, name))))")
       .gte("scheduled_at", startIso)
       .lt("scheduled_at", endIso)
       .limit(500),
@@ -230,7 +238,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
 
   const fromEvents: AgendaEntry[] = ((events.data ?? []) as Row[]).map((e) => {
     const lead = one(e.lead as { id: string; name: string } | null);
-    const client = one(e.client as { id: string; legal_name: string } | null);
+    const client = clientOption(e.client);
     return {
       id: e.id as string,
       source: "evento",
@@ -257,7 +265,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
   });
   const fromTasks: AgendaEntry[] = ((tasks.data ?? []) as Row[]).map((t) => {
     const lead = one(t.lead as { id: string; name: string } | null);
-    const client = one(t.client as { id: string; legal_name: string } | null);
+    const client = clientOption(t.client);
     const list = one(t.list as { id: string; name: string; board: unknown } | null);
     const board = list ? one(list.board as { id: string; name: string } | null) : null;
     const content = one(t.content as { status: ContentStatus } | null);
@@ -294,7 +302,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
     const content = one(p.content as { client: unknown; task: unknown } | null);
     const task = content ? one(content.task as { id: string; title: string; owner_id: string | null; list: unknown } | null) : null;
     if (!task) return [];
-    const client = content ? one(content.client as { id: string; legal_name: string } | null) : null;
+    const client = content ? clientOption(content.client) : null;
     const list = one(task.list as { name: string; board: unknown } | null);
     const board = list ? one(list.board as { id: string; name: string } | null) : null;
     const account = socials.find((a) => a.id === p.account_id);
@@ -350,7 +358,7 @@ export async function getEvent(id: string): Promise<CalendarEvent | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("calendar_events")
-    .select("id, title, description, kind, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, reminder_minutes, send_updates, lead:leads(id, name), client:clients(id, legal_name), event_attendees(user_id), event_guests(email, name, optional, response_status)")
+    .select("id, title, description, kind, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, reminder_minutes, send_updates, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name)), event_attendees(user_id), event_guests(email, name, optional, response_status)")
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -360,7 +368,7 @@ export async function getEvent(id: string): Promise<CalendarEvent | null> {
   return {
     ...(e as unknown as CalendarEvent),
     lead: (Array.isArray(e.lead) ? e.lead[0] : e.lead) as CalendarEvent["lead"],
-    client: (Array.isArray(e.client) ? e.client[0] : e.client) as CalendarEvent["client"],
+    client: clientOption(e.client),
     attendees: ((e.event_attendees as { user_id: string }[] | null) ?? []).map((a) => a.user_id),
     guests: (e.event_guests as CalendarEvent["guests"] | null) ?? [],
   };

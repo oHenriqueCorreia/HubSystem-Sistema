@@ -24,6 +24,9 @@ export const txnFormSchema = z
     clientId: z.uuid().nullable().optional(),
     contractId: z.uuid().nullable().optional(),
     notes: z.string().trim().max(5000).optional().nullable(),
+    counterparty: z.string().trim().max(160).optional().nullable(),
+    chargeReason: z.enum(["mensalidade", "boleto", "servico", "outro"]).nullable().optional(),
+    chargeNote: z.string().trim().max(200).optional().nullable(),
   })
   .refine((v) => v.kind !== "transferencia" || (v.accountId && v.transferAccountId && v.accountId !== v.transferAccountId), {
     path: ["transferAccountId"],
@@ -46,6 +49,9 @@ export const txnUpdateSchema = z.object({
   competenceDate: z.iso.date(),
   dueDate: z.iso.date(),
   notes: z.string().trim().max(5000).optional().nullable(),
+  counterparty: z.string().trim().max(160).optional().nullable(),
+  chargeReason: z.enum(["mensalidade", "boleto", "servico", "outro"]).nullable().optional(),
+  chargeNote: z.string().trim().max(200).optional().nullable(),
   applyToFuture: z.boolean().default(false),
 });
 

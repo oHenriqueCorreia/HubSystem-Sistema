@@ -5,10 +5,17 @@ import type { ContentStatus } from "@/domain/content";
 
 const one = <T,>(v: T | T[] | null | undefined) => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
 
+/** O nome legal é opcional: sem ele, vale o nome do lead que originou o cliente. */
+function clientOption(raw: unknown): { id: string; legal_name: string } | null {
+  const c = one(raw as { id: string; legal_name: string | null; lead?: unknown } | null);
+  if (!c) return null;
+  return { id: c.id, legal_name: c.legal_name || one(c.lead as { name?: string } | null)?.name || "Cliente" };
+}
+
 export type ContentAsset = { id: string; kind: "imagem" | "video_drive"; file_name: string | null; drive_url: string | null; drive_file_id: string | null; drive_status: string | null; position: number; url: string | null };
 export type ContentCard = { id: string; status: ContentStatus; caption: string; updated_at: string; task: { id: string; title: string; due_at: string | null; owner_id: string | null } | null; client: { id: string; legal_name: string } | null; board: string | null; list: string | null };
 
-const CARD = "id, status, caption, updated_at, client:clients(id, legal_name), task:tasks!inner(id, title, due_at, owner_id, deleted_at, list:task_columns(name, board:task_boards(name)))";
+const CARD = "id, status, caption, updated_at, client:clients(id, legal_name, lead:leads(name)), task:tasks!inner(id, title, due_at, owner_id, deleted_at, list:task_columns(name, board:task_boards(name)))";
 
 function toCard(r: Record<string, unknown>): ContentCard {
   const task = one<Record<string, unknown>>(r.task as Record<string, unknown> | null);
@@ -18,7 +25,7 @@ function toCard(r: Record<string, unknown>): ContentCard {
     status: r.status as ContentStatus,
     caption: r.caption as string,
     updated_at: r.updated_at as string,
-    client: one(r.client as ContentCard["client"]),
+    client: clientOption(r.client),
     task: task ? { id: task.id as string, title: task.title as string, due_at: task.due_at as string | null, owner_id: task.owner_id as string | null } : null,
     board: list ? (one(list.board as { name: string } | null)?.name ?? null) : null,
     list: list?.name ?? null,
@@ -81,7 +88,7 @@ export async function getContent(id: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("content_items")
-    .select("id, status, caption, version, approved_version, last_error, ad_campaign_id, updated_at, client:clients(id, legal_name), campaign:ad_campaigns(id, name), task:tasks(id, title, due_at, has_time, owner_id, description, list:task_columns(name, board:task_boards(id, name)))")
+    .select("id, status, caption, version, approved_version, last_error, ad_campaign_id, updated_at, client:clients(id, legal_name, lead:leads(name)), campaign:ad_campaigns(id, name), task:tasks(id, title, due_at, has_time, owner_id, description, list:task_columns(name, board:task_boards(id, name)))")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -104,7 +111,7 @@ export async function getContent(id: string) {
     version: r.version as number,
     approved_version: r.approved_version as number | null,
     last_error: r.last_error as string | null,
-    client: one(r.client as { id: string; legal_name: string } | null),
+    client: clientOption(r.client),
     campaign: one(r.campaign as { id: string; name: string } | null),
     task: task as { id: string; title: string; due_at: string | null; has_time: boolean; owner_id: string | null; description: string | null } | null,
     board: list ? one(list.board as { id: string; name: string } | null) : null,

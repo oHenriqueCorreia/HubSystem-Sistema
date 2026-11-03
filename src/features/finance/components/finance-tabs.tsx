@@ -10,7 +10,9 @@ export function FinanceTabs({ scope, showAdminRead }: { scope: FinanceScope; sho
   const base = `/financeiro/${scope}`;
   const tabs = [
     { href: base, label: "Visão geral" },
+    { href: `${base}/dashboard`, label: "Dashboard" },
     { href: `${base}/lancamentos`, label: "Lançamentos" },
+    { href: `${base}/importar`, label: "Importar extrato" },
     { href: `${base}/recorrentes`, label: "Fixos e recorrentes" },
     { href: `${base}/fluxo-de-caixa`, label: "Fluxo de caixa" },
     { href: `${base}/cadastros`, label: "Contas e categorias" },

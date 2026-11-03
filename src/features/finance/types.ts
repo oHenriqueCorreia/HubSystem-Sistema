@@ -31,6 +31,9 @@ export type Transaction = {
   contract_id: string | null;
   reconciled_at: string | null;
   notes: string | null;
+  counterparty: string | null;
+  charge_reason: string | null;
+  charge_note: string | null;
   created_at: string;
   client: { id: string; lead: { name: string } | null } | null;
 };

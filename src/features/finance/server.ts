@@ -4,19 +4,22 @@ import { requirePermission, type CurrentUser } from "@/lib/auth/dal";
 import { scopeFromParam, type FinanceScope } from "./types";
 
 /** Resolve o contexto da URL e exige a permissão correspondente. */
-export async function requireFinance(param: string): Promise<{ scope: FinanceScope; user: CurrentUser; perms: { create: boolean; update: boolean; delete: boolean; reconcile: boolean } }> {
+export async function requireFinance(param: string): Promise<{ scope: FinanceScope; user: CurrentUser; perms: { create: boolean; update: boolean; delete: boolean; reconcile: boolean; transfer: boolean } }> {
   const scope = scopeFromParam(param);
   if (!scope) notFound();
   const user = await requirePermission(scope === "empresa" ? "finance.company.read" : "finance.personal.manage");
   const p = user.permissions;
+  // Transferir exige acesso às duas áreas.
+  const transfer = Boolean(p["finance.company.update"] && p["finance.personal.manage"]);
   const perms =
     scope === "pessoal"
-      ? { create: true, update: true, delete: true, reconcile: true }
+      ? { create: true, update: true, delete: true, reconcile: true, transfer }
       : {
           create: Boolean(p["finance.company.create"]),
           update: Boolean(p["finance.company.update"]),
           delete: Boolean(p["finance.company.delete"]),
           reconcile: Boolean(p["finance.company.reconcile"]),
+          transfer,
         };
   return { scope, user, perms };
 }

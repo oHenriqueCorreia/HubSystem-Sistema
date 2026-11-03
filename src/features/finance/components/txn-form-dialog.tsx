@@ -17,6 +17,7 @@ import { MoneyInput } from "@/components/app/money-input";
 import { formatBRL, splitInstallments } from "@/domain/shared/money";
 import { todayLocal } from "@/domain/shared/dates";
 import { PAYMENT_LABEL } from "@/features/clients/types";
+import { CHARGE_REASON_LABEL } from "@/domain/finance/charge";
 import { issuesToMap } from "@/features/clients/components/contract-fields";
 import { cn } from "cn";
 import { createTransaction, updateTransaction } from "../actions";
@@ -58,6 +59,9 @@ export function TxnFormDialog({ scope, lookups, trigger, defaultKind = "despesa"
     clientId: txn?.client_id ?? null,
     contractId: txn?.contract_id ?? null,
     notes: txn?.notes ?? "",
+    counterparty: txn?.counterparty ?? "",
+    chargeReason: (txn?.charge_reason as TxnFormValues["chargeReason"]) ?? null,
+    chargeNote: txn?.charge_note ?? "",
   });
   const [v, setV] = useState<TxnFormValues>(initial);
   const [applyFuture, setApplyFuture] = useState(false);
@@ -79,6 +83,9 @@ export function TxnFormDialog({ scope, lookups, trigger, defaultKind = "despesa"
         competenceDate: v.competenceDate,
         dueDate: v.dueDate,
         notes: v.notes,
+        counterparty: v.counterparty,
+        chargeReason: v.chargeReason,
+        chargeNote: v.chargeNote,
         applyToFuture: applyFuture,
       };
       const parsed = txnUpdateSchema.safeParse(payload);
@@ -128,6 +135,35 @@ export function TxnFormDialog({ scope, lookups, trigger, defaultKind = "despesa"
               <ToggleGroupItem value="despesa">Despesa</ToggleGroupItem>
               <ToggleGroupItem value="transferencia">Transferência</ToggleGroupItem>
             </ToggleGroup>
+          )}
+          {kind !== "transferencia" && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField label={kind === "receita" ? "Cliente ou pagador" : "Fornecedor"} optional>
+                <Input value={v.counterparty ?? ""} maxLength={160} autoComplete="off" onChange={(e) => set("counterparty", e.target.value)} />
+              </FormField>
+              {kind === "receita" && (
+                <FormField label="Motivo da cobrança" optional>
+                  <Select value={v.chargeReason ?? NONE} onValueChange={(r) => set("chargeReason", r === NONE ? null : (r as TxnFormValues["chargeReason"]))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Não informar</SelectItem>
+                      {Object.entries(CHARGE_REASON_LABEL).map(([k, label]) => (
+                        <SelectItem key={k} value={k}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              )}
+              {kind === "receita" && v.chargeReason && (
+                <FormField label="Detalhe do motivo" optional className="sm:col-span-2">
+                  <Input value={v.chargeNote ?? ""} maxLength={200} placeholder="Ex.: Novembro, Landing page…" onChange={(e) => set("chargeNote", e.target.value)} />
+                </FormField>
+              )}
+            </div>
           )}
           <FormField label="Descrição" error={errors.description} required>
             <Input value={v.description} onChange={(e) => set("description", e.target.value)} placeholder={kind === "receita" ? "Ex.: Site — Vidraçaria Sol" : kind === "despesa" ? "Ex.: Hospedagem" : "Ex.: Reserva"} autoFocus />

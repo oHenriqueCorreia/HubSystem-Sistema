@@ -81,7 +81,7 @@ export type TxnFilters = {
 
 const TXN_COLUMNS = `id, scope, kind, description, amount_cents, paid_amount_cents, category_id, cost_center_id, account_id, transfer_account_id,
   payment_method, competence_date, due_date, paid_at, status, installment_number, installment_total, installment_group_id, recurrence_id,
-  client_id, contract_id, reconciled_at, notes, created_at, client:clients(id, lead:leads(name))`;
+  client_id, contract_id, reconciled_at, notes, counterparty, charge_reason, charge_note, created_at, client:clients(id, lead:leads(name))`;
 
 const TXN_PAGE = 100;
 

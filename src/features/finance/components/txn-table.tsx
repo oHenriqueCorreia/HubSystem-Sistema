@@ -16,11 +16,13 @@ import { MoneyInput } from "@/components/app/money-input";
 import { formatBRL } from "@/domain/shared/money";
 import { formatDate, todayLocal } from "@/domain/shared/dates";
 import { isOverdueTxn } from "@/domain/finance";
+import { CHARGE_REASON_LABEL } from "@/domain/finance/charge";
 import { cn } from "cn";
 import { cancelTransaction, deleteTransaction, markPaid, markUnpaid, restoreTransaction, setReconciled } from "../actions";
 import type { Account, Category, CostCenter, FinanceScope, Transaction } from "../types";
 import { TxnFormDialog } from "./txn-form-dialog";
 import { Attachments } from "@/features/clients/components/attachments";
+import { ChargeDialog, HistoryDialog, TransferDialog } from "./txn-extra-dialogs";
 
 type Lookups = { accounts: Account[]; categories: Category[]; costCenters: CostCenter[] };
 
@@ -52,7 +54,10 @@ function StatusBadge({ t, today }: { t: Transaction; today: string }) {
   );
 }
 
-export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope; rows: Transaction[]; lookups: Lookups; perms: { update: boolean; delete: boolean; reconcile: boolean } }) {
+export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope; rows: Transaction[]; lookups: Lookups; perms: { update: boolean; delete: boolean; reconcile: boolean; transfer?: boolean } }) {
+  const [transferring, setTransferring] = useState<Transaction | null>(null);
+  const [charging, setCharging] = useState<Transaction | null>(null);
+  const [history, setHistory] = useState<Transaction | null>(null);
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [paying, setPaying] = useState<Transaction | null>(null);
@@ -124,6 +129,9 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
               <TxnFormDialog scope={scope} lookups={lookups} txn={t} trigger={<DropdownMenuItem onSelect={(e) => e.preventDefault()}>Editar</DropdownMenuItem>} />
             )}
             <DropdownMenuItem onSelect={() => setReceipts(t)}>Comprovantes e anexos</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setHistory(t)}>Histórico</DropdownMenuItem>
+            {perms.update && t.kind === "receita" && t.status === "previsto" && <DropdownMenuItem onSelect={() => setCharging(t)}>Cobrar por WhatsApp</DropdownMenuItem>}
+            {perms.transfer && t.kind !== "transferencia" && <DropdownMenuItem onSelect={() => setTransferring(t)}>Transferir para {scope === "empresa" ? "o pessoal" : "a empresa"}</DropdownMenuItem>}
             {perms.update && t.status === "pago" && t.kind !== "transferencia" && <DropdownMenuItem onSelect={() => run(() => markUnpaid({ id: t.id }))}>Voltar para em aberto</DropdownMenuItem>}
             {perms.update && t.status === "previsto" && <DropdownMenuItem onSelect={() => run(() => cancelTransaction({ id: t.id }))}>Cancelar lançamento</DropdownMenuItem>}
             {perms.delete && (
@@ -172,7 +180,8 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
                     {t.recurrence_id && <Repeat className="size-3.5 shrink-0 text-muted-foreground" aria-label="Recorrente" />}
                     <span className="truncate">{t.description}</span>
                   </span>
-                  {t.client?.lead?.name && <span className="block truncate text-xs text-muted-foreground">{t.client.lead.name}</span>}
+                  {(t.client?.lead?.name || t.counterparty) && <span className="block truncate text-xs text-muted-foreground">{t.client?.lead?.name ?? t.counterparty}</span>}
+                  {t.charge_reason && <span className="block truncate text-xs text-muted-foreground">{CHARGE_REASON_LABEL[t.charge_reason]}{t.charge_note ? `: ${t.charge_note}` : ""}</span>}
                 </TableCell>
                 <TableCell className="text-sm">{t.category_id ? cat.get(t.category_id) : "—"}</TableCell>
                 <TableCell className="text-sm whitespace-nowrap">
@@ -209,6 +218,10 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
         ))}
       </ul>
 
+      {transferring && <TransferDialog txn={transferring} scope={scope} categoryName={transferring.category_id ? cat.get(transferring.category_id) : undefined} accountName={transferring.account_id ? acc.get(transferring.account_id) : undefined} onClose={() => setTransferring(null)} />}
+      {charging && <ChargeDialog txn={charging} scope={scope} onClose={() => setCharging(null)} />}
+      {history && <HistoryDialog txn={history} onClose={() => setHistory(null)} />}
+
       <Dialog open={Boolean(receipts)} onOpenChange={(v) => !v && setReceipts(null)}>
         <DialogContent>
           <DialogHeader>
@@ -222,9 +235,32 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
       <Dialog open={Boolean(paying)} onOpenChange={(v) => !v && setPaying(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{paying?.kind === "receita" ? "Registrar recebimento" : "Registrar pagamento"}</DialogTitle>
-            <DialogDescription>{paying?.description}</DialogDescription>
+            <DialogTitle>{paying?.kind === "receita" ? "Confirmar recebimento" : "Registrar pagamento"}</DialogTitle>
+            <DialogDescription>Confira o comprovante e os dados. O valor conta uma única vez, na área {scope === "empresa" ? "da empresa" : "pessoal"}.</DialogDescription>
           </DialogHeader>
+          {paying && (
+            <dl className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/30 p-3 text-sm">
+              <div className="col-span-2">
+                <dt className="text-xs text-muted-foreground">Lançamento</dt>
+                <dd className="font-medium break-words">{paying.description}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Valor previsto</dt>
+                <dd className="tabular">{formatBRL(paying.amount_cents)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Vencimento</dt>
+                <dd>{formatDate(paying.due_date)}</dd>
+              </div>
+              {(paying.client?.lead?.name || paying.counterparty) && (
+                <div className="col-span-2">
+                  <dt className="text-xs text-muted-foreground">{paying.kind === "receita" ? "Cliente" : "Fornecedor"}</dt>
+                  <dd className="break-words">{paying.client?.lead?.name ?? paying.counterparty}</dd>
+                </div>
+              )}
+            </dl>
+          )}
+          {paying && <Attachments key={paying.id} entityType="transaction" entityId={paying.id} title="Comprovante (imagem ou PDF)" canUpload={perms.update} />}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="pay-date">Data</Label>
@@ -265,7 +301,7 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
                 run(() => markPaid({ id: t.id, paidAt: payDate, paidAmountCents: payAmount, accountId: payAccount || null }), () => markUnpaid({ id: t.id }));
               }}
             >
-              Confirmar
+              {paying?.kind === "receita" ? "Confirmar recebimento e dar baixa" : "Confirmar pagamento"}
             </Button>
           </DialogFooter>
         </DialogContent>

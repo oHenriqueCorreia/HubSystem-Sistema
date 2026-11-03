@@ -204,6 +204,8 @@ async function runConversions(deadline: number) {
 
 // --- Cobrança ---------------------------------------------------------------------
 
+const clientName = (c: { legal_name: string | null; lead?: unknown }) => (c.legal_name || (Array.isArray(c.lead) ? c.lead[0]?.name : (c.lead as { name?: string } | null | undefined)?.name) || "").trim();
+
 const money = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 const dateBr = (iso: string) => iso.split("-").reverse().join("/");
 const addDays = (day: string, days: number) => new Date(new Date(`${day}T12:00:00-03:00`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
@@ -216,7 +218,7 @@ async function runBilling(deadline: number) {
   for (const org of orgs ?? []) {
     const { data: due } = await admin
       .from("financial_transactions")
-      .select("id, description, amount_cents, due_date, client:clients(organization_id, legal_name, billing_phone_e164, lead_id)")
+      .select("id, description, amount_cents, due_date, client:clients(organization_id, legal_name, billing_phone_e164, lead_id, lead:leads(name))")
       .eq("organization_id", org.organization_id)
       .eq("scope", "empresa")
       .eq("kind", "receita")
@@ -240,7 +242,7 @@ async function runBilling(deadline: number) {
         const numberId = await firstActiveNumber(org.organization_id);
         if (!numberId) throw new SendBlocked("nenhum número de WhatsApp conectado");
         const body = org.billing_message
-          .replace(/\{nome\}/gi, client.legal_name.trim().split(/\s+/)[0] ?? "")
+          .replace(/\{nome\}/gi, clientName(client).split(/\s+/)[0] ?? "")
           .replace(/\{descricao\}/gi, t.description)
           .replace(/\{valor\}/gi, money(Number(t.amount_cents)))
           .replace(/\{vencimento\}/gi, dateBr(t.due_date));
