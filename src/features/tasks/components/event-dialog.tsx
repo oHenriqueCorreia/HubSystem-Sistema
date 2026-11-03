@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { AlertTriangle, CalendarSearch, LoaderCircle, Mail, Plus, Trash2, X } from "lucide-react";
@@ -15,7 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { LeadPicker, type LeadOption } from "@/features/crm/components/lead-picker";
 import { dayKey, minutesOfDay, overlapsBusy, zonedIso, type Interval } from "@/domain/calendar";
-import { createEvent, deleteEvent, getAvailability, restoreEvent, updateEvent, type Availability } from "../actions";
+import { createEvent, deleteEvent, getAvailability, getWorkspaceOptions, restoreEvent, updateEvent, type Availability } from "../actions";
+import { EVENT_STATUS_LABEL } from "@/domain/calendar/agenda";
 import { eventFormSchema, type EventFormValues } from "../schemas";
 import type { CalendarEvent } from "../queries";
 
@@ -32,6 +33,21 @@ function plus30(time: string) {
   const t = Math.min(h * 60 + m + 60, 23 * 60 + 59);
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 }
+
+const DURATIONS: [number, string][] = [
+  [15, "15 min"],
+  [30, "30 min"],
+  [45, "45 min"],
+  [60, "1 hora"],
+  [90, "1h30"],
+  [120, "2 horas"],
+];
+const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const minutesBetween = (a: string, b: string) => toMinutes(b) - toMinutes(a);
+const addMinutes = (t: string, minutes: number) => {
+  const total = Math.min(toMinutes(t) + minutes, 23 * 60 + 59);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+};
 
 export type EventDraft = { date: string; time?: string; lead?: LeadOption | null };
 
@@ -59,6 +75,18 @@ export function EventDialog({
   const [error, setError] = useState<string | null>(null);
   const [lead, setLead] = useState<LeadOption | null>(event?.lead ?? draft?.lead ?? null);
   const start = draft?.time ?? "09:00";
+  const [clients, setClients] = useState<{ id: string; legal_name: string }[]>(event?.client ? [event.client] : []);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void getWorkspaceOptions({}).then((res) => {
+      if (alive && res.ok) setClients(res.data.clients);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   const form = useForm<EventFormValues>({
     defaultValues: event
@@ -73,6 +101,8 @@ export function EventDialog({
           location: event.location ?? "",
           meetUrl: event.meet_url ?? "",
           ownerId: event.owner_id,
+          clientId: event.client_id,
+          status: event.status,
           attendeeIds: event.attendees,
           guests: event.guests.map((g) => ({ email: g.email, name: g.name, optional: g.optional })),
           sendUpdates: event.send_updates,
@@ -89,6 +119,8 @@ export function EventDialog({
           location: "",
           meetUrl: "",
           ownerId: null,
+          clientId: null,
+          status: "agendado",
           attendeeIds: [],
           guests: [],
           sendUpdates: true,
@@ -167,7 +199,7 @@ export function EventDialog({
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{event ? "Editar evento" : "Novo evento"}</DialogTitle>
-          <DialogDescription>Horários no fuso de São Paulo.</DialogDescription>
+          <DialogDescription>Horários no fuso de Brasília (São Paulo).</DialogDescription>
         </DialogHeader>
         <form id="event-form" onSubmit={submit} noValidate className="grid gap-4">
           <FormAlert>{error}</FormAlert>
@@ -253,6 +285,69 @@ export function EventDialog({
               )}
             </div>
           )}
+          {!allDay && (
+            <FormField label="Duração">
+              <div className="flex flex-wrap gap-1.5">
+                {DURATIONS.map(([minutes, label]) => {
+                  const active = startTime && endTime && minutesBetween(startTime, endTime) === minutes;
+                  return (
+                    <button
+                      key={minutes}
+                      type="button"
+                      aria-pressed={Boolean(active)}
+                      onClick={() => startTime && form.setValue("endTime", addMinutes(startTime, minutes), { shouldValidate: true })}
+                      className={`rounded-md border px-2 py-1 text-xs hover:border-primary ${active ? "border-primary bg-accent" : "bg-surface"}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </FormField>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Cliente" optional>
+              <Controller
+                control={form.control}
+                name="clientId"
+                render={({ field }) => (
+                  <Select value={field.value ?? NONE} onValueChange={(v) => field.onChange(v === NONE ? null : v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Nenhum</SelectItem>
+                      {clients.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.legal_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+            <FormField label="Situação">
+              <Controller
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(EVENT_STATUS_LABEL).map(([k, label]) => (
+                        <SelectItem key={k} value={k}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+          </div>
           <FormField label="Lead relacionado" optional>
             <LeadPicker value={lead} onChange={setLead} />
           </FormField>

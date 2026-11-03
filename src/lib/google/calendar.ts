@@ -224,7 +224,7 @@ export async function syncUser(userId: string) {
   // 1) Envia eventos internos novos/alterados (com convidados).
   const { data: local } = await admin
     .from("calendar_events")
-    .select("id, title, description, location, starts_at, ends_at, all_day, meet_url, send_updates, google_event_id, google_synced_at, updated_at, deleted_at, event_guests(email, name, optional)")
+    .select("id, title, description, location, starts_at, ends_at, all_day, meet_url, send_updates, status, google_event_id, google_synced_at, updated_at, deleted_at, event_guests(email, name, optional)")
     .eq("owner_id", userId)
     .gte("ends_at", since)
     .limit(1000);
@@ -232,7 +232,7 @@ export async function syncUser(userId: string) {
     const guests = (e.event_guests as LocalEvent["guests"] | null) ?? [];
     const notify = e.send_updates && guests.length ? "all" : "none";
     const changed = !e.google_synced_at || new Date(e.updated_at).getTime() > new Date(e.google_synced_at).getTime() + 2000;
-    if (e.deleted_at) {
+    if (e.deleted_at || e.status === "cancelado") {
       if (e.google_event_id) {
         await api(token, `/calendars/${cal}/events/${encodeURIComponent(e.google_event_id)}?sendUpdates=${notify}`, { method: "DELETE" });
         await admin.from("calendar_events").update({ google_event_id: null, google_synced_at: new Date().toISOString() }).eq("id", e.id);

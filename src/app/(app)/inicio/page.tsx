@@ -12,6 +12,8 @@ import { formatBRL } from "@/domain/shared/money";
 import { getMyDay } from "@/features/tasks/queries";
 import { getCrmLookups } from "@/features/crm/queries";
 import { MyDay } from "@/features/tasks/components/my-day";
+import { AgendaHub, type SavedAgendaFilter } from "@/features/tasks/components/agenda-hub";
+import { listClientOptions } from "@/features/tasks/queries";
 import { TaskFormDialog } from "@/features/tasks/components/task-form-dialog";
 import { PRIORITY_LABEL, type TaskPriority } from "@/features/tasks/types";
 import { getHomeOverview, HOME_WIDGETS, homePrefs, type HomeOverview, type HomeWidget } from "@/features/home/queries";
@@ -103,7 +105,7 @@ function TaskList({ items, empty }: { items: HomeOverview["priorityList"]; empty
     <ul className="grid gap-1.5">
       {items.map((t) => (
         <li key={t.id} className="flex items-baseline justify-between gap-2 text-sm">
-          <Link href={`/tarefas?q=${encodeURIComponent(t.title.slice(0, 60))}`} className="min-w-0 truncate hover:underline">
+          <Link href={`/tarefas?tarefa=${t.id}`} className="min-w-0 truncate hover:underline">
             {t.title}
           </Link>
           <span className="shrink-0 text-xs text-muted-foreground">
@@ -122,10 +124,12 @@ export default async function InicioPage() {
   const day = todayLocal();
   const today = day;
   const canTasks = Boolean(user.permissions["tasks.read"]);
-  const [overview, myDay, lookups] = await Promise.all([
+  const canAgenda = canTasks || Boolean(user.permissions["calendar.read"]);
+  const [overview, myDay, lookups, clients] = await Promise.all([
     getHomeOverview(user),
     canTasks && !prefs.hidden.includes("meu_dia") ? getMyDay(user.id) : Promise.resolve(null),
-    canTasks ? getCrmLookups() : Promise.resolve(null),
+    canAgenda ? getCrmLookups() : Promise.resolve(null),
+    canAgenda && !prefs.hidden.includes("agendas") ? listClientOptions() : Promise.resolve([]),
   ]);
   const visible = prefs.order.filter((k) => !prefs.hidden.includes(k));
   const o = overview;
@@ -149,6 +153,20 @@ export default async function InicioPage() {
   if (o.pendingInvites) alerts.push({ text: `${o.pendingInvites} convite(s) aguardando aceite`, href: "/configuracoes/usuarios", tone: "warning" });
 
   const blocks: Record<HomeWidget, ReactNode> = {
+    agendas:
+      canAgenda && lookups ? (
+        <Panel key="agendas" title="Todas as agendas" icon={CalendarDays} href="/agenda" className="lg:col-span-2">
+          <AgendaHub
+            owners={lookups.owners}
+            clients={clients}
+            meId={user.id}
+            canManageEvents={Boolean(user.permissions["calendar.manage"])}
+            canAssignEvents={user.permissions["calendar.manage"] === "team" || user.permissions["calendar.manage"] === "all"}
+            canEditTasks={Boolean(user.permissions["tasks.update"])}
+            savedFilters={(user.preferences.agenda_filters as SavedAgendaFilter[] | undefined) ?? []}
+          />
+        </Panel>
+      ) : null,
     clima: (
       <Panel key="clima" title="Clima">
         <Suspense fallback={fallback}>

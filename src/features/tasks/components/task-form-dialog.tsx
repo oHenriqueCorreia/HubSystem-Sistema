@@ -19,14 +19,16 @@ import { TagPicker } from "@/features/tags/components/tag-picker";
 import { listActiveTags } from "@/features/tags/actions";
 import type { Tag } from "@/features/crm/types";
 import { dayKey, minutesOfDay } from "@/domain/calendar";
-import { createTask, updateTask } from "../actions";
+import { createTask, getWorkspaceOptions, updateTask } from "../actions";
+import { ListDialog } from "./board-bar";
 import { taskFormSchema } from "../schemas";
-import { CHANNEL_LABEL, PRIORITY_LABEL, STATUS_LABEL, type Task } from "../types";
+import { CHANNEL_LABEL, PRIORITY_LABEL, STATUS_LABEL, type Task, type TaskBoard, type TaskColumn } from "../types";
 import type { z } from "zod";
 
 type Owner = { id: string; full_name: string; email: string };
 type FormValues = Omit<z.input<typeof taskFormSchema>, "checklist"> & { checklistItems: { title: string }[] };
 const NONE = "__nenhum__";
+const NEW_LIST = "__nova_lista__";
 
 function timeOf(iso: string) {
   const m = minutesOfDay(iso);
@@ -41,14 +43,16 @@ export function TaskFormDialog({
   defaults,
   open: controlledOpen,
   onOpenChange,
+  canConfigure = false,
 }: {
   trigger?: ReactNode;
   task?: Task;
   owners: Owner[];
   canAssign: boolean;
-  defaults?: { lead?: LeadOption | null; dueDate?: string; dueTime?: string; status?: Task["status"]; columnId?: string };
+  defaults?: { lead?: LeadOption | null; dueDate?: string; dueTime?: string; status?: Task["status"]; columnId?: string; boardId?: string; clientId?: string };
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
+  canConfigure?: boolean;
 }) {
   const router = useRouter();
   const [innerOpen, setInnerOpen] = useState(false);
@@ -60,6 +64,42 @@ export function TaskFormDialog({
   const [tagIds, setTagIds] = useState<string[]>(() => task?.tags.map((t) => t.id) ?? []);
   const [tagOptions, setTagOptions] = useState<Tag[]>(() => (task?.tags ?? []) as Tag[]);
   const [participantIds, setParticipantIds] = useState<string[]>(() => task?.participant_ids ?? []);
+  const [boards, setBoards] = useState<TaskBoard[]>([]);
+  const [lists, setLists] = useState<TaskColumn[]>([]);
+  const [clients, setClients] = useState<{ id: string; legal_name: string }[]>(task?.client ? [task.client] : []);
+  const [clientId, setClientId] = useState<string | null>(task?.client_id ?? defaults?.clientId ?? null);
+  const [boardId, setBoardId] = useState<string | null>(task?.list?.board?.id ?? defaults?.boardId ?? null);
+  const [columnId, setColumnId] = useState<string | null>(task?.column_id ?? defaults?.columnId ?? null);
+  const [boardTouched, setBoardTouched] = useState(Boolean(task || defaults?.boardId || defaults?.columnId));
+  const [newList, setNewList] = useState(false);
+
+  // Quadros, listas e clientes atualizados a cada abertura do formulário.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void getWorkspaceOptions({}).then((res) => {
+      if (!alive || !res.ok) return;
+      setBoards(res.data.boards);
+      setLists(res.data.lists);
+      setClients(res.data.clients);
+      setBoardId((cur) => cur ?? res.data.lists.find((l) => l.id === defaults?.columnId)?.board_id ?? res.data.boards[0]?.id ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, defaults?.columnId]);
+
+  const boardLists = lists.filter((l) => l.board_id === boardId);
+
+  function chooseClient(id: string | null) {
+    setClientId(id);
+    // Quadro do cliente vira o padrão, sem passar por cima de uma escolha feita à mão.
+    const own = id ? boards.find((b) => b.client_id === id) : null;
+    if (own && !boardTouched) {
+      setBoardId(own.id);
+      setColumnId(null);
+    }
+  }
 
   // Etiquetas ativas carregam quando o formulário abre (ficam sempre atualizadas).
   useEffect(() => {
@@ -98,10 +138,12 @@ export function TaskFormDialog({
     const payload = {
       ...rest,
       leadId: lead?.id ?? null,
+      clientId,
       checklist: checklistItems.map((c) => c.title),
       tagIds,
       participantIds,
-      columnId: task ? undefined : (defaults?.columnId ?? undefined),
+      // Quadro escolhido sem lista: a primeira lista dele com a situação da tarefa.
+      columnId: columnId ?? boardLists.find((l) => l.kind === rest.status)?.id ?? boardLists[0]?.id ?? undefined,
     };
     const parsed = taskFormSchema.safeParse(payload);
     if (!parsed.success) {
@@ -120,6 +162,7 @@ export function TaskFormDialog({
         form.reset();
         setTagIds([]);
         setParticipantIds([]);
+        setColumnId(defaults?.columnId ?? null);
       }
       router.refresh();
     });
@@ -174,9 +217,72 @@ export function TaskFormDialog({
             </FormField>
           </div>
 
-          <FormField label="Lead relacionado" optional>
-            <LeadPicker value={lead} onChange={setLead} />
-          </FormField>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Quadro">
+              <Select
+                value={boardId ?? ""}
+                onValueChange={(v) => {
+                  setBoardId(v);
+                  setColumnId(null);
+                  setBoardTouched(true);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Carregando quadros…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {boards.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Lista">
+              <Select
+                value={columnId ?? ""}
+                onValueChange={(v) => {
+                  if (v === NEW_LIST) return setNewList(true);
+                  setColumnId(v);
+                  setBoardTouched(true);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Conforme a situação" />
+                </SelectTrigger>
+                <SelectContent>
+                  {boardLists.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
+                    </SelectItem>
+                  ))}
+                  {canConfigure && boardId && <SelectItem value={NEW_LIST}>Criar nova lista…</SelectItem>}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Cliente" optional>
+              <Select value={clientId ?? NONE} onValueChange={(v) => chooseClient(v === NONE ? null : v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Nenhum</SelectItem>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.legal_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Lead relacionado" optional>
+              <LeadPicker value={lead} onChange={setLead} />
+            </FormField>
+          </div>
 
           {canAssign && (
             <FormField label="Responsável">
@@ -312,6 +418,19 @@ export function TaskFormDialog({
             </CollapsibleContent>
           </Collapsible>
         </form>
+        {newList && boardId && (
+          <ListDialog
+            boards={boards}
+            boardId={boardId}
+            onClose={() => setNewList(false)}
+            onCreated={(id, board) => {
+              void getWorkspaceOptions({}).then((res) => res.ok && setLists(res.data.lists));
+              setBoardId(board);
+              setColumnId(id);
+              setBoardTouched(true);
+            }}
+          />
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
             Cancelar

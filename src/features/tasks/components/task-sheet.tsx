@@ -21,6 +21,7 @@ import { TaskHistory } from "./task-history";
 import { TagChip } from "@/features/crm/components/chips";
 import type { TagColor } from "@/features/crm/types";
 import { getTaskDetails } from "../actions-read";
+import { Attachments } from "@/features/clients/components/attachments";
 
 type Owner = { id: string; full_name: string; email: string };
 
@@ -165,6 +166,31 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
             <dt className="text-xs text-muted-foreground">Responsável</dt>
             <dd>{task.owner_id ? (names.get(task.owner_id) ?? "—") : "—"}</dd>
           </div>
+          {task.list && (
+            <div className="col-span-2">
+              <dt className="text-xs text-muted-foreground">Quadro e lista</dt>
+              <dd className="break-words">
+                {task.list.board ? (
+                  <Link href={`/tarefas?modo=quadro&quadro=${task.list.board.id}`} className="text-primary hover:underline">
+                    {task.list.board.name}
+                  </Link>
+                ) : (
+                  "Quadro"
+                )}
+                {` › ${task.list.name}`}
+              </dd>
+            </div>
+          )}
+          {task.client && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Cliente</dt>
+              <dd className="break-words">
+                <Link href={`/clientes/${task.client.id}`} className="text-primary hover:underline">
+                  {task.client.legal_name}
+                </Link>
+              </dd>
+            </div>
+          )}
           {task.lead && (
             <div>
               <dt className="text-xs text-muted-foreground">Lead</dt>
@@ -290,6 +316,8 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
             </Select>
           </div>
         )}
+
+        <Attachments entityType="task" entityId={task.id} />
 
         <section aria-labelledby="comments-title" className="grid gap-3">
           <h3 id="comments-title" className="text-sm font-semibold">

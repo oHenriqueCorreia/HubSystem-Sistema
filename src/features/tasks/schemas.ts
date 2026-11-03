@@ -17,6 +17,7 @@ export const taskFormSchema = z
     durationMinutes: z.number().int().min(5).max(1440).nullable().optional(),
     category: z.string().trim().max(60).optional().nullable(),
     leadId: z.uuid().nullable().optional(),
+    clientId: z.uuid().nullable().optional(),
     channel: z.enum(["whatsapp", "ligacao", "email", "reuniao", "outro"]).nullable().optional(),
     checklist: z.array(z.string().trim().min(1).max(200)).max(50).default([]),
     tagIds: z.array(z.uuid()).max(20, "Use no máximo 20 etiquetas.").default([]),
@@ -33,12 +34,19 @@ export const taskStatusSchema = z.object({ id: z.uuid(), status: z.enum(["a_faze
 export const taskMoveSchema = z.object({ id: z.uuid(), columnId: z.uuid(), position: z.number().finite() });
 
 const COLUMN_COLORS = ["slate", "teal", "blue", "violet", "rose", "amber", "green", "orange"] as const;
+export const taskBoardSchema = z.object({
+  name: z.string().trim().min(1, "Informe o nome do quadro.").max(80, "Use no máximo 80 caracteres."),
+  description: z.string().trim().max(500).default(""),
+  clientId: z.uuid().nullable().default(null),
+});
+export const taskBoardUpdateSchema = taskBoardSchema.extend({ id: z.uuid() });
 export const taskColumnSchema = z.object({
+  boardId: z.uuid("Escolha o quadro."),
   name: z.string().trim().min(1, "Informe o nome.").max(40, "Use no máximo 40 caracteres."),
   color: z.enum(COLUMN_COLORS).default("slate"),
   kind: z.enum(["a_fazer", "em_andamento", "concluida", "cancelada"]),
 });
-export const taskColumnUpdateSchema = taskColumnSchema.extend({ id: z.uuid() });
+export const taskColumnUpdateSchema = taskColumnSchema.omit({ boardId: true }).extend({ id: z.uuid() });
 export const taskColumnMoveSchema = z.object({ id: z.uuid(), position: z.number().finite() });
 export const taskColumnDeleteSchema = z.object({ id: z.uuid(), targetId: z.uuid().nullable().default(null), archiveTasks: z.boolean().default(false) });
 export const checklistAddSchema = z.object({ taskId: z.uuid(), title: z.string().trim().min(1, "Escreva o item.").max(200) });
@@ -58,6 +66,8 @@ export const eventFormSchema = z
     meetUrl: z.string().trim().max(500).optional().nullable(),
     ownerId: z.uuid().nullable().optional(),
     leadId: z.uuid().nullable().optional(),
+    clientId: z.uuid().nullable().optional(),
+    status: z.enum(["agendado", "confirmado", "concluido", "cancelado"]).default("agendado"),
     attendeeIds: z.array(z.uuid()).max(50).default([]),
     guests: z
       .array(
@@ -108,5 +118,24 @@ export type CadenceTemplateValues = z.input<typeof cadenceTemplateSchema>;
 export const enrollmentStatusSchema = z.object({ id: z.uuid(), leadId: z.uuid(), status: z.enum(["ativa", "pausada", "cancelada"]) });
 
 export const enrollSchema = z.object({ leadId: z.uuid(), templateId: z.uuid(), startDate: z.iso.date().nullable().optional() });
+
+export const agendaRangeSchema = z.object({ from: z.iso.date(), to: z.iso.date() });
+export const rescheduleSchema = z.object({
+  source: z.enum(["evento", "tarefa", "publicacao"]),
+  id: z.uuid(),
+  date: z.iso.date({ error: "Informe a data." }),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "Hora inválida.").nullable(),
+});
+export const cancelAgendaSchema = z.object({ source: z.enum(["evento", "tarefa", "publicacao"]), id: z.uuid() });
+export const savedAgendaFilterSchema = z.object({
+  name: z.string().trim().min(1, "Dê um nome ao filtro.").max(40),
+  filter: z.object({
+    q: z.string().trim().max(100).optional(),
+    type: z.enum(["reuniao", "compromisso", "bloqueio", "tarefa", "prazo", "publicacao"]).nullable().optional(),
+    ownerIds: z.array(z.uuid()).max(50).optional(),
+    clientId: z.uuid().nullable().optional(),
+    status: z.enum(["aberto", "concluido", "cancelado"]).nullable().optional(),
+  }),
+});
 
 export const availabilitySchema = z.object({ date: z.iso.date(), ownerId: z.uuid().nullable().optional(), minutes: z.number().int().min(15).max(480).default(30) });

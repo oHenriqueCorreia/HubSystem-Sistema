@@ -3,22 +3,22 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ChevronLeft, ChevronRight, ListChecks, LoaderCircle, Plus, Users } from "lucide-react";
-import { toast } from "sonner";
+import { AlertTriangle, ChevronLeft, ChevronRight, LoaderCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "cn";
 import { dayKey, findConflicts, layoutDay, minutesOfDay, shiftDay, type CalendarView, type CalItem } from "@/domain/calendar";
 import { todayLocal } from "@/domain/shared/dates";
 import { EventDialog, type EventDraft } from "./event-dialog";
-import { getEventDetails } from "../actions-read";
+import { AGENDA_TYPE_LABEL, type AgendaEntry, type AgendaType } from "@/domain/calendar/agenda";
+import { AGENDA_STYLE, AgendaItemSheet } from "./agenda-item-sheet";
 import type { CalendarEvent } from "../queries";
 
-type Item = CalItem & { meta: Record<string, unknown> };
+type Item = CalItem & { meta: { entry: AgendaEntry; status: string } };
 type Owner = { id: string; full_name: string; email: string };
 
-const START_HOUR = 6;
-const END_HOUR = 22;
+const DEFAULT_START_HOUR = 6;
+const DEFAULT_END_HOUR = 22;
 const HOUR_PX = 56;
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const ALL = "__todos__";
@@ -41,6 +41,8 @@ export function CalendarViewClient({
   canManage,
   canAssign,
   canSeeOthers,
+  canEditTasks,
+  clients,
 }: {
   view: CalendarView;
   day: string;
@@ -51,12 +53,15 @@ export function CalendarViewClient({
   canManage: boolean;
   canAssign: boolean;
   canSeeOthers: boolean;
+  canEditTasks: boolean;
+  clients: { id: string; legal_name: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [dialog, setDialog] = useState<{ event?: CalendarEvent | null; draft?: EventDraft | null } | null>(null);
+  const [selected, setSelected] = useState<AgendaEntry | null>(null);
   const today = todayLocal();
   const conflicts = useMemo(() => findConflicts(items), [items]);
   const ownerName = useMemo(() => new Map(owners.map((o) => [o.id, o.full_name || o.email])), [owners]);
@@ -71,15 +76,7 @@ export function CalendarViewClient({
   }
 
   function openItem(it: Item) {
-    if (it.kind === "tarefa") {
-      router.push(`/tarefas?q=${encodeURIComponent(it.title.slice(0, 60))}&status=todas`);
-      return;
-    }
-    startTransition(async () => {
-      const res = await getEventDetails({ id: it.id });
-      if (res.ok) setDialog({ event: res.data });
-      else toast.error(res.message);
-    });
+    setSelected(it.meta.entry);
   }
 
   function quickCreate(date: string, time?: string) {
@@ -138,13 +135,42 @@ export function CalendarViewClient({
             </Select>
           )}
           <Select value={params.get("tipo") ?? ALL} onValueChange={(v) => nav({ tipo: v })}>
-            <SelectTrigger className="w-36" aria-label="Tipo">
+            <SelectTrigger className="w-40" aria-label="Tipo">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>Tudo</SelectItem>
-              <SelectItem value="evento">Só eventos</SelectItem>
-              <SelectItem value="tarefa">Só tarefas</SelectItem>
+              <SelectItem value={ALL}>Todos os tipos</SelectItem>
+              {Object.entries(AGENDA_TYPE_LABEL).map(([k, label]) => (
+                <SelectItem key={k} value={k}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {clients.length > 0 && (
+            <Select value={params.get("cliente") ?? ALL} onValueChange={(v) => nav({ cliente: v })}>
+              <SelectTrigger className="w-44" aria-label="Cliente">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos os clientes</SelectItem>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.legal_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={params.get("situacao") ?? ALL} onValueChange={(v) => nav({ situacao: v })}>
+            <SelectTrigger className="w-44" aria-label="Situação">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Abertos e concluídos</SelectItem>
+              <SelectItem value="aberto">Só em aberto</SelectItem>
+              <SelectItem value="concluido">Só concluídos</SelectItem>
+              <SelectItem value="cancelado">Só cancelados</SelectItem>
             </SelectContent>
           </Select>
           <nav aria-label="Visão" className="inline-flex rounded-lg border bg-surface p-0.5">
@@ -228,13 +254,18 @@ export function CalendarViewClient({
         <TimeGrid days={view === "dia" ? [day] : days} byDay={byDay} today={today} conflicts={conflicts} onOpen={openItem} onSlot={quickCreate} canManage={canManage} ownerName={ownerName} showOwner={canSeeOthers} />
       )}
 
-      <p className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <Users className="size-3.5" aria-hidden="true" /> Evento
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <ListChecks className="size-3.5" aria-hidden="true" /> Tarefa com horário
-        </span>
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {(Object.keys(AGENDA_TYPE_LABEL) as AgendaType[]).map((t) => {
+          const Icon = AGENDA_STYLE[t].icon;
+          return (
+            <span key={t} className="inline-flex items-center gap-1">
+              <span className={cn("grid size-4 place-items-center rounded border", AGENDA_STYLE[t].className)}>
+                <Icon className="size-3" aria-hidden="true" />
+              </span>
+              {AGENDA_TYPE_LABEL[t]}
+            </span>
+          );
+        })}
         <span className="inline-flex items-center gap-1">
           <AlertTriangle className="size-3.5 text-warning" aria-hidden="true" /> Conflito de horário
         </span>
@@ -242,6 +273,16 @@ export function CalendarViewClient({
           Ver todas as tarefas
         </Link>
       </p>
+
+      <AgendaItemSheet
+        entry={selected}
+        onClose={() => setSelected(null)}
+        owners={owners}
+        meId={meId}
+        canManageEvents={canManage}
+        canAssignEvents={canAssign}
+        canEditTasks={canEditTasks}
+      />
 
       {dialog && (
         <EventDialog
@@ -263,19 +304,20 @@ function ItemChip({ item, conflict, onOpen, compact }: { item: Item; conflict: b
   const time = item.allDay
     ? "Dia inteiro"
     : new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(item.start));
-  const done = item.meta.status === "concluida";
-  const Icon = item.kind === "tarefa" ? ListChecks : Users;
+  const done = ["concluida", "concluido", "cancelado", "cancelada"].includes(item.meta.status);
+  const style = AGENDA_STYLE[item.meta.entry.type];
+  const Icon = style.icon;
   return (
     <button
       type="button"
       onClick={() => onOpen(item)}
       className={cn(
         "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-xs",
-        item.kind === "evento" ? "bg-accent text-accent-foreground" : "bg-info-soft text-info",
+        style.className,
         conflict && "ring-1 ring-warning",
         done && "line-through opacity-60",
       )}
-      title={`${time} · ${item.title}${conflict ? " · conflito de horário" : ""}`}
+      title={`${AGENDA_TYPE_LABEL[item.meta.entry.type]}, ${time}: ${item.title}${conflict ? " (conflito de horário)" : ""}`}
     >
       <Icon className="size-3 shrink-0" aria-hidden="true" />
       {!compact || !item.allDay ? <span className="tabular shrink-0">{time}</span> : null}
@@ -311,6 +353,10 @@ function TimeGrid({
   ownerName: Map<string, string>;
   showOwner: boolean;
 }) {
+  // A grade cresce para caber tudo: nenhum item fica fora da tela por ser muito cedo ou muito tarde.
+  const timedAll = days.flatMap((d) => (byDay.get(d) ?? []).filter((i) => !i.allDay).map((i) => ({ d, i })));
+  const START_HOUR = Math.min(DEFAULT_START_HOUR, ...timedAll.map(({ d, i }) => (dayKey(i.start) === d ? Math.floor(minutesOfDay(i.start) / 60) : 0)));
+  const END_HOUR = Math.max(DEFAULT_END_HOUR, ...timedAll.map(({ d, i }) => (dayKey(i.end) === d ? Math.ceil(minutesOfDay(i.end) / 60) : 24)));
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
   const fmtDay = (d: string) => new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
 
@@ -366,7 +412,7 @@ function TimeGrid({
                 const height = Math.max(20, ((Math.min(endMin, END_HOUR * 60) - Math.max(startMin, START_HOUR * 60)) / 60) * HOUR_PX);
                 const pos = layout.get(it.id) ?? { col: 0, cols: 1 };
                 const conflict = conflicts.has(it.id);
-                if (endMin <= START_HOUR * 60 || startMin >= END_HOUR * 60) return null;
+                const blockStyle = AGENDA_STYLE[it.meta.entry.type];
                 return (
                   <button
                     key={it.id}
@@ -374,10 +420,11 @@ function TimeGrid({
                     onClick={() => onOpen(it)}
                     className={cn(
                       "absolute overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs shadow-xs",
-                      it.kind === "evento" ? "border-primary/30 bg-accent text-accent-foreground" : "border-info/30 bg-info-soft text-info",
+                      blockStyle.className,
                       conflict && "border-warning ring-1 ring-warning",
-                      it.meta.status === "concluida" && "opacity-60",
+                      ["concluida", "concluido", "cancelado", "cancelada"].includes(it.meta.status) && "opacity-60 line-through",
                     )}
+                    title={`${AGENDA_TYPE_LABEL[it.meta.entry.type]}: ${it.title}`}
                     style={{ top, height, left: `calc(${(pos.col / pos.cols) * 100}% + 2px)`, width: `calc(${100 / pos.cols}% - 4px)` }}
                   >
                     <span className="flex items-center gap-1 font-medium">

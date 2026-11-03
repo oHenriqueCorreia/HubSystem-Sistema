@@ -7,6 +7,8 @@ import { defineAction, must } from "@/lib/actions";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok } from "@/domain/shared/result";
 import { DEFAULT_WORK_HOURS, freeSlots, mergeIntervals, zonedIso, type Interval, type WorkHours } from "@/domain/calendar";
+import { addDays, MAX_RANGE_DAYS, validRange, type AgendaFilter } from "@/domain/calendar/agenda";
+import { listAgendaEntries, listClientOptions, listTaskBoards, listTaskColumns } from "./queries";
 import { googleBusy, syncUserQuietly } from "@/lib/google/calendar";
 import { runCadences } from "@/lib/cadence-runner";
 import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
@@ -21,6 +23,12 @@ import {
   eventFormSchema,
   idSchema,
   taskFormSchema,
+  agendaRangeSchema,
+  cancelAgendaSchema,
+  rescheduleSchema,
+  savedAgendaFilterSchema,
+  taskBoardSchema,
+  taskBoardUpdateSchema,
   taskColumnDeleteSchema,
   taskColumnMoveSchema,
   taskColumnSchema,
@@ -28,6 +36,8 @@ import {
   taskMoveSchema,
   taskStatusSchema,
 } from "./schemas";
+
+type SavedFilter = { name: string; filter: AgendaFilter };
 
 /** Leva a alteração ao Google Agenda do responsável sem atrasar a resposta. */
 function syncGoogleLater(userId: string | null | undefined) {
@@ -54,6 +64,7 @@ function taskRow(input: z.output<typeof taskFormSchema>) {
     duration_minutes: input.dueTime ? (input.durationMinutes ?? 30) : null,
     category: input.category || null,
     lead_id: input.leadId ?? null,
+    client_id: input.clientId ?? null,
     channel: input.channel ?? null,
     ...(input.ownerId ? { owner_id: input.ownerId } : {}),
     ...(input.columnId ? { column_id: input.columnId } : {}),
@@ -185,6 +196,8 @@ function eventRow(input: z.output<typeof eventFormSchema>) {
     location: input.location || null,
     meet_url: input.meetUrl || null,
     lead_id: input.leadId ?? null,
+    client_id: input.clientId ?? null,
+    status: input.status,
     reminder_minutes: input.reminderMinutes != null ? [input.reminderMinutes] : [],
     send_updates: input.sendUpdates,
     ...(input.ownerId ? { owner_id: input.ownerId } : {}),
@@ -252,6 +265,83 @@ export const deleteEvent = defineAction({ schema: idSchema, permission: "calenda
   syncGoogleLater(res[0].owner_id);
   revalidateWork(res[0].lead_id);
   return ok(null, "Evento excluído.");
+});
+
+// --- Agenda unificada --------------------------------------------------------------
+
+export const getAgenda = defineAction({ schema: agendaRangeSchema, permission: ["calendar.read", "tasks.read"] }, async ({ from, to }) => {
+  if (!validRange(from, to)) return fail("validation", `Escolha um período de até ${MAX_RANGE_DAYS} dias.`);
+  // Sem filtro: a tela filtra na hora, inclusive pelos cancelados.
+  return ok(await listAgendaEntries({ start: new Date(zonedIso(from, "00:00")), end: new Date(zonedIso(addDays(to, 1), "00:00")) }));
+});
+
+/** Quadros, listas e clientes para os formulários: carregam quando o formulário abre. */
+export const getWorkspaceOptions = defineAction({ schema: z.object({}), permission: ["tasks.read", "calendar.read"] }, async () => {
+  const [boards, lists, clients] = await Promise.all([listTaskBoards(), listTaskColumns(), listClientOptions()]);
+  return ok({ boards, lists, clients });
+});
+
+/** Reagendar: muda só a data e o horário da origem, então todas as telas acompanham. */
+export const rescheduleAgendaItem = defineAction({ schema: rescheduleSchema, permission: ["calendar.manage", "tasks.update"] }, async (input, { user }) => {
+  const supabase = await createClient();
+  if (input.source === "tarefa") {
+    const row = { due_at: zonedIso(input.date, input.time ?? "23:59"), has_time: Boolean(input.time) };
+    const res = must(await supabase.from("tasks").update(row).eq("id", input.id).select("id, lead_id, owner_id")) as { lead_id: string | null; owner_id: string | null }[];
+    if (!res.length) return fail("forbidden", "Você não pode reagendar esta tarefa.");
+    syncGoogleLater(res[0].owner_id ?? user.id);
+    revalidateWork(res[0].lead_id);
+    return ok(null, "Tarefa reagendada.");
+  }
+  if (input.source === "evento") {
+    const current = must(await supabase.from("calendar_events").select("starts_at, ends_at, all_day").eq("id", input.id).single()) as { starts_at: string; ends_at: string; all_day: boolean };
+    const length = new Date(current.ends_at).getTime() - new Date(current.starts_at).getTime();
+    const starts = zonedIso(input.date, current.all_day || !input.time ? "00:00" : input.time);
+    const ends = current.all_day ? zonedIso(input.date, "23:59") : new Date(new Date(starts).getTime() + length).toISOString();
+    const res = must(await supabase.from("calendar_events").update({ starts_at: starts, ends_at: ends }).eq("id", input.id).select("id, lead_id, owner_id")) as { lead_id: string | null; owner_id: string | null }[];
+    if (!res.length) return fail("forbidden", "Você não pode reagendar este compromisso.");
+    syncGoogleLater(res[0].owner_id ?? user.id);
+    revalidateWork(res[0].lead_id);
+    return ok(null, "Compromisso reagendado.");
+  }
+  return fail("business_rule", "Reagende a publicação pela tarefa de conteúdo.");
+});
+
+export const cancelAgendaItem = defineAction({ schema: cancelAgendaSchema, permission: ["calendar.manage", "tasks.update"] }, async (input, { user }) => {
+  const supabase = await createClient();
+  if (input.source === "tarefa") {
+    const res = must(await supabase.from("tasks").update({ status: "cancelada" }).eq("id", input.id).select("id, lead_id, owner_id")) as { lead_id: string | null; owner_id: string | null }[];
+    if (!res.length) return fail("forbidden", "Você não pode cancelar esta tarefa.");
+    syncGoogleLater(res[0].owner_id ?? user.id);
+    revalidateWork(res[0].lead_id);
+    return ok(null, "Tarefa cancelada.");
+  }
+  if (input.source === "evento") {
+    const res = must(await supabase.from("calendar_events").update({ status: "cancelado" }).eq("id", input.id).select("id, lead_id, owner_id")) as { lead_id: string | null; owner_id: string | null }[];
+    if (!res.length) return fail("forbidden", "Você não pode cancelar este compromisso.");
+    syncGoogleLater(res[0].owner_id ?? user.id);
+    revalidateWork(res[0].lead_id);
+    return ok(null, "Compromisso cancelado.");
+  }
+  return fail("business_rule", "Cancele a publicação pela tarefa de conteúdo.");
+});
+
+async function saveFilters(userId: string, change: (list: SavedFilter[]) => SavedFilter[]) {
+  const supabase = await createClient();
+  const current = must(await supabase.from("profiles").select("preferences").eq("id", userId).single()) as { preferences: Record<string, unknown> | null };
+  const prefs = current.preferences ?? {};
+  must(await supabase.from("profiles").update({ preferences: { ...prefs, agenda_filters: change((prefs.agenda_filters as SavedFilter[] | undefined) ?? []) } }).eq("id", userId));
+}
+
+export const saveAgendaFilter = defineAction({ schema: savedAgendaFilterSchema }, async (input, { user }) => {
+  await saveFilters(user.id, (list) => [...list.filter((f) => f.name !== input.name), input].slice(-20));
+  revalidatePath("/inicio");
+  return ok(null, "Filtro salvo.");
+});
+
+export const deleteAgendaFilter = defineAction({ schema: z.object({ name: z.string().max(40) }) }, async ({ name }, { user }) => {
+  await saveFilters(user.id, (list) => list.filter((f) => f.name !== name));
+  revalidatePath("/inicio");
+  return ok(null, "Filtro apagado.");
 });
 
 export const restoreEvent = defineAction({ schema: idSchema, permission: "calendar.manage" }, async ({ id }) => {
@@ -323,22 +413,51 @@ export const cancelEnrollment = defineAction({ schema: idSchema.extend({ leadId:
 
 // --- Quadro: colunas -------------------------------------------------------------
 
+export const createTaskBoard = defineAction({ schema: taskBoardSchema, permission: "tasks.board.configure" }, async (input) => {
+  const supabase = await createClient();
+  const board = must(
+    await supabase.from("task_boards").insert({ name: input.name, description: input.description || null, client_id: input.clientId, position: Date.now() / 1000 }).select("id").single(),
+  ) as { id: string };
+  revalidateWork();
+  return ok({ id: board.id }, "Quadro criado.");
+});
+
+export const updateTaskBoard = defineAction({ schema: taskBoardUpdateSchema, permission: "tasks.board.configure" }, async (input) => {
+  const supabase = await createClient();
+  const res = must(await supabase.from("task_boards").update({ name: input.name, description: input.description || null, client_id: input.clientId }).eq("id", input.id).select("id")) as { id: string }[];
+  if (!res.length) return fail("forbidden", "Você não pode editar este quadro.");
+  revalidateWork();
+  return ok(null, "Quadro salvo.");
+});
+
+export const archiveTaskBoard = defineAction({ schema: idSchema, permission: "tasks.board.configure" }, async ({ id }) => {
+  const supabase = await createClient();
+  must(await supabase.rpc("archive_task_board", { p_board: id }));
+  revalidateWork();
+  return ok(null, "Quadro arquivado.");
+});
+
 export const createTaskColumn = defineAction({ schema: taskColumnSchema, permission: "tasks.board.configure" }, async (input) => {
   const supabase = await createClient();
-  const { data: last } = await supabase.from("task_columns").select("position").order("position", { ascending: false }).limit(1).maybeSingle();
-  must(await supabase.from("task_columns").insert({ ...input, position: (last?.position ?? 0) + 1024 }));
+  const { boardId, ...rest } = input;
+  // Entra antes das listas de concluídos e cancelados, onde o trabalho acontece.
+  const { data: siblings } = await supabase.from("task_columns").select("position, kind").eq("board_id", boardId).is("archived_at", null).order("position");
+  const list = (siblings ?? []) as { position: number; kind: string }[];
+  const firstEnd = list.findIndex((c) => c.kind === "concluida" || c.kind === "cancelada");
+  const position = firstEnd > 0 ? (list[firstEnd - 1].position + list[firstEnd].position) / 2 : firstEnd === 0 ? list[0].position / 2 : (list.at(-1)?.position ?? 0) + 1024;
+  const created = must(await supabase.from("task_columns").insert({ ...rest, board_id: boardId, position }).select("id").single()) as { id: string };
   revalidatePath("/tarefas");
-  return ok(null, "Coluna criada.");
+  return ok({ id: created.id }, "Lista criada.");
 });
 
 export const updateTaskColumn = defineAction({ schema: taskColumnUpdateSchema, permission: "tasks.board.configure" }, async ({ id, ...input }) => {
   const supabase = await createClient();
   const res = must(await supabase.from("task_columns").update(input).eq("id", id).select("id")) as { id: string }[];
-  if (!res.length) return fail("forbidden", "Você não pode editar esta coluna.");
+  if (!res.length) return fail("forbidden", "Você não pode editar esta lista.");
   // Tarefas da coluna passam a seguir o novo status-base.
   must(await supabase.from("tasks").update({ status: input.kind }).eq("column_id", id).neq("status", input.kind).is("deleted_at", null));
   revalidateWork();
-  return ok(null, "Coluna salva.");
+  return ok(null, "Lista salva.");
 });
 
 export const moveTaskColumn = defineAction({ schema: taskColumnMoveSchema, permission: "tasks.board.configure" }, async (input) => {
@@ -351,10 +470,14 @@ export const moveTaskColumn = defineAction({ schema: taskColumnMoveSchema, permi
 export const archiveTaskColumn = defineAction({ schema: idSchema, permission: "tasks.board.configure" }, async ({ id }) => {
   const supabase = await createClient();
   const { count } = await supabase.from("tasks").select("id", { count: "exact", head: true }).eq("column_id", id).is("deleted_at", null);
-  if (count) return fail("business_rule", "Mova as tarefas desta coluna antes de arquivá-la.");
+  if (count) return fail("business_rule", "Mova as tarefas desta lista antes de arquivá-la.");
+  // Cada quadro precisa de uma lista por status, para o status de uma tarefa sempre ter lugar.
+  const col = must(await supabase.from("task_columns").select("board_id, kind").eq("id", id).single()) as { board_id: string; kind: string };
+  const { count: same } = await supabase.from("task_columns").select("id", { count: "exact", head: true }).eq("board_id", col.board_id).eq("kind", col.kind).is("archived_at", null).neq("id", id);
+  if (!same) return fail("business_rule", "Mantenha neste quadro ao menos uma lista com este status.");
   must(await supabase.from("task_columns").update({ archived_at: new Date().toISOString() }).eq("id", id));
   revalidatePath("/tarefas");
-  return ok(null, "Coluna arquivada.");
+  return ok(null, "Lista arquivada.");
 });
 
 export const deleteTaskColumn = defineAction({ schema: taskColumnDeleteSchema, permission: "tasks.board.configure" }, async (input) => {
@@ -363,8 +486,8 @@ export const deleteTaskColumn = defineAction({ schema: taskColumnDeleteSchema, p
     await supabase.rpc("delete_task_column", { p_column: input.id, p_target: input.targetId, p_archive_tasks: input.archiveTasks }),
   ) as number;
   revalidateWork();
-  if (!moved) return ok(null, "Coluna excluída.");
-  return ok(null, input.targetId ? `Coluna excluída. ${moved} tarefa(s) transferida(s).` : `Coluna excluída. ${moved} tarefa(s) foram para a lixeira.`);
+  if (!moved) return ok(null, "Lista excluída.");
+  return ok(null, input.targetId ? `Lista excluída. ${moved} tarefa(s) transferida(s).` : `Lista excluída. ${moved} tarefa(s) foram para a lixeira.`);
 });
 
 // --- Dependências e histórico ---------------------------------------------------

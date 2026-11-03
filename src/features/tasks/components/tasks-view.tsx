@@ -79,6 +79,8 @@ export function TasksView({
   canConfigure = false,
   columns = [],
   mode,
+  boardId,
+  initialOpen = null,
 }: {
   tasks: Task[];
   owners: Owner[];
@@ -88,9 +90,17 @@ export function TasksView({
   canConfigure?: boolean;
   columns?: TaskColumn[];
   mode: "lista" | "quadro";
+  boardId?: string;
+  /** Tarefa aberta por link (agenda, tela inicial). */
+  initialOpen?: Task | null;
 }) {
   const [now] = useState(() => Date.now());
-  const [open, setOpen] = useState<Task | null>(null);
+  const [open, setOpen] = useState<Task | null>(initialOpen);
+  const [lastLink, setLastLink] = useState(initialOpen?.id);
+  if (initialOpen?.id !== lastLink) {
+    setLastLink(initialOpen?.id);
+    setOpen(initialOpen);
+  }
   // Listas longas carregam aos poucos (50 por grupo) para manter a tela leve.
   const [limits, setLimits] = useState<Record<string, number>>({});
   const names = useMemo(() => new Map(owners.map((o) => [o.id, o.full_name || o.email])), [owners]);
@@ -120,7 +130,7 @@ export function TasksView({
           ))}
         </div>
       ) : (
-        <TaskBoard tasks={tasks} columns={columns} now={now} onOpen={setOpen} owners={owners} canAssign={canAssign} canCreate={canCreate} canConfigure={canConfigure} />
+        <TaskBoard tasks={tasks} columns={columns} now={now} onOpen={setOpen} owners={owners} canAssign={canAssign} canCreate={canCreate} canConfigure={canConfigure} boardId={boardId} />
       )}
       <TaskSheet task={openTask} onClose={() => setOpen(null)} owners={owners} canAssign={canAssign} canDelete={canDelete} />
     </>
@@ -136,6 +146,7 @@ function TaskBoard({
   canAssign,
   canCreate,
   canConfigure,
+  boardId,
 }: {
   tasks: Task[];
   columns: TaskColumn[];
@@ -145,6 +156,7 @@ function TaskBoard({
   canAssign: boolean;
   canCreate: boolean;
   canConfigure: boolean;
+  boardId?: string;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -209,7 +221,7 @@ function TaskBoard({
       sensors={sensors}
       collisionDetection={closestCorners}
       onDragEnd={onDragEnd}
-      accessibility={{ screenReaderInstructions: { draggable: "Pressione espaço para pegar, setas para mover entre colunas e espaço para soltar." } }}
+      accessibility={{ screenReaderInstructions: { draggable: "Pressione espaço para pegar, setas para mover entre listas e espaço para soltar." } }}
     >
       <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 sm:-mx-6 sm:snap-none sm:px-6">
         {columns.map((c, i) => (
@@ -224,7 +236,8 @@ function TaskBoard({
                 <TaskFormDialog
                   owners={owners}
                   canAssign={canAssign}
-                  defaults={{ status: c.kind, columnId: c.id }}
+                  canConfigure={canConfigure}
+                  defaults={{ status: c.kind, columnId: c.id, boardId: c.board_id }}
                   trigger={
                     <button
                       type="button"
@@ -238,7 +251,7 @@ function TaskBoard({
             )}
           </BoardColumn>
         ))}
-        {canConfigure && <ColumnFormDialog />}
+        {canConfigure && boardId && <ColumnFormDialog boardId={boardId} />}
       </div>
     </DndContext>
   );
@@ -301,13 +314,13 @@ function BoardColumn({
         {canConfigure && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-xs" disabled={pending} aria-label={`Opções da coluna ${column.name}`}>
+              <Button variant="ghost" size="icon-xs" disabled={pending} aria-label={`Opções da lista ${column.name}`}>
                 <MoreHorizontal aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => setEditing(true)}>
-                <Pencil aria-hidden="true" /> Editar coluna
+                <Pencil aria-hidden="true" /> Editar lista
               </DropdownMenuItem>
               <DropdownMenuItem disabled={index === 0} onSelect={() => move(-1)}>
                 <ArrowLeft aria-hidden="true" /> Mover para a esquerda
@@ -317,10 +330,10 @@ function BoardColumn({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={count > 0} onSelect={archive}>
-                <Archive aria-hidden="true" /> Arquivar coluna
+                <Archive aria-hidden="true" /> Arquivar lista
               </DropdownMenuItem>
               <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(true)}>
-                <Trash2 aria-hidden="true" /> Excluir coluna
+                <Trash2 aria-hidden="true" /> Excluir lista
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -335,7 +348,7 @@ function BoardColumn({
   );
 }
 
-function ColumnFormDialog({ column, open: controlled, onOpenChange }: { column?: TaskColumn; open?: boolean; onOpenChange?: (v: boolean) => void }) {
+function ColumnFormDialog({ column, boardId, open: controlled, onOpenChange }: { column?: TaskColumn; boardId?: string; open?: boolean; onOpenChange?: (v: boolean) => void }) {
   const router = useRouter();
   const [inner, setInner] = useState(false);
   const open = controlled ?? inner;
@@ -350,7 +363,7 @@ function ColumnFormDialog({ column, open: controlled, onOpenChange }: { column?:
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const res = column ? await updateTaskColumn({ id: column.id, name, color, kind }) : await createTaskColumn({ name, color, kind });
+      const res = column ? await updateTaskColumn({ id: column.id, name, color, kind }) : await createTaskColumn({ boardId, name, color, kind });
       if (!res.ok) {
         setError(res.fieldErrors?.name?.[0] ?? res.message);
         return;
@@ -370,21 +383,21 @@ function ColumnFormDialog({ column, open: controlled, onOpenChange }: { column?:
             type="button"
             className="flex h-12 w-[min(20rem,85vw)] shrink-0 snap-start items-center justify-center gap-2 rounded-2xl border border-dashed text-sm text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
           >
-            <Plus className="size-4" aria-hidden="true" /> Nova coluna
+            <Plus className="size-4" aria-hidden="true" /> Nova lista
           </button>
         </DialogTrigger>
       )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{column ? "Editar coluna" : "Nova coluna"}</DialogTitle>
-          <DialogDescription>O status define como as tarefas da coluna contam nos relatórios (por exemplo, atrasadas e concluídas).</DialogDescription>
+          <DialogTitle>{column ? "Editar lista" : "Nova lista"}</DialogTitle>
+          <DialogDescription>A situação define como as tarefas da lista contam nos relatórios (por exemplo, atrasadas e concluídas).</DialogDescription>
         </DialogHeader>
         <form id="column-form" onSubmit={submit} className="grid gap-3" noValidate>
           <FormAlert>{error}</FormAlert>
           <FormField label="Nome" required>
             <Input autoFocus autoComplete="off" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Em revisão, Aguardando cliente…" />
           </FormField>
-          <FormField label="Status das tarefas nesta coluna">
+          <FormField label="Situação das tarefas nesta lista">
             <Select value={kind} onValueChange={(v) => setKind(v as TaskStatus)}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -400,7 +413,7 @@ function ColumnFormDialog({ column, open: controlled, onOpenChange }: { column?:
           </FormField>
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Cor</legend>
-            <div role="radiogroup" aria-label="Cor da coluna" className="flex flex-wrap gap-2">
+            <div role="radiogroup" aria-label="Cor da lista" className="flex flex-wrap gap-2">
               {TAG_COLORS.map((c) => (
                 <button
                   key={c}
@@ -422,7 +435,7 @@ function ColumnFormDialog({ column, open: controlled, onOpenChange }: { column?:
             Cancelar
           </Button>
           <Button type="submit" form="column-form" disabled={pending || !name.trim()}>
-            {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} {column ? "Salvar coluna" : "Criar coluna"}
+            {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} {column ? "Salvar lista" : "Criar lista"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -459,9 +472,9 @@ function DeleteColumnDialog({ column, count, columns, onClose }: { column: TaskC
     <AlertDialog open onOpenChange={(v) => !v && !pending && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Excluir a coluna “{column.name}”?</AlertDialogTitle>
+          <AlertDialogTitle>Excluir a lista “{column.name}”?</AlertDialogTitle>
           <AlertDialogDescription>
-            {count ? `Ela tem ${count} tarefa(s). Escolha para onde elas vão antes de excluir.` : "A coluna está vazia. Esta ação fica registrada na auditoria."}
+            {count ? `Ela tem ${count} tarefa(s). Escolha para onde elas vão antes de excluir.` : "A lista está vazia. Esta ação fica registrada na auditoria."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {count > 0 && (
@@ -480,7 +493,7 @@ function DeleteColumnDialog({ column, count, columns, onClose }: { column: TaskC
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>
           <Button variant="destructive" onClick={confirm} disabled={pending}>
-            {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Excluir coluna
+            {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Excluir lista
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

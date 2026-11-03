@@ -7,6 +7,7 @@ import { DEFAULT_CITY, type City } from "@/domain/home";
 import type { CurrentUser } from "@/lib/auth/dal";
 
 export const HOME_WIDGETS = [
+  { key: "agendas", label: "Todas as agendas" },
   { key: "clima", label: "Clima" },
   { key: "passagem", label: "Passagem bíblica e mensagem" },
   { key: "resumo", label: "Resumo das tarefas" },

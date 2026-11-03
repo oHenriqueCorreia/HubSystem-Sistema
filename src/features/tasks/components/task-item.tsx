@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlarmClock, CalendarClock, Flag, ListChecks, MessageCircle, Phone } from "lucide-react";
+import { AlarmClock, CalendarClock, Columns3, Flag, ListChecks, MessageCircle, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "cn";
@@ -96,6 +96,16 @@ export function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Ta
             <Link href={`/crm/leads/${task.lead.id}`} className="truncate text-primary hover:underline">
               {task.lead.name}
             </Link>
+          )}
+          {task.client && <span className="truncate">{task.client.legal_name}</span>}
+          {task.list && (
+            <span className="inline-flex min-w-0 items-center gap-1" title="Quadro e lista">
+              <Columns3 className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                {task.list.board ? `${task.list.board.name} › ` : ""}
+                {task.list.name}
+              </span>
+            </span>
           )}
           {ownerName && <span>{ownerName}</span>}
           {task.category && <span>{task.category}</span>}
