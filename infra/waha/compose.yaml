@@ -1,0 +1,24 @@
+services:
+  waha:
+    image: devlikeapro/waha@sha256:0d64cce14a922f61bb9a620474086d1f5695f2522e7e1088704e6eca3a085d0c
+    container_name: hub-waha
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3031:3000"
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WAHA_API_KEY: ${WAHA_API_KEY_HASH:?Set WAHA_API_KEY_HASH in .env}
+      WAHA_DASHBOARD_ENABLED: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+      WAHA_PRINT_QR: "false"
+      WAHA_RESTART_ALL_SESSIONS: "true"
+      WHATSAPP_RESTART_ALL_SESSIONS: "true"
+      WHATSAPP_FILES_FOLDER: /app/.media
+      WHATSAPP_FILES_LIFETIME: "3600"
+    volumes:
+      - waha_sessions:/app/.sessions
+      - waha_media:/app/.media
+
+volumes:
+  waha_sessions:
+  waha_media:
