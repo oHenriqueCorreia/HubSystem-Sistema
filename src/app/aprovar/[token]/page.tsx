@@ -29,7 +29,7 @@ export default async function AprovarPage({ params }: { params: Promise<{ token:
           {images.map((a) => (
             <li key={a.id}>
               {/* eslint-disable-next-line @next/next/no-img-element -- link assinado e temporário do armazenamento privado */}
-              <img src={a.url!} alt={a.file_name ?? "Imagem do conteúdo"} className="w-full rounded-lg border" />
+              <img src={a.url!} alt={a.file_name ?? "Imagem do conteúdo"} width={640} height={640} className="h-auto w-full rounded-lg border" />
             </li>
           ))}
         </ul>

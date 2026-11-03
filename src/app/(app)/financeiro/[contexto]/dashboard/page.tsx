@@ -33,7 +33,7 @@ export default async function FinanceDashboardPage({ params, searchParams }: { p
         <form action={`/financeiro/${scope}/dashboard`} className="flex flex-wrap items-center gap-2 text-sm">
           {Object.entries(sp).map(([k, v]) => (k !== "categoria" && typeof v === "string" ? <input key={k} type="hidden" name={k} value={v} /> : null))}
           <label htmlFor="categoria-filtro">Categoria</label>
-          <select id="categoria-filtro" name="categoria" defaultValue={category} className="h-9 max-w-full rounded-md border bg-background px-2">
+          <select id="categoria-filtro" name="categoria" defaultValue={category} className="h-9 max-w-full rounded-md border bg-background px-2 text-foreground">
             <option value="">Todas</option>
             {lookups.categories.map((c) => (
               <option key={c.id} value={c.id}>

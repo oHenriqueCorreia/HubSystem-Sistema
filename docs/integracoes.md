@@ -178,3 +178,21 @@ Permissões podem ser ajustadas por papel (Configurações → Papéis) e por us
 | WhatsApp não recebe mensagens | Webhook não assinado no campo `messages` ou `META_APP_SECRET` diferente do app |
 | Mensagem bloqueada por 24 h | Envie um modelo aprovado para reabrir a conversa |
 | Anúncios “Acesso expirado” | Token da Meta (60 dias) ou acesso revogado no Google; clique em Reconectar |
+
+## Publicação no Facebook e Instagram (Conteúdo)
+
+Usa o mesmo app da Meta dos anúncios (`META_APP_ID` e `META_APP_SECRET`), com outra conexão, feita em **Conteúdo → Contas**.
+
+1. Em **Login do Facebook → Configurações**, adicione `https://SEU-DOMINIO/api/content/meta/callback` às URIs de redirecionamento válidas.
+2. App do tipo Empresa: crie uma configuração do Login do Facebook para Empresas com as permissões abaixo e grave o ID em `META_PUBLISH_CONFIG_ID`.
+3. Permissões: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `pages_manage_engagement`, `instagram_basic`, `instagram_content_publish`, `publish_video` e `business_management`.
+4. Para contas fora do time do app, é preciso **Acesso avançado** (revisão do app) e a verificação da empresa.
+5. O Instagram precisa ser conta profissional ligada a uma Página do Facebook.
+
+Regras aplicadas: o Instagram aceita só JPEG (o sistema converte ao enviar), carrossel de até 10 imagens aqui e limite de publicações em 24 horas consultado antes de publicar. Vídeo vem do Google Drive e o arquivo precisa estar em **Qualquer pessoa com o link**; a Meta baixa o arquivo diretamente, e arquivos muito grandes podem ser recusados.
+
+A publicação sai pelo relógio de um minuto (pg_cron → `/api/inbox/jobs`).
+
+## Importação de extrato
+
+PDF é lido por texto, sem OCR: PDF escaneado não funciona. Até 4 MB por arquivo. O layout varia por banco, então linhas sem certeza ficam marcadas para conferência. OFX é a opção mais confiável.

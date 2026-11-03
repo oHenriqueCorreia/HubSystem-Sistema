@@ -43,6 +43,7 @@ const FILTERS: [Filter, string][] = [
   ["sem_categoria", "Sem categoria"],
   ["ignoradas", "Ignoradas"],
 ];
+const PAGE = 50;
 const NONE = "__nenhuma__";
 const NEW_CATEGORY = "__nova__";
 
@@ -70,6 +71,7 @@ export function StatementImporter({ scope, lookups }: { scope: FinanceScope; loo
   const [accounts, setAccounts] = useState<Partial<Record<FinanceScope, string>>>(() => Object.fromEntries((Object.keys(lookups) as FinanceScope[]).map((s) => [s, lookups[s]?.accounts.find((a) => a.is_active)?.id ?? ""])));
   const [extraCategories, setExtraCategories] = useState<(Category & { scope: FinanceScope })[]>([]);
   const [saving, startSaving] = useTransition();
+  const [limit, setLimit] = useState(PAGE);
   const scopes = Object.keys(lookups) as FinanceScope[];
 
   const categoriesOf = (s: FinanceScope, direction: "entrada" | "saida") => {
@@ -118,6 +120,7 @@ export function StatementImporter({ scope, lookups }: { scope: FinanceScope; loo
     setRows(null);
     setSelected(new Set());
     setFilter("todas");
+    setLimit(PAGE);
     try {
       const read = await readFile(file);
       const hashes = lineHashes(read.lines);
@@ -328,7 +331,7 @@ export function StatementImporter({ scope, lookups }: { scope: FinanceScope; loo
             <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhuma linha com estes filtros.</p>
           ) : (
             <ul className="grid gap-2">
-              {visible.map((r) => (
+              {visible.slice(0, limit).map((r) => (
                 <LineRow
                   key={r.id}
                   row={r}
@@ -346,6 +349,11 @@ export function StatementImporter({ scope, lookups }: { scope: FinanceScope; loo
                 />
               ))}
             </ul>
+          )}
+          {visible.length > limit && (
+            <Button variant="outline" className="justify-self-center" onClick={() => setLimit((n) => n + PAGE)}>
+              Mostrar mais {Math.min(PAGE, visible.length - limit)} de {visible.length - limit}
+            </Button>
           )}
 
           <div className="sticky bottom-2 z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-surface p-3 shadow-md">

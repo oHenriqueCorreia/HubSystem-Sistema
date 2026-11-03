@@ -37,6 +37,8 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
     getCrmLookups(),
     listClientOptions(),
   ]);
+  const seesOthers = [user.permissions["calendar.read"], user.permissions["tasks.read"]].some((value) => value === "team" || value === "all");
+  const agendaOwners = lookups.owners.filter((o) => seesOthers || o.id === user.id);
   const canManage = Boolean(user.permissions["calendar.manage"]);
   const canAssign = user.permissions["calendar.manage"] === "team" || user.permissions["calendar.manage"] === "all";
 
@@ -54,7 +56,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
         </nav>
         {asList ? (
           <AgendaHub
-            owners={lookups.owners}
+            owners={agendaOwners}
             clients={clients}
             meId={user.id}
             canManageEvents={canManage}

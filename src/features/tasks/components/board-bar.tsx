@@ -15,6 +15,7 @@ import { archiveTaskBoard, createTaskBoard, createTaskColumn, updateTaskBoard } 
 import { STATUS_LABEL, type TaskBoard, type TaskStatus } from "../types";
 
 const NONE = "__nenhum__";
+const ALL = "__todos__";
 const KINDS: TaskStatus[] = ["a_fazer", "em_andamento", "concluida", "cancelada"];
 
 /** Escolha do quadro e os atalhos para criar quadros e listas. */
@@ -24,20 +25,24 @@ export function BoardBar({ boards, current, clients, canConfigure }: { boards: T
   const params = useSearchParams();
   const [dialog, setDialog] = useState<"novo" | "editar" | "lista" | null>(null);
 
+  const listMode = params.get("modo") !== "quadro";
+
   function pick(id: string) {
     const q = new URLSearchParams(params.toString());
-    q.set("quadro", id);
+    if (id === ALL) q.delete("quadro");
+    else q.set("quadro", id);
     q.delete("tarefa");
     router.replace(`${pathname}?${q.toString()}`, { scroll: false });
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select value={current?.id ?? ""} onValueChange={pick}>
+      <Select value={current?.id ?? (listMode ? ALL : "")} onValueChange={pick}>
         <SelectTrigger className="w-64 max-w-full" aria-label="Quadro">
           <SelectValue placeholder="Escolha o quadro" />
         </SelectTrigger>
         <SelectContent>
+          {listMode && <SelectItem value={ALL}>Todos os quadros</SelectItem>}
           {boards.map((b) => (
             <SelectItem key={b.id} value={b.id}>
               {b.name}

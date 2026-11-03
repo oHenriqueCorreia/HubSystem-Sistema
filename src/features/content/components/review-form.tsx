@@ -46,7 +46,7 @@ export function ReviewForm({ token }: { token: string }) {
     >
       <FormAlert>{error}</FormAlert>
       <FormField label="Seu nome" required>
-        <Input value={name} maxLength={120} autoComplete="name" onChange={(e) => setName(e.target.value)} />
+        <Input name="name" value={name} maxLength={120} autoComplete="name" onChange={(e) => setName(e.target.value)} />
       </FormField>
       <FormField label="Comentário" optional hint="Obrigatório para pedir ajustes.">
         <Textarea rows={3} value={comment} maxLength={4000} onChange={(e) => setComment(e.target.value)} />

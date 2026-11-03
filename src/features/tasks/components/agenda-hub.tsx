@@ -152,13 +152,12 @@ export function AgendaHub({
 
   return (
     <div className="grid min-w-0 gap-3">
-      <div role="tablist" aria-label="Visão da agenda" className="flex gap-1 overflow-x-auto border-b">
+      <div role="group" aria-label="Visão da agenda" className="flex gap-1 overflow-x-auto border-b">
         {TABS.map(([k, label]) => (
           <button
             key={k}
             type="button"
-            role="tab"
-            aria-selected={tab === k}
+            aria-pressed={tab === k}
             onClick={() => {
               setTab(k);
               setMonthDay(null);

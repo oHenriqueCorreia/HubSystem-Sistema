@@ -132,6 +132,8 @@ export default async function InicioPage() {
     canAgenda && !prefs.hidden.includes("agendas") ? listClientOptions() : Promise.resolve([]),
   ]);
   const visible = prefs.order.filter((k) => !prefs.hidden.includes(k));
+  const seesOthers = [user.permissions["calendar.read"], user.permissions["tasks.read"]].some((scope) => scope === "team" || scope === "all");
+  const agendaOwners = (lookups?.owners ?? []).filter((o) => seesOthers || o.id === user.id);
   const o = overview;
   const serverNow = requestTime();
 
@@ -157,7 +159,7 @@ export default async function InicioPage() {
       canAgenda && lookups ? (
         <Panel key="agendas" title="Todas as agendas" icon={CalendarDays} href="/agenda" className="lg:col-span-2">
           <AgendaHub
-            owners={lookups.owners}
+            owners={agendaOwners}
             clients={clients}
             meId={user.id}
             canManageEvents={Boolean(user.permissions["calendar.manage"])}

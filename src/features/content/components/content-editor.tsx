@@ -197,9 +197,18 @@ export function ContentEditor(p: Props) {
                     <p className="grid aspect-square place-items-center rounded-lg border text-xs text-muted-foreground">Prévia indisponível</p>
                   )}
                   {editable && (
-                    <Button variant="secondary" size="icon-xs" className="absolute top-1 right-1" disabled={pending} aria-label={`Remover ${a.file_name ?? "imagem"}`} onClick={() => run(() => removeAsset({ id: a.id, contentId: p.id }))}>
-                      <Trash2 aria-hidden="true" />
-                    </Button>
+                    <ConfirmDialog
+                      tone="danger"
+                      trigger={
+                        <Button variant="secondary" size="icon-xs" className="absolute top-1 right-1" disabled={pending} aria-label={`Remover ${a.file_name ?? "imagem"}`}>
+                          <Trash2 aria-hidden="true" />
+                        </Button>
+                      }
+                      title="Remover esta imagem?"
+                      description={wasApproved ? "O conteúdo está aprovado: remover cancela os agendamentos e exige nova aprovação." : "A imagem sai do conteúdo e do armazenamento."}
+                      confirmLabel="Remover imagem"
+                      onConfirm={async () => run(() => removeAsset({ id: a.id, contentId: p.id }))}
+                    />
                   )}
                 </li>
               ))}
@@ -230,9 +239,18 @@ export function ContentEditor(p: Props) {
                     <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => recheckDriveVideo({ id: v.id, contentId: p.id }))}>
                       <RefreshCw aria-hidden="true" /> Conferir acesso
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-danger" disabled={pending} onClick={() => run(() => removeAsset({ id: v.id, contentId: p.id }))}>
-                      <Trash2 aria-hidden="true" /> Remover
-                    </Button>
+                    <ConfirmDialog
+                      tone="danger"
+                      trigger={
+                        <Button size="sm" variant="ghost" className="text-danger" disabled={pending}>
+                          <Trash2 aria-hidden="true" /> Remover
+                        </Button>
+                      }
+                      title="Remover este vídeo?"
+                      description={wasApproved ? "O conteúdo está aprovado: remover cancela os agendamentos e exige nova aprovação." : "O arquivo continua no seu Google Drive."}
+                      confirmLabel="Remover vídeo"
+                      onConfirm={async () => run(() => removeAsset({ id: v.id, contentId: p.id }))}
+                    />
                   </>
                 )}
               </div>
