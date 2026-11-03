@@ -101,6 +101,7 @@ export function FinanceSnapshot({ rows, evolutionRows, categories }: { rows: Das
     return [...merged.entries()].map(([name, value]) => ({ name, value }));
   }, [rows, names]);
   const evolution = useMemo(() => evolutionPoints(evolutionRows), [evolutionRows]);
+  if (!rows.length && !evolutionRows.length) return <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">Sem movimento neste mês. Os gráficos aparecem com o primeiro lançamento.</p>;
   return (
     <div className="grid gap-3">
       <FinanceRings rows={rows} size={92} />

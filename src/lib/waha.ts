@@ -65,12 +65,15 @@ export async function wahaDeleteSession(conn: WahaConn) {
 
 /** Endereço de envio do contato: o WhatsApp pode registrar o número com ou sem o 9º dígito. */
 export async function wahaChatId(conn: WahaConn, e164: string) {
+  let answered = false;
   for (const variant of brPhoneVariants(e164)) {
     const digits = variant.replace(/\D/g, "");
     const r = await call<{ numberExists?: boolean; chatId?: string }>(conn, `/api/contacts/check-exists?phone=${digits}&session=${conn.session}`, { timeoutMs: 5000 }).catch(() => null);
+    if (r) answered = true;
     if (r?.numberExists) return r.chatId || `${digits}@c.us`;
   }
-  throw Object.assign(new Error("waha_numero"), { detail: "Este número não tem WhatsApp." });
+  // Sem resposta é o servidor fora do ar, não um número sem WhatsApp.
+  throw Object.assign(new Error("waha_numero"), { detail: answered ? "Este número não tem WhatsApp." : "Não foi possível falar com o servidor do WhatsApp. Confira se ele está ligado." });
 }
 
 export async function wahaSendText(conn: WahaConn, chatId: string, text: string, replyTo?: { wamid: string; fromMe: boolean } | null) {

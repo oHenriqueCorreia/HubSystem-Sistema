@@ -255,6 +255,7 @@ export function ChatView({
     input.current?.focus();
   }
 
+  const quotedPending = (p: Pending) => conversation.messages.find((m) => m.id === p.replyToId);
   const composerDisabled = !noteMode && !canSend;
   const showSend = Boolean(text.trim() || (file && !noteMode));
 
@@ -395,19 +396,19 @@ export function ChatView({
                         )}
                       </div>
                     )}
-                    <div className="break-words whitespace-pre-wrap">
-                      {m.body ? <Highlight text={m.body} term={term.trim()} /> : !m.media_id ? <span className="italic opacity-70">{m.type === "unsupported" ? "Conteúdo não suportado" : messagePreview(m)}</span> : null}
-                      {/* Espaço reservado para a hora não cobrir o texto. */}
-                      <span className="inline-block w-16 sm:w-20" aria-hidden="true" />
+                    <div className="flex flex-wrap items-end justify-end gap-x-2">
+                      <div className="mr-auto min-w-0 break-words whitespace-pre-wrap">
+                        {m.body ? <Highlight text={m.body} term={term.trim()} /> : !m.media_id ? <span className="italic opacity-70">{m.type === "unsupported" ? "Conteúdo não suportado" : messagePreview(m)}</span> : null}
+                      </div>
+                      <p className="flex shrink-0 items-center gap-1 pt-0.5 text-[11px] text-muted-foreground">
+                        {m.important && <Star className="size-3 fill-current" aria-label="Importante" />}
+                        {m.type === "template" && <span>Modelo</span>}
+                        {mine && m.author_id && names[m.author_id] && <span className="max-w-24 truncate">{names[m.author_id].split(" ")[0]}</span>}
+                        <span className="tabular">{chatTime(m.created_at)}</span>
+                        {mine && <Ticks status={m.status} />}
+                      </p>
                     </div>
-                    <p className="float-right -mt-3.5 ml-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-                      {m.important && <Star className="size-3 fill-current" aria-label="Importante" />}
-                      {m.type === "template" && <span>Modelo</span>}
-                      {mine && m.author_id && names[m.author_id] && <span className="max-w-24 truncate">{names[m.author_id].split(" ")[0]}</span>}
-                      <span className="tabular">{chatTime(m.created_at)}</span>
-                      {mine && <Ticks status={m.status} />}
-                    </p>
-                    {m.status === "erro" && m.error && <p className="clear-both mt-1 text-[11px] break-words text-danger">{m.error}</p>}
+                    {m.status === "erro" && m.error && <p className="mt-1 text-[11px] break-words text-danger">{m.error}</p>}
                   </div>
                   {!mine && canReply && <BubbleMenu message={m} onReply={() => { setReplyTo(m); input.current?.focus(); }} onStar={() => run(() => toggleImportant({ id: m.id, important: !m.important }))} />}
                 </div>
@@ -418,16 +419,21 @@ export function ChatView({
         {visiblePending.map((p) => (
           <div key={p.clientRef} className="mt-1 flex justify-end">
             <div className={cn("relative max-w-[85%] rounded-lg bg-[var(--chat-out)] px-2 pt-1.5 pb-1 text-sm shadow-xs sm:max-w-[65%]", p.failed && "ring-1 ring-danger")}>
-              <div className="break-words whitespace-pre-wrap">
-                {p.body}
-                <span className="inline-block w-14" aria-hidden="true" />
+              {quotedPending(p) && (
+                <div className="mb-1 rounded border-l-4 border-[#06cf9c] bg-black/5 px-2 py-1 text-xs dark:bg-white/10">
+                  <p className="font-semibold text-[#06a57f]">{quotedPending(p)!.direction === "saida" ? "Você" : display}</p>
+                  <p className="line-clamp-2 break-words opacity-80">{messagePreview(quotedPending(p))}</p>
+                </div>
+              )}
+              <div className="flex flex-wrap items-end justify-end gap-x-2">
+                <div className="mr-auto min-w-0 break-words whitespace-pre-wrap">{p.body}</div>
+                <p className="flex shrink-0 items-center gap-1 pt-0.5 text-[11px] text-muted-foreground">
+                  <span className="tabular">{chatTime(p.at)}</span>
+                  <Ticks status={p.failed ? "erro" : "enviando"} />
+                </p>
               </div>
-              <p className="float-right -mt-3.5 ml-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-                <span className="tabular">{chatTime(p.at)}</span>
-                <Ticks status={p.failed ? "erro" : "enviando"} />
-              </p>
               {p.failed && (
-                <div className="clear-both mt-1 flex items-center gap-2 text-[11px]">
+                <div className="mt-1 flex items-center gap-2 text-[11px]">
                   <span className="text-danger">Não enviada.</span>
                   <button
                     type="button"
