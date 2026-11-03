@@ -104,7 +104,7 @@ async function driveReachable(id: string): Promise<"ok" | "inacessivel" | "nao_v
   try {
     const res = await fetch(`https://drive.google.com/file/d/${id}/view`, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(8000) });
     if (res.status === 200) return "ok";
-    if (res.status === 404 || res.status === 403) return "inacessivel";
+    if (res.status >= 400 && res.status < 500) return "inacessivel";
     const location = res.headers.get("location") ?? "";
     if (res.status >= 300 && res.status < 400) return location.includes("accounts.google.com") ? "inacessivel" : "ok";
     return "nao_verificado";
