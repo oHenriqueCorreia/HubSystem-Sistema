@@ -5,10 +5,32 @@ import { cn } from "cn"
 import { Select as SelectPrimitive } from "radix-ui"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
+type FieldProps = {
+  id?: string
+  "aria-invalid"?: boolean
+  "aria-describedby"?: string
+  "aria-required"?: boolean
+}
+
+// O FormField entrega id e aria- ao Select; quem precisa deles é o botão, senão o rótulo fica solto.
+const SelectFieldContext = React.createContext<FieldProps>({})
+
 function Select({
+  id,
+  "aria-invalid": invalid,
+  "aria-describedby": describedBy,
+  "aria-required": required,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+}: React.ComponentProps<typeof SelectPrimitive.Root> & FieldProps) {
+  const field = React.useMemo(
+    () => ({ id, "aria-invalid": invalid, "aria-describedby": describedBy, "aria-required": required }),
+    [id, invalid, describedBy, required]
+  )
+  return (
+    <SelectFieldContext.Provider value={field}>
+      <SelectPrimitive.Root data-slot="select" {...props} />
+    </SelectFieldContext.Provider>
+  )
 }
 
 function SelectGroup({
@@ -38,8 +60,10 @@ function SelectTrigger({
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "sm" | "default"
 }) {
+  const field = React.useContext(SelectFieldContext)
   return (
     <SelectPrimitive.Trigger
+      {...field}
       data-slot="select-trigger"
       data-size={size}
       className={cn(
