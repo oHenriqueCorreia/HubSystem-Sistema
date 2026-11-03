@@ -69,7 +69,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
       <div className={cn(selected && "max-md:hidden")}>
         <PageHeader breadcrumbs={[{ label: "Comercial" }, { label: "Atendimento" }]} title="Atendimento" description="Conversas do WhatsApp ligadas aos leads e ao funil." />
       </div>
-      <div className="grid gap-4 px-4 pb-6 max-md:px-0 max-md:pb-0 sm:px-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-4 pb-6 max-md:px-0 max-md:pb-0 sm:px-6">
         <div className={cn("max-md:px-4", selected && "max-md:hidden")}>
           <InboxNav />
         </div>

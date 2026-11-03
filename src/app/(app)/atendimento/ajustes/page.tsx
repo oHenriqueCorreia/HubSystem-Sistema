@@ -15,7 +15,7 @@ export default async function AjustesPage() {
   return (
     <>
       <PageHeader breadcrumbs={[{ label: "Comercial" }, { label: "Atendimento", href: "/atendimento" }, { label: "Ajustes" }]} title="Ajustes do atendimento" description="Respostas rápidas, limites do radar, cobrança, retorno de vendas e integrações." />
-      <div className="grid gap-4 px-4 pb-6 sm:px-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-4 pb-6 sm:px-6">
         <InboxNav />
         <InboxSettingsPanel quickReplies={quickReplies} settings={settings} ops={ops} pipelines={lookups.pipelines.map((p) => ({ id: p.id, name: p.name }))} />
       </div>

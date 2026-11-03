@@ -14,7 +14,7 @@ export default async function AutomacoesPage() {
   return (
     <>
       <PageHeader breadcrumbs={[{ label: "Comercial" }, { label: "Atendimento", href: "/atendimento" }, { label: "Automações" }]} title="Automações" description="Quando algo acontecer, se a condição valer, o sistema faz o que você definir." />
-      <div className="grid gap-4 px-4 pb-6 sm:px-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-4 pb-6 sm:px-6">
         <InboxNav />
         <AutomationsPanel
           automations={automations as never}

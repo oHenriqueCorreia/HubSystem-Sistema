@@ -34,7 +34,12 @@ export function FinanceDashboardCharts({ rows, categories }: { rows: DashboardRo
   const names = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
   const slices = useMemo(() => categorySlices(rows, kind, state, names), [rows, kind, state, names]);
   const total = slices.reduce((a, s) => a + s.value, 0);
-  const evolution = useMemo(() => monthlyEvolution(rows).map((m) => ({ ...m, label: MONTH(m.mes) })), [rows]);
+  // Um mês só viraria um ponto: nesse caso a evolução aparece dia a dia.
+  const evolution = useMemo(() => {
+    const months = monthlyEvolution(rows);
+    if (months.length > 1) return months.map((m) => ({ ...m, label: MONTH(m.mes) }));
+    return monthlyEvolution(rows, "dia").map((m) => ({ ...m, label: m.mes.slice(8, 10) + "/" + m.mes.slice(5, 7) }));
+  }, [rows]);
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -96,7 +101,7 @@ export function FinanceDashboardCharts({ rows, categories }: { rows: DashboardRo
         table={
           <DataTable
             columns={[
-              { key: "label", label: "Mês" },
+              { key: "label", label: "Período" },
               { key: "entradas", label: "Entradas recebidas", money: true },
               { key: "saidas", label: "Saídas pagas", money: true },
               { key: "entradasPendentes", label: "Entradas a receber", money: true },

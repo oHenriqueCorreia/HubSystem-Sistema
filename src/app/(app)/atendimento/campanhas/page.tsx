@@ -15,7 +15,7 @@ export default async function CampanhasPage() {
   return (
     <>
       <PageHeader breadcrumbs={[{ label: "Comercial" }, { label: "Atendimento", href: "/atendimento" }, { label: "Campanhas" }]} title="Campanhas" description="Mensagens para listas de contatos que autorizaram receber, com ritmo controlado." />
-      <div className="grid gap-4 px-4 pb-6 sm:px-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-4 pb-6 sm:px-6">
         <InboxNav />
         <CampaignsPanel
           campaigns={campaigns}

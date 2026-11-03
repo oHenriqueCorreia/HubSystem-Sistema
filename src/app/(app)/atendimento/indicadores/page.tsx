@@ -40,7 +40,7 @@ export default async function IndicadoresPage({ searchParams }: { searchParams: 
   return (
     <>
       <PageHeader breadcrumbs={[{ label: "Comercial" }, { label: "Atendimento", href: "/atendimento" }, { label: "Indicadores" }]} title="Indicadores do atendimento" description="Conta as conversas iniciadas no período escolhido." />
-      <div className="grid gap-4 px-4 pb-6 sm:px-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-4 pb-6 sm:px-6">
         <InboxNav />
         <form action="/atendimento/indicadores" className="flex flex-wrap items-end gap-2">
           <label className="grid gap-1 text-sm">
