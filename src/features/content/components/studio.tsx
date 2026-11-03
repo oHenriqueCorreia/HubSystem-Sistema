@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Clapperboard, Copy, ExternalLink, Heart, Image as ImageIcon, LoaderCircle, MessageCircle, Plus, Send, Settings2, ThumbsUp, Upload, Video, X } from "lucide-react";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormAlert, FormField } from "@/components/app/form-field";
+import { useMotionOk } from "@/components/app/use-motion";
 import { dayKey, minutesOfDay } from "@/domain/calendar";
 import { addDays, listDays, monthRange } from "@/domain/calendar/agenda";
 import { FORMAT_LABEL, formatProblem, IG_CAPTION_MAX, MAX_VIDEO_BYTES, PLATFORM_LABEL, publishProblem, SCHEDULE_STATUS_LABEL, VIDEO_TYPES, type ContentFormat } from "@/domain/content";
@@ -40,16 +41,18 @@ function FacebookMark({ className }: { className?: string }) {
 }
 
 function InstagramMark({ className }: { className?: string }) {
+  // Id único: com o mesmo id repetido, a marca some se a primeira estiver oculta.
+  const gradient = useId();
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
       <defs>
-        <linearGradient id="ig-grad" x1="0" y1="1" x2="1" y2="0">
+        <linearGradient id={gradient} x1="0" y1="1" x2="1" y2="0">
           <stop offset="0" stopColor="#FEC053" />
           <stop offset=".5" stopColor="#F2203E" />
           <stop offset="1" stopColor="#5258CF" />
         </linearGradient>
       </defs>
-      <rect width="24" height="24" rx="6.5" fill="url(#ig-grad)" />
+      <rect width="24" height="24" rx="6.5" fill={`url(#${gradient})`} />
       <rect x="5.5" y="5.5" width="13" height="13" rx="4" fill="none" stroke="#fff" strokeWidth="1.8" />
       <circle cx="12" cy="12" r="3.1" fill="none" stroke="#fff" strokeWidth="1.8" />
       <circle cx="16.1" cy="7.9" r="1" fill="#fff" />
@@ -257,11 +260,12 @@ function PhonePreview({ account, format, caption, images, video, driveUrl }: { a
   const name = account?.name ?? "Sua conta";
   const instagram = account?.platform === "instagram";
   const vertical = format === "reels";
+  const motion = useMotionOk();
   const media = video ? (
-    <video src={video} muted loop autoPlay playsInline className={cn("w-full bg-black object-cover", vertical ? "aspect-[9/16]" : "aspect-video")} />
+    <video src={video} muted loop autoPlay={motion} controls playsInline aria-label="Prévia do vídeo" className={cn("w-full bg-black object-cover", vertical ? "aspect-[9/16]" : "aspect-video")} />
   ) : images.length ? (
     // eslint-disable-next-line @next/next/no-img-element -- prévia local do arquivo escolhido
-    <img src={images[0]} alt="" className="aspect-square w-full object-cover" />
+    <img src={images[0]} alt="" width={280} height={280} className="aspect-square w-full object-cover" />
   ) : (
     <span className={cn("grid w-full place-items-center bg-muted text-xs text-muted-foreground", vertical ? "aspect-[9/16]" : "aspect-square")}>{driveUrl ? "Vídeo do Google Drive" : "Sua mídia aparece aqui"}</span>
   );
@@ -275,7 +279,7 @@ function PhonePreview({ account, format, caption, images, video, driveUrl }: { a
     </div>
   );
   return (
-    <div className="mx-auto w-full max-w-[17.5rem] rounded-[2rem] border-4 border-foreground/80 bg-surface p-1 shadow-lg" aria-label="Prévia da publicação">
+    <div className="mx-auto w-full max-w-[17.5rem] rounded-[2rem] border-4 border-foreground/80 bg-surface p-1 shadow-lg" role="group" aria-label="Prévia da publicação">
       <div className="max-h-[32rem] overflow-y-auto rounded-[1.6rem] bg-surface">
         {instagram ? (
           <>
@@ -558,7 +562,11 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
                 }}
                 className={cn("grid gap-2 rounded-xl border-2 border-dashed p-4 text-center text-sm transition-colors", dragging && "border-primary bg-accent")}
               >
-                <input ref={input} type="file" multiple={!isVideo} accept={isVideo ? "video/mp4,video/quicktime" : "image/*"} className="sr-only" tabIndex={-1} aria-label={isVideo ? "Arquivo de vídeo" : "Imagens"} onChange={(e) => e.target.files?.length && addFiles(e.target.files)} />
+                <input ref={input} type="file" multiple={!isVideo} accept={isVideo ? "video/mp4,video/quicktime" : "image/*"} className="sr-only" tabIndex={-1} aria-label={isVideo ? "Arquivo de vídeo" : "Imagens"} onChange={(e) => {
+                    if (e.target.files?.length) addFiles(e.target.files);
+                    // Sem isto, escolher de novo um arquivo removido não faz nada.
+                    e.target.value = "";
+                  }} />
                 <Upload className="mx-auto size-5 text-muted-foreground" aria-hidden="true" />
                 <p className="text-muted-foreground">{isVideo ? "Arraste o vídeo (MP4 ou MOV, até 50 MB)" : "Arraste as imagens (até 10)"}</p>
                 <Button type="button" variant="outline" size="sm" className="justify-self-center" onClick={() => input.current?.click()}>
@@ -581,7 +589,7 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
                     <label htmlFor="studio-drive" className="text-xs text-muted-foreground">
                       Ou cole o link do Google Drive, para vídeos maiores
                     </label>
-                    <Input id="studio-drive" type="url" inputMode="url" spellCheck={false} placeholder="https://drive.google.com/file/d/…" value={driveUrl} maxLength={500} onChange={(e) => setDriveUrl(e.target.value)} />
+                    <Input id="studio-drive" name="drive" type="url" inputMode="url" autoComplete="off" spellCheck={false} placeholder="https://drive.google.com/file/d/…" value={driveUrl} maxLength={500} onChange={(e) => setDriveUrl(e.target.value)} />
                   </div>
                 )}
               </div>
@@ -595,7 +603,7 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <FormField label="Nome interno" optional hint="Só a equipe vê. Em branco, usa o começo da legenda.">
-                  <Input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
+                  <Input name="nome-interno" autoComplete="off" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
                 </FormField>
                 <FormField label="Cliente" optional hint="Com cliente, a publicação precisa da aprovação dele.">
                   <Select value={clientId} onValueChange={setClientId}>
@@ -615,7 +623,7 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
                 <FormField label="Data" required={!hasClient}>
                   <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 </FormField>
-                <FormField label="Horário">
+                <FormField label="Horário" hint="Horário de Brasília.">
                   <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
                 </FormField>
               </div>
@@ -624,6 +632,9 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
                 <p role="status" className="flex items-start gap-2 text-sm text-warning">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> {problem}
                 </p>
+              )}
+              {!problem && !hasClient && (!selected.length || !date) && (
+                <p role="status" className="text-sm text-muted-foreground">{!selected.length ? "Escolha ao menos uma conta para programar." : "Escolha a data para programar."}</p>
               )}
               {progress && (
                 <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">

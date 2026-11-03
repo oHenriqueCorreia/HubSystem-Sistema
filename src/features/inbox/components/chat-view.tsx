@@ -56,11 +56,11 @@ export function ChatAvatar({ name, seed, className }: { name: string; seed: stri
 }
 
 function Ticks({ status }: { status: string }) {
-  if (status === "enviando") return <Clock className="size-3.5" aria-label="Enviando" />;
-  if (status === "erro") return <TriangleAlert className="size-3.5 text-danger" aria-label="Erro no envio" />;
-  if (status === "lida") return <CheckCheck className="size-4 text-[#53bdeb]" aria-label="Lida" />;
-  if (status === "entregue") return <CheckCheck className="size-4" aria-label="Entregue" />;
-  return <Check className="size-4" aria-label="Enviada" />;
+  if (status === "enviando") return <Clock className="size-3.5" role="img" aria-label="Enviando" />;
+  if (status === "erro") return <TriangleAlert className="size-3.5 text-danger" role="img" aria-label="Erro no envio" />;
+  if (status === "lida") return <CheckCheck className="size-4 text-[#53bdeb]" role="img" aria-label="Lida" />;
+  if (status === "entregue") return <CheckCheck className="size-4" role="img" aria-label="Entregue" />;
+  return <Check className="size-4" role="img" aria-label="Enviada" />;
 }
 
 function Highlight({ text, term }: { text: string; term: string }) {
@@ -153,7 +153,8 @@ export function ChatView({
 
   const toBottom = (smooth = false) => {
     const el = scroller.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    const animate = smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: animate ? "smooth" : "auto" });
     setUnseen(0);
   };
 
@@ -313,7 +314,7 @@ export function ChatView({
         <div className="flex items-center gap-2 border-b bg-[var(--chat-panel)] px-3 py-2">
           <Input autoFocus value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Pesquisar mensagens…" aria-label="Pesquisar mensagens" />
           <span className="text-xs whitespace-nowrap text-muted-foreground tabular" aria-live="polite">
-            {term.trim() ? `${filtered.length} encontrada(s)` : ""}
+            {term.trim() ? `${filtered.length} ${filtered.length === 1 ? "encontrada" : "encontradas"}` : ""}
           </span>
         </div>
       )}
@@ -336,6 +337,7 @@ export function ChatView({
         ref={scroller}
         role="log"
         aria-label="Mensagens"
+        tabIndex={0}
         onScroll={(e) => {
           const el = e.currentTarget;
           const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -373,7 +375,7 @@ export function ChatView({
                   <div className={cn("chat-bubble relative max-w-[85%] rounded-lg px-2 pt-1.5 pb-1 text-sm shadow-xs sm:max-w-[65%]", mine ? "bg-[var(--chat-out)]" : "bg-[var(--chat-in)]", firstOfRun && (mine ? "rounded-tr-none chat-tail-out" : "rounded-tl-none chat-tail-in"))}>
                     {m.reply_to_wamid && (
                       <div className="mb-1 rounded border-l-4 border-[#06cf9c] bg-black/5 px-2 py-1 text-xs dark:bg-white/10">
-                        <p className="font-semibold text-[#06a57f]">{quoted ? (quoted.direction === "saida" ? "Você" : display) : "Mensagem citada"}</p>
+                        <p className="font-semibold text-[#047a5e] dark:text-[#7ae3c3]">{quoted ? (quoted.direction === "saida" ? "Você" : display) : "Mensagem citada"}</p>
                         <p className="line-clamp-2 break-words opacity-80">{quoted ? messagePreview(quoted) : "Mensagem anterior"}</p>
                       </div>
                     )}
@@ -385,9 +387,9 @@ export function ChatView({
                             <img src={media} alt={m.body || "Imagem da conversa"} width={320} height={320} className="max-h-72 w-auto max-w-full rounded-md object-cover" loading="lazy" />
                           </button>
                         ) : m.media_mime?.startsWith("audio/") ? (
-                          <audio controls preload="metadata" src={media} className="h-10 max-w-full min-w-56" />
+                          <audio controls preload="metadata" src={media} aria-label="Áudio da conversa" className="h-10 max-w-full min-w-56" />
                         ) : m.media_mime?.startsWith("video/") ? (
-                          <video controls preload="metadata" src={media} className="max-h-72 max-w-full rounded-md" />
+                          <video controls preload="metadata" src={media} aria-label={m.body || "Vídeo da conversa"} className="max-h-72 max-w-full rounded-md" />
                         ) : (
                           <a href={media} className="flex items-center gap-2 rounded-md bg-black/5 px-2 py-2 hover:bg-black/10 dark:bg-white/10">
                             <FileText className="size-6 shrink-0 text-danger" aria-hidden="true" />
@@ -400,15 +402,15 @@ export function ChatView({
                       <div className="mr-auto min-w-0 break-words whitespace-pre-wrap">
                         {m.body ? <Highlight text={m.body} term={term.trim()} /> : !m.media_id ? <span className="italic opacity-70">{m.type === "unsupported" ? "Conteúdo não suportado" : messagePreview(m)}</span> : null}
                       </div>
-                      <p className="flex shrink-0 items-center gap-1 pt-0.5 text-[11px] text-muted-foreground">
-                        {m.important && <Star className="size-3 fill-current" aria-label="Importante" />}
+                      <p className={cn("flex shrink-0 items-center gap-1 pt-0.5 text-[11px] text-muted-foreground", mine && "dark:text-white/75")}>
+                        {m.important && <Star className="size-3 fill-current" role="img" aria-label="Importante" />}
                         {m.type === "template" && <span>Modelo</span>}
                         {mine && m.author_id && names[m.author_id] && <span className="max-w-24 truncate">{names[m.author_id].split(" ")[0]}</span>}
                         <span className="tabular">{chatTime(m.created_at)}</span>
                         {mine && <Ticks status={m.status} />}
                       </p>
                     </div>
-                    {m.status === "erro" && m.error && <p className="mt-1 text-[11px] break-words text-danger">{m.error}</p>}
+                    {m.status === "erro" && m.error && <p className="mt-1 text-[11px] break-words text-danger dark:text-[#ffb4ab]">{m.error}</p>}
                   </div>
                   {!mine && canReply && <BubbleMenu message={m} onReply={() => { setReplyTo(m); input.current?.focus(); }} onStar={() => run(() => toggleImportant({ id: m.id, important: !m.important }))} />}
                 </div>
@@ -421,20 +423,20 @@ export function ChatView({
             <div className={cn("relative max-w-[85%] rounded-lg bg-[var(--chat-out)] px-2 pt-1.5 pb-1 text-sm shadow-xs sm:max-w-[65%]", p.failed && "ring-1 ring-danger")}>
               {quotedPending(p) && (
                 <div className="mb-1 rounded border-l-4 border-[#06cf9c] bg-black/5 px-2 py-1 text-xs dark:bg-white/10">
-                  <p className="font-semibold text-[#06a57f]">{quotedPending(p)!.direction === "saida" ? "Você" : display}</p>
+                  <p className="font-semibold text-[#047a5e] dark:text-[#7ae3c3]">{quotedPending(p)!.direction === "saida" ? "Você" : display}</p>
                   <p className="line-clamp-2 break-words opacity-80">{messagePreview(quotedPending(p))}</p>
                 </div>
               )}
               <div className="flex flex-wrap items-end justify-end gap-x-2">
                 <div className="mr-auto min-w-0 break-words whitespace-pre-wrap">{p.body}</div>
-                <p className="flex shrink-0 items-center gap-1 pt-0.5 text-[11px] text-muted-foreground">
+                <p className="flex shrink-0 items-center gap-1 pt-0.5 text-[11px] text-muted-foreground dark:text-white/75">
                   <span className="tabular">{chatTime(p.at)}</span>
                   <Ticks status={p.failed ? "erro" : "enviando"} />
                 </p>
               </div>
               {p.failed && (
                 <div className="mt-1 flex items-center gap-2 text-[11px]">
-                  <span className="text-danger">Não enviada.</span>
+                  <span className="text-danger dark:text-[#ffb4ab]">Não enviada.</span>
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 font-medium underline"
@@ -462,9 +464,9 @@ export function ChatView({
       </div>
 
       {!atBottom && (
-        <button type="button" onClick={() => toBottom(true)} aria-label={unseen ? `Ir para ${unseen} mensagem(ns) nova(s)` : "Ir para o fim"} className="absolute right-4 bottom-24 z-10 grid size-10 place-items-center rounded-full bg-[var(--chat-panel)] text-muted-foreground shadow-md hover:text-foreground">
+        <button type="button" onClick={() => toBottom(true)} aria-label={unseen ? `Ir para ${unseen} ${unseen === 1 ? "mensagem nova" : "mensagens novas"}` : "Ir para o fim"} className="absolute right-4 bottom-24 z-10 grid size-10 place-items-center rounded-full bg-[var(--chat-panel)] text-muted-foreground shadow-md hover:text-foreground">
           <ArrowDown className="size-5" aria-hidden="true" />
-          {unseen > 0 && <span className="absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-full bg-[#00a884] px-1 text-[11px] font-semibold text-white tabular">{unseen}</span>}
+          {unseen > 0 && <span className="absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-full bg-[#008069] px-1 text-[11px] font-semibold text-white tabular">{unseen}</span>}
         </button>
       )}
 
@@ -489,7 +491,7 @@ export function ChatView({
           {replyTo && (
             <div className="flex items-center gap-2 rounded-lg bg-black/5 py-1 pr-1 pl-2 dark:bg-white/10">
               <div className="min-w-0 flex-1 border-l-4 border-[#06cf9c] pl-2 text-xs">
-                <p className="font-semibold text-[#06a57f]">{replyTo.direction === "saida" ? "Você" : display}</p>
+                <p className="font-semibold text-[#047a5e] dark:text-[#7ae3c3]">{replyTo.direction === "saida" ? "Você" : display}</p>
                 <p className="truncate opacity-80">{messagePreview(replyTo)}</p>
               </div>
               <Button type="button" variant="ghost" size="icon-sm" aria-label="Cancelar citação" onClick={() => setReplyTo(null)}>
@@ -538,6 +540,8 @@ export function ChatView({
             {approved.length > 0 && !blocked && !noteMode && <TemplateDialog conversationId={conversation.id} templates={approved} />}
             <textarea
               ref={input}
+              name="mensagem"
+              autoComplete="off"
               rows={1}
               value={text}
               maxLength={4096}

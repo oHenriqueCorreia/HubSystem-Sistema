@@ -13,7 +13,7 @@ export function DonutPlot({ slices, active, onActive, height = 240 }: { slices: 
   const motion = useMotionOk();
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <PieChart>
+      <PieChart accessibilityLayer={false}>
         <Pie
           data={slices}
           dataKey="value"
