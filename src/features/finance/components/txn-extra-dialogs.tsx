@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, ExternalLink, LoaderCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,18 +17,20 @@ import { formatBRL } from "@/domain/shared/money";
 import { formatDate, formatDateTime } from "@/domain/shared/dates";
 import { whatsappLink } from "@/domain/shared/phone";
 import { getTransferOptions, getTxnHistory, prepareCharge, sendCharge, transferTransaction } from "../ops-actions";
+import { canRepeatMonthly } from "@/domain/finance/bulk";
 import { KIND_LABEL, SCOPE_LABEL, STATUS_LABEL, type Account, type Category, type FinanceScope, type Transaction } from "../types";
 
 const NONE = "__nenhuma__";
 
 /** Mostra o que será movido antes de confirmar. Categoria e conta precisam ser as da área de destino. */
-export function TransferDialog({ txn, scope, onClose, categoryName, accountName }: { txn: Transaction; scope: FinanceScope; onClose: () => void; categoryName?: string; accountName?: string }) {
+export function TransferDialog({ txn, scope, onClose, categoryName, accountName, canRecur = false }: { txn: Transaction; scope: FinanceScope; onClose: () => void; categoryName?: string; accountName?: string; canRecur?: boolean }) {
   const router = useRouter();
   const to: FinanceScope = scope === "empresa" ? "pessoal" : "empresa";
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryId, setCategoryId] = useState(NONE);
   const [accountId, setAccountId] = useState(NONE);
+  const [recurring, setRecurring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const blocked = txn.contract_id ? "Este lançamento vem de um contrato: altere o contrato em vez de transferir." : txn.recurrence_id ? "Este lançamento vem de uma recorrência: encerre a recorrência e crie na área certa." : null;
@@ -50,7 +53,7 @@ export function TransferDialog({ txn, scope, onClose, categoryName, accountName 
   function confirm() {
     setError(null);
     startTransition(async () => {
-      const res = await transferTransaction({ id: txn.id, categoryId: categoryId === NONE ? null : categoryId, accountId: accountId === NONE ? null : accountId });
+      const res = await transferTransaction({ id: txn.id, categoryId: categoryId === NONE ? null : categoryId, accountId: accountId === NONE ? null : accountId, recurring });
       if (!res.ok) return setError(res.message);
       toast.success(res.message);
       onClose();
@@ -129,6 +132,12 @@ export function TransferDialog({ txn, scope, onClose, categoryName, accountName 
                 </SelectContent>
               </Select>
             </FormField>
+            {scope === "pessoal" && canRecur && canRepeatMonthly(txn) && (
+              <label className="flex min-w-0 items-start gap-2 rounded-lg border p-3 text-sm">
+                <Checkbox checked={recurring} onCheckedChange={(checked) => setRecurring(checked === true)} aria-label="Criar receita mensal recorrente na empresa" />
+                <span><strong className="block">Repetir mensalmente na empresa</strong><span className="text-xs text-muted-foreground">O lançamento atual será movido e as próximas receitas serão criadas automaticamente.</span></span>
+              </label>
+            )}
           </div>
         )}
         <DialogFooter>

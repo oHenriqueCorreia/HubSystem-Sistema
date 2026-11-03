@@ -1,5 +1,6 @@
 "use client";
 
+import { MobileFilters } from "@/components/app/mobile-filters";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw, Save, Search, Trash2 } from "lucide-react";
@@ -11,10 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dayKey } from "@/domain/calendar";
-import { addDays, AGENDA_TYPE_LABEL, filterAgenda, groupByDay, listDays, MAX_RANGE_DAYS, monthRange, validRange, weekRange, type AgendaEntry, type AgendaFilter, type AgendaStatusGroup, type AgendaType } from "@/domain/calendar/agenda";
+import { addDays, AGENDA_TYPE_LABEL, filterAgenda, groupByDay, listDays, MAX_RANGE_DAYS, monthRange, validRange, weekRange, type AgendaEntry, type AgendaFilter, type AgendaPriority, type AgendaStatusGroup, type AgendaType } from "@/domain/calendar/agenda";
+import { DEFAULT_AGENDA_PREFS, PRIORITIES, PRIORITY_LABEL, priorityColor, visibleDays, type AgendaPrefs } from "@/domain/calendar/agenda-prefs";
 import { todayLocal } from "@/domain/shared/dates";
 import { deleteAgendaFilter, getAgenda, saveAgendaFilter } from "../actions";
 import { AGENDA_STYLE, AgendaItemSheet, agendaTime } from "./agenda-item-sheet";
+import { AgendaCustomize, AgendaLegend, entryLook, PriorityTag, useAgendaPrefs } from "./agenda-customize";
 
 type Owner = { id: string; full_name: string; email: string };
 export type SavedAgendaFilter = { name: string; filter: AgendaFilter };
@@ -62,6 +65,7 @@ export function AgendaHub({
   canPublish = false,
   savedFilters,
   initialTab = "hoje",
+  initialPrefs = DEFAULT_AGENDA_PREFS,
 }: {
   owners: Owner[];
   clients: { id: string; legal_name: string }[];
@@ -72,15 +76,18 @@ export function AgendaHub({
   canPublish?: boolean;
   savedFilters: SavedAgendaFilter[];
   initialTab?: Tab;
+  initialPrefs?: AgendaPrefs;
 }) {
   const router = useRouter();
   const today = todayLocal();
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [prefs, updatePrefs] = useAgendaPrefs(initialPrefs);
+  const [tab, setTab] = useState<Tab>(initialPrefs.defaultTab ?? initialTab);
   const [anchor, setAnchor] = useState(today);
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(addDays(today, 30));
   const [q, setQ] = useState("");
   const [type, setType] = useState<AgendaType | null>(null);
+  const [priority, setPriority] = useState<AgendaPriority | null>(null);
   const [ownerIds, setOwnerIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState<string | null>(null);
   const [status, setStatus] = useState<AgendaStatusGroup | null>(null);
@@ -114,14 +121,15 @@ export function AgendaHub({
     void load();
   }, [load]);
 
-  const filter: AgendaFilter = { q, type, ownerIds, clientId, status };
-  const visible = useMemo(() => filterAgenda(entries, { q, type, ownerIds, clientId, status }), [entries, q, type, ownerIds, clientId, status]);
+  const filter: AgendaFilter = { q, type, priority, ownerIds, clientId, status };
+  const visible = useMemo(() => filterAgenda(entries, { q, type, priority, ownerIds, clientId, status }).filter((e) => !prefs.hiddenTypes.includes(e.type)), [entries, q, type, priority, ownerIds, clientId, status, prefs.hiddenTypes]);
   const byDay = useMemo(() => groupByDay(visible), [visible]);
-  const hasFilters = Boolean(q || type || ownerIds.length || clientId || status);
+  const hasFilters = Boolean(q || type || priority || ownerIds.length || clientId || status);
 
   function applySaved(f: AgendaFilter) {
     setQ(f.q ?? "");
     setType(f.type ?? null);
+    setPriority(f.priority ?? null);
     setOwnerIds(f.ownerIds ?? []);
     setClientId(f.clientId ?? null);
     setStatus(f.status ?? null);
@@ -170,17 +178,20 @@ export function AgendaHub({
       </div>
 
       {tab === "periodo" ? (
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="grid gap-1 text-sm">
+        <div className="grid grid-cols-2 items-end gap-2 sm:flex sm:flex-wrap">
+          <label className="grid min-w-0 gap-1 text-sm">
             De
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full min-w-0 sm:w-40" />
           </label>
-          <label className="grid gap-1 text-sm">
+          <label className="grid min-w-0 gap-1 text-sm">
             Até
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full min-w-0 sm:w-40" />
           </label>
+          <div className="col-span-2 sm:ml-auto">
+            <AgendaCustomize prefs={prefs} onChange={updatePrefs} withDefaultTab />
+          </div>
           {!rangeOk && (
-            <p role="alert" className="pb-2 text-sm text-danger">
+            <p role="alert" className="col-span-2 pb-2 text-sm text-danger">
               Escolha uma data final depois da inicial, em até {MAX_RANGE_DAYS} dias.
             </p>
           )}
@@ -196,17 +207,21 @@ export function AgendaHub({
           <Button variant="ghost" size="icon-sm" aria-label="Próximo período" onClick={() => setAnchor((a) => shift(tab, a, 1))}>
             <ChevronRight aria-hidden="true" />
           </Button>
-          <h3 className="ml-1 text-sm font-semibold first-letter:uppercase" aria-live="polite">
+          <h3 className="order-last min-w-0 basis-full text-sm font-semibold first-letter:uppercase sm:order-none sm:ml-1 sm:flex-1 sm:basis-0" aria-live="polite">
             {heading}
           </h3>
+          <div className="ml-auto sm:ml-0">
+            <AgendaCustomize prefs={prefs} onChange={updatePrefs} withDefaultTab />
+          </div>
         </div>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_repeat(3,minmax(9rem,12rem))]">
+      <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_repeat(4,minmax(9rem,12rem))]">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar na agenda…" aria-label="Pesquisar na agenda" className="pl-8" />
         </div>
+        <MobileFilters active={[type, priority, clientId, status, tab !== "minhas" && ownerIds.length].filter(Boolean).length}>
         <Select value={type ?? ALL} onValueChange={(v) => setType(v === ALL ? null : (v as AgendaType))}>
           <SelectTrigger className="w-full" aria-label="Tipo">
             <SelectValue />
@@ -216,6 +231,17 @@ export function AgendaHub({
             {Object.entries(AGENDA_TYPE_LABEL).map(([k, label]) => (
               <SelectItem key={k} value={k}>
                 {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={priority ?? ALL} onValueChange={(v) => setPriority(v === ALL ? null : (v as AgendaPriority))}>
+          <SelectTrigger className="w-full" aria-label="Prioridade"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todas as prioridades</SelectItem>
+            {PRIORITIES.map((p) => (
+              <SelectItem key={p} value={p}>
+                {PRIORITY_LABEL[p]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -244,11 +270,9 @@ export function AgendaHub({
             <SelectItem value="cancelado">Só cancelados</SelectItem>
           </SelectContent>
         </Select>
-      </div>
-
       {tab !== "minhas" && owners.length > 1 && (
         <Select value={ownerIds.length === 1 ? ownerIds[0] : ALL} onValueChange={(v) => setOwnerIds(v === ALL ? [] : [v])}>
-          <SelectTrigger className="w-full sm:w-64" aria-label="Responsável">
+          <SelectTrigger className="w-full" aria-label="Responsável">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -261,6 +285,8 @@ export function AgendaHub({
           </SelectContent>
         </Select>
       )}
+        </MobileFilters>
+      </div>
 
       {tab === "minhas" && (
         <div className="grid gap-3 rounded-lg border bg-muted/30 p-3">
@@ -318,7 +344,7 @@ export function AgendaHub({
         </div>
       )}
 
-      <Legend />
+      <AgendaLegend prefs={prefs} onChange={updatePrefs} />
 
       {state === "loading" && (
         <div className="grid gap-2" aria-busy="true" aria-label="Carregando a agenda">
@@ -336,7 +362,7 @@ export function AgendaHub({
         </div>
       )}
       {state === "ready" &&
-        (visible.length === 0 ? (
+        (visible.length === 0 && tab !== "mes" ? (
           <div className="grid justify-items-center gap-2 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             <CalendarDays className="size-6" aria-hidden="true" />
             <p>{hasFilters ? "Nada encontrado com estes filtros." : "Nada na agenda neste período."}</p>
@@ -347,11 +373,11 @@ export function AgendaHub({
             )}
           </div>
         ) : tab === "semana" ? (
-          <WeekBoard days={listDays(range.from, range.to)} byDay={byDay} today={today} onOpen={setSelected} />
+          <WeekBoard days={visibleDays(listDays(range.from, range.to), prefs)} byDay={byDay} today={today} onOpen={setSelected} prefs={prefs} />
         ) : tab === "mes" ? (
-          <MonthBoard anchor={anchor} days={listDays(range.from, range.to)} byDay={byDay} today={today} selectedDay={monthDay} onDay={setMonthDay} onOpen={setSelected} />
+          <MonthBoard anchor={anchor} days={visibleDays(listDays(range.from, range.to), prefs)} byDay={byDay} today={today} selectedDay={monthDay} onDay={setMonthDay} onOpen={setSelected} prefs={prefs} />
         ) : (
-          <DayGroups days={tab === "hoje" ? [anchor] : listDays(range.from, range.to)} byDay={byDay} today={today} onOpen={setSelected} />
+          <DayGroups days={tab === "hoje" ? [anchor] : listDays(range.from, range.to)} byDay={byDay} today={today} onOpen={setSelected} prefs={prefs} />
         ))}
 
       <AgendaItemSheet
@@ -369,41 +395,29 @@ export function AgendaHub({
   );
 }
 
-function Legend() {
-  return (
-    <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="Tipos de item">
-      {(Object.keys(AGENDA_TYPE_LABEL) as AgendaType[]).map((t) => {
-        const Icon = AGENDA_STYLE[t].icon;
-        return (
-          <li key={t} className="inline-flex items-center gap-1">
-            <span className={cn("grid size-4 place-items-center rounded border", AGENDA_STYLE[t].className)}>
-              <Icon className="size-3" aria-hidden="true" />
-            </span>
-            {AGENDA_TYPE_LABEL[t]}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function EntryCard({ entry, onOpen, compact }: { entry: AgendaEntry; onOpen: (e: AgendaEntry) => void; compact?: boolean }) {
+function EntryCard({ entry, onOpen, compact, prefs }: { entry: AgendaEntry; onOpen: (e: AgendaEntry) => void; compact?: boolean; prefs: AgendaPrefs }) {
   const style = AGENDA_STYLE[entry.type];
+  const look = entryLook(entry, prefs);
   const off = ["cancelado", "cancelada", "concluido", "concluida"].includes(entry.status);
+  const tight = prefs.density === "compacta";
   return (
     <button
       type="button"
       onClick={() => onOpen(entry)}
-      className={cn("grid w-full min-w-0 gap-0.5 rounded-md border px-2 py-1.5 text-left text-sm transition-colors hover:brightness-95", style.className, off && "opacity-70")}
+      style={look.style}
+      className={cn("grid w-full min-w-0 rounded-lg border text-left text-sm transition-colors hover:brightness-95", tight ? "gap-0 px-2 py-1" : "gap-1 px-2.5 py-2", look.className, off && "opacity-70")}
     >
-      <span className="flex min-w-0 items-center gap-1.5 text-xs">
+      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
         <style.icon className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="tabular shrink-0">{agendaTime(entry)}</span>
-        {!compact && <span className="truncate">{AGENDA_TYPE_LABEL[entry.type]}</span>}
+        <span className="font-medium whitespace-nowrap tabular">{agendaTime(entry)}</span>
+        {!compact && <span className="opacity-80">{AGENDA_TYPE_LABEL[entry.type]}</span>}
         <span className="sr-only">{compact ? AGENDA_TYPE_LABEL[entry.type] : ""}</span>
+        <span className="ml-auto">
+          <PriorityTag priority={entry.priority} prefs={prefs} />
+        </span>
       </span>
-      <span className={cn("font-medium break-words", off && "line-through")}>{entry.title}</span>
-      {!compact && (entry.clientName || entry.boardName) && (
+      <span className={cn("min-w-0 font-medium break-words", tight && "line-clamp-1", !tight && compact && "line-clamp-3", off && "line-through")}>{entry.title}</span>
+      {!compact && !tight && (entry.clientName || entry.boardName) && (
         <span className="truncate text-xs opacity-80">{[entry.clientName, entry.boardName && (entry.listName ? `${entry.boardName} › ${entry.listName}` : entry.boardName)].filter(Boolean).join(", ")}</span>
       )}
       {off && <span className="text-xs">{entry.statusLabel}</span>}
@@ -411,7 +425,7 @@ function EntryCard({ entry, onOpen, compact }: { entry: AgendaEntry; onOpen: (e:
   );
 }
 
-function DayGroups({ days, byDay, today, onOpen }: { days: string[]; byDay: Map<string, AgendaEntry[]>; today: string; onOpen: (e: AgendaEntry) => void }) {
+function DayGroups({ days, byDay, today, onOpen, prefs }: { days: string[]; byDay: Map<string, AgendaEntry[]>; today: string; onOpen: (e: AgendaEntry) => void; prefs: AgendaPrefs }) {
   const withItems = days.filter((d) => byDay.has(d));
   return (
     <div className="grid gap-4">
@@ -421,7 +435,7 @@ function DayGroups({ days, byDay, today, onOpen }: { days: string[]; byDay: Map<
           <ul className="grid gap-1.5 sm:grid-cols-2">
             {byDay.get(d)!.map((e) => (
               <li key={`${e.source}-${e.id}-${d}`} className="min-w-0">
-                <EntryCard entry={e} onOpen={onOpen} />
+                <EntryCard entry={e} onOpen={onOpen} prefs={prefs} />
               </li>
             ))}
           </ul>
@@ -432,9 +446,9 @@ function DayGroups({ days, byDay, today, onOpen }: { days: string[]; byDay: Map<
 }
 
 /** Colunas por dia sem posição absoluta: vários itens no mesmo horário empilham, nunca se sobrepõem. */
-function WeekBoard({ days, byDay, today, onOpen }: { days: string[]; byDay: Map<string, AgendaEntry[]>; today: string; onOpen: (e: AgendaEntry) => void }) {
+function WeekBoard({ days, byDay, today, onOpen, prefs }: { days: string[]; byDay: Map<string, AgendaEntry[]>; today: string; onOpen: (e: AgendaEntry) => void; prefs: AgendaPrefs }) {
   return (
-    <div className="grid gap-2 lg:grid-cols-7">
+    <div className={cn("grid gap-2", days.length === 5 ? "lg:grid-cols-5" : "lg:grid-cols-7")}>
       {days.map((d) => {
         const list = byDay.get(d) ?? [];
         return (
@@ -449,7 +463,7 @@ function WeekBoard({ days, byDay, today, onOpen }: { days: string[]; byDay: Map<
               <ul className="grid gap-1">
                 {list.map((e) => (
                   <li key={`${e.source}-${e.id}-${d}`} className="min-w-0">
-                    <EntryCard entry={e} onOpen={onOpen} compact />
+                    <EntryCard entry={e} onOpen={onOpen} compact prefs={prefs} />
                   </li>
                 ))}
               </ul>
@@ -461,45 +475,55 @@ function WeekBoard({ days, byDay, today, onOpen }: { days: string[]; byDay: Map<
   );
 }
 
-function MonthBoard({ anchor, days, byDay, today, selectedDay, onDay, onOpen }: { anchor: string; days: string[]; byDay: Map<string, AgendaEntry[]>; today: string; selectedDay: string | null; onDay: (d: string) => void; onOpen: (e: AgendaEntry) => void }) {
+function MonthBoard({ anchor, days, byDay, today, selectedDay, onDay, onOpen, prefs }: { anchor: string; days: string[]; byDay: Map<string, AgendaEntry[]>; today: string; selectedDay: string | null; onDay: (d: string) => void; onOpen: (e: AgendaEntry) => void; prefs: AgendaPrefs }) {
   const current = selectedDay ?? (dayKey(new Date(`${today}T12:00:00Z`)).slice(0, 7) === anchor.slice(0, 7) ? today : null);
+  const columns = { gridTemplateColumns: `repeat(${prefs.weekends ? 7 : 5}, minmax(0, 1fr))` };
   return (
     <div className="grid gap-3">
-      <div className="rounded-lg border">
-        <div className="grid grid-cols-7 border-b text-center text-xs font-medium text-muted-foreground" aria-hidden="true">
-          {WEEKDAYS.map((w) => (
-            <div key={w} className="py-1">
+      <div className="min-w-0 overflow-hidden rounded-lg border bg-surface">
+        <div className="grid border-b text-center text-xs font-medium text-muted-foreground" style={columns} aria-hidden="true">
+          {WEEKDAYS.filter((_, i) => prefs.weekends || (i !== 0 && i !== 6)).map((w) => (
+            <div key={w} className="py-1.5">
               {w}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7">
+        <div className="grid" style={columns}>
           {days.map((d) => {
             const list = byDay.get(d) ?? [];
             const outside = d.slice(0, 7) !== anchor.slice(0, 7);
+            const urgent = list.some((e) => e.priority === "urgente");
             return (
               <button
                 key={d}
                 type="button"
                 onClick={() => onDay(d)}
                 aria-pressed={current === d}
-                aria-label={`${dayTitle(d)}: ${list.length} item(ns)`}
-                className={cn("grid min-h-14 content-start justify-items-center gap-1 border-r border-b p-1 last:border-r-0 hover:bg-accent sm:min-h-20", outside && "bg-muted/40 text-muted-foreground", current === d && "bg-accent ring-2 ring-ring ring-inset")}
+                aria-label={`${dayTitle(d)}: ${list.length} ${list.length === 1 ? "item" : "itens"}${urgent ? ", com urgência" : ""}`}
+                className={cn("flex min-h-16 min-w-0 flex-col items-center gap-1 overflow-hidden border-r border-b p-1 transition-colors hover:bg-accent md:min-h-28 md:items-stretch", outside && "bg-muted/40 text-muted-foreground", current === d && "bg-accent ring-2 ring-ring ring-inset")}
               >
-                <span className={cn("grid size-6 place-items-center rounded-full text-xs tabular", d === today && "bg-primary font-semibold text-primary-foreground")}>{Number(d.slice(8))}</span>
+                <span className={cn("grid size-6 shrink-0 place-items-center self-center rounded-full text-xs tabular md:self-start", d === today && "bg-primary font-semibold text-primary-foreground")}>{Number(d.slice(8))}</span>
                 {list.length > 0 && (
                   <>
-                    <span className="flex flex-wrap justify-center gap-0.5" aria-hidden="true">
-                      {[...new Set(list.map((e) => e.type))].slice(0, 4).map((t) => {
-                        const Icon = AGENDA_STYLE[t].icon;
+                    {/* Celular: pontos com a cor de cada item e o total escrito, sem texto espremido. */}
+                    <span className="flex flex-wrap justify-center gap-0.5 md:hidden" aria-hidden="true">
+                      {list.slice(0, 4).map((e) => (
+                        <span key={`${e.source}-${e.id}`} className="size-1.5 rounded-full" style={{ background: priorityColor(e.priority, prefs) ?? "var(--muted-foreground)" }} />
+                      ))}
+                    </span>
+                    <span className={cn("text-[11px] leading-none tabular text-muted-foreground md:hidden", urgent && "font-bold text-danger")}>{list.length}</span>
+                    {/* Computador: os próprios itens, até caber. */}
+                    <span className="hidden min-w-0 gap-0.5 md:grid" aria-hidden="true">
+                      {list.slice(0, 3).map((e) => {
+                        const look = entryLook(e, prefs);
                         return (
-                          <span key={t} className={cn("grid size-4 place-items-center rounded border", AGENDA_STYLE[t].className)}>
-                            <Icon className="size-3" />
+                          <span key={`${e.source}-${e.id}`} style={look.style} className={cn("min-w-0 truncate rounded border px-1 py-0.5 text-left text-[11px] leading-tight", look.className)}>
+                            {e.title}
                           </span>
                         );
                       })}
+                      {list.length > 3 && <span className="text-left text-[11px] text-muted-foreground tabular">+{list.length - 3} mais</span>}
                     </span>
-                    <span className="text-[11px] tabular text-muted-foreground">{list.length}</span>
                   </>
                 )}
               </button>
@@ -514,7 +538,7 @@ function MonthBoard({ anchor, days, byDay, today, selectedDay, onDay, onOpen }: 
             <ul className="grid gap-1.5 sm:grid-cols-2">
               {byDay.get(current)!.map((e) => (
                 <li key={`${e.source}-${e.id}`} className="min-w-0">
-                  <EntryCard entry={e} onOpen={onOpen} />
+                  <EntryCard entry={e} onOpen={onOpen} prefs={prefs} />
                 </li>
               ))}
             </ul>

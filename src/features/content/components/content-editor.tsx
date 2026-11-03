@@ -303,7 +303,7 @@ export function ContentEditor(p: Props) {
         </section>
 
         {editable && (
-          <FormField label="Formato" hint="Reels sai em vídeo vertical. Vídeo sai como vídeo na Página e como Reels no Instagram.">
+          <FormField label="Formato" hint="Reels sai em vídeo vertical. Vídeo sai como vídeo na Página e como Reels no Instagram. Stories leva uma imagem ou um vídeo de até 60 segundos, sem legenda.">
             <Select value={p.format} disabled={pending} onValueChange={(v) => run(() => setContentFormat({ id: p.id, format: v as ContentFormat }))}>
               <SelectTrigger className="w-full sm:w-60">
                 <SelectValue />

@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decrypt } from "@/lib/crypto";
-import { driveDownloadUrl, isAuthError, metaErrorMessage, publishProblem, type SchedulePlatform } from "@/domain/content";
+import { driveDownloadUrl, formatProblem, isAuthError, metaErrorMessage, publishProblem, type ContentFormat, type SchedulePlatform } from "@/domain/content";
 import { instagramContainer, instagramContainerStatus, instagramPublish, instagramWithinLimit, publishFacebook, type GraphFailure, type MediaPlan } from "@/lib/meta-social";
 
 const SIGNED_SECONDS = 3600;
@@ -43,7 +43,7 @@ async function publishOne(s: Due) {
 
   try {
     const { plan, counts } = await mediaFor(s.content_id);
-    const problem = publishProblem(platform, counts);
+    const problem = (plan.format === "stories" ? formatProblem(plan.format as ContentFormat, counts) : null) ?? publishProblem(platform, counts);
     if (problem) return finish("erro", null, null, problem);
 
     if (platform === "facebook") {

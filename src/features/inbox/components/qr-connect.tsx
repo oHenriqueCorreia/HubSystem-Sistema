@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { PasswordInput } from "@/components/app/password-input";
 import { connectQrNumber, getQrState, reconnectQrNumber, type QrState } from "../qr-actions";
+import { HistoryPanel } from "./history-import";
 
 const POLL_MS = 4000;
 
@@ -24,6 +25,7 @@ export function QrConnectDialog({ numberId, needsServer, newSession = false, lab
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [connectedId, setConnectedId] = useState<string | null>(null);
   const [state, setState] = useState<QrState>({ state: "starting" });
   const [pending, startTransition] = useTransition();
 
@@ -31,6 +33,7 @@ export function QrConnectDialog({ numberId, needsServer, newSession = false, lab
     setOpen(next);
     if (!next) {
       setActiveId(null);
+      setConnectedId(null);
       setApiKey("");
       setError(null);
       setState({ state: "starting" });
@@ -84,7 +87,8 @@ export function QrConnectDialog({ numberId, needsServer, newSession = false, lab
         setState(res.data);
         if (res.data.state === "connected") {
           toast.success(res.data.phone ? `WhatsApp ${res.data.phone} conectado.` : "WhatsApp conectado.");
-          setOpen(false);
+          // Logo depois do QR Code é a hora de trazer as conversas antigas.
+          setConnectedId(activeId);
           setActiveId(null);
           router.refresh();
           return;
@@ -118,13 +122,15 @@ export function QrConnectDialog({ numberId, needsServer, newSession = false, lab
           <QrCode aria-hidden="true" /> {label}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Conectar WhatsApp por QR Code</DialogTitle>
-          <DialogDescription>{scanning ? "No celular, abra o WhatsApp, toque em Aparelhos conectados e depois em Conectar um aparelho." : "Funciona com qualquer número, usando o seu servidor de conexão."}</DialogDescription>
+          <DialogTitle>{connectedId ? "Compilar conversas" : "Conectar WhatsApp por QR Code"}</DialogTitle>
+          <DialogDescription>{connectedId ? "WhatsApp conectado. Traga as conversas e os grupos que já estão nele, para gerir aqui e transformar em lead." : scanning ? "No celular, abra o WhatsApp, toque em Aparelhos conectados e depois em Conectar um aparelho." : "Funciona com qualquer número, usando o seu servidor de conexão."}</DialogDescription>
         </DialogHeader>
 
-        {!scanning && needsServer && (
+        {connectedId && <HistoryPanel numberId={connectedId} onDone={() => close(false)} />}
+
+        {!connectedId && !scanning && needsServer && (
           <form id="qr-form" onSubmit={submit} className="grid gap-3" noValidate>
             <FormAlert>{error}</FormAlert>
             <FormField label="Endereço do servidor" required hint="O endereço público que aparece no fim da instalação.">
@@ -140,7 +146,7 @@ export function QrConnectDialog({ numberId, needsServer, newSession = false, lab
           </form>
         )}
 
-        {!scanning && !needsServer && <FormAlert>{error}</FormAlert>}
+        {!connectedId && !scanning && !needsServer && <FormAlert>{error}</FormAlert>}
 
         {scanning && (
           <div className="grid justify-items-center gap-3" aria-live="polite">
@@ -166,7 +172,7 @@ export function QrConnectDialog({ numberId, needsServer, newSession = false, lab
           </div>
         )}
 
-        <DialogFooter>
+        {!connectedId && <DialogFooter>
           <Button variant="outline" onClick={() => close(false)} disabled={pending && !scanning}>
             {scanning ? "Fechar" : "Cancelar"}
           </Button>
@@ -175,7 +181,7 @@ export function QrConnectDialog({ numberId, needsServer, newSession = false, lab
               {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Gerar QR Code
             </Button>
           )}
-        </DialogFooter>
+        </DialogFooter>}
       </DialogContent>
     </Dialog>
   );

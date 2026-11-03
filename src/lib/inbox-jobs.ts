@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decrypt } from "@/lib/crypto";
 import { SendBlocked, sendAutomated } from "@/lib/inbox-send";
 import { runContentPublisher } from "@/lib/content-publisher";
+import { runWhatsAppImports } from "@/lib/whatsapp-import";
 import { inSendWindow } from "@/domain/crm/cadence";
 import { todayLocal } from "@/domain/shared/dates";
 import { actionSchema, conditionSchema, matchesCondition, type AutomationAction } from "@/domain/whatsapp/automations";
@@ -346,6 +347,7 @@ export async function runInboxJobs() {
     ["conversoes", () => runConversions(deadline)],
     ["cobranca", () => runBilling(deadline)],
     ["publicacoes", runContentPublisher],
+    ["historico", () => runWhatsAppImports(deadline)],
     ["campanhas", () => runCampaigns(deadline)],
   ];
   const failed: string[] = [];

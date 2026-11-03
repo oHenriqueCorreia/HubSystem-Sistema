@@ -10,7 +10,9 @@ import { fail, ok } from "@/domain/shared/result";
 import { brPhoneVariants } from "@/domain/shared/phone";
 import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
 import { baseMime, checkOutgoingMedia, isOutgoingPath, outgoingPath } from "@/domain/whatsapp/media";
+import { scopedWamid, unscopedWamid } from "@/domain/whatsapp/waha";
 import { wahaDeleteSession } from "@/lib/waha";
+import { MESSAGE_COLUMNS, MESSAGE_PAGE, type Message } from "./message-columns";
 import { fetchTemplates, markRead, numberInfo, numberProvider, sendMedia, sendTemplate, sendText, whatsappConfigured } from "@/lib/whatsapp";
 
 const NOT_CONFIGURED = "O WhatsApp ainda não foi configurado no servidor (META_APP_SECRET e WHATSAPP_VERIFY_TOKEN).";
@@ -104,11 +106,15 @@ export const syncWhatsAppTemplates = defineAction({ schema: z.object({ numberId:
 
 // --- Mensagens -------------------------------------------------------------------------
 
-type ConvRow = { id: string; number_id: string; contact_e164: string; last_inbound_at: string | null; lead_id: string | null; organization_id: string; first_response_at: string | null };
+type ConvRow = { id: string; number_id: string; contact_e164: string | null; group_jid: string | null; last_inbound_at: string | null; lead_id: string | null; organization_id: string; first_response_at: string | null };
+
+/** Para onde a mensagem vai: telefone do contato ou endereço do grupo. */
+const addressOf = (conv: Pick<ConvRow, "contact_e164" | "group_jid">) => (conv.group_jid ?? conv.contact_e164) as string;
+const storedWamid = (conv: Pick<ConvRow, "number_id" | "group_jid">, wamid: string | null) => (wamid && conv.group_jid ? scopedWamid(conv.number_id, wamid) : wamid);
 
 async function loadConversation(id: string) {
   const supabase = await createClient();
-  const conv = (await supabase.from("conversations").select("id, number_id, contact_e164, last_inbound_at, lead_id, organization_id, first_response_at").eq("id", id).maybeSingle()).data as ConvRow | null;
+  const conv = (await supabase.from("conversations").select("id, number_id, contact_e164, group_jid, last_inbound_at, lead_id, organization_id, first_response_at").eq("id", id).maybeSingle()).data as ConvRow | null;
   if (!conv) return null;
   const { data: lead } = conv.lead_id ? await supabase.from("leads").select("contact_opt_out_at").eq("id", conv.lead_id).maybeSingle() : { data: null };
   return { conv, optOut: Boolean(lead?.contact_opt_out_at) };
@@ -177,10 +183,10 @@ export const sendWhatsAppMessage = defineAction({ schema: sendSchema, permission
   if (dup) return ok(null); // clique repetido: já enviado
   try {
     // Citação: só de mensagem desta mesma conversa, que já tenha id no WhatsApp.
-    const { data: quoted } = input.replyToId ? await admin.from("messages").select("wamid, direction").eq("id", input.replyToId).eq("conversation_id", conv.id).maybeSingle() : { data: null };
-    const replyTo = quoted?.wamid ? { wamid: quoted.wamid as string, fromMe: quoted.direction === "saida" } : null;
-    const wamid = await sendText(conv.number_id, conv.contact_e164, input.body, replyTo);
-    await recordOutgoing(conv, input.clientRef, wamid, "text", input.body, user.id, undefined, undefined, replyTo?.wamid);
+    const { data: quoted } = input.replyToId ? await admin.from("messages").select("wamid, direction, sender_jid").eq("id", input.replyToId).eq("conversation_id", conv.id).maybeSingle() : { data: null };
+    const replyTo = quoted?.wamid ? { wamid: unscopedWamid(quoted.wamid as string), fromMe: quoted.direction === "saida", participant: quoted.sender_jid as string | null } : null;
+    const wamid = await sendText(conv.number_id, addressOf(conv), input.body, replyTo);
+    await recordOutgoing(conv, input.clientRef, storedWamid(conv, wamid), "text", input.body, user.id, undefined, undefined, quoted?.wamid as string | undefined);
   } catch (e) {
     const detail = (e as { detail?: string }).detail;
     await recordOutgoing(conv, input.clientRef, null, "text", input.body, user.id, detail?.slice(0, 300) ?? "Falha no envio");
@@ -241,8 +247,8 @@ export const sendWhatsAppMedia = defineAction(
     const { data: signed } = await admin.storage.from("whatsapp-media").createSignedUrl(input.path, 3600);
     if (!signed) return fail("network", "O arquivo não foi encontrado. Tente anexar de novo.");
     try {
-      const wamid = await sendMedia(conv.number_id, conv.contact_e164, { url: signed.signedUrl, mime, name: input.name, caption: input.caption || null, kind: check.kind });
-      await recordOutgoing(conv, input.clientRef, wamid, check.kind, input.caption, user.id, undefined, file);
+      const wamid = await sendMedia(conv.number_id, addressOf(conv), { url: signed.signedUrl, mime, name: input.name, caption: input.caption || null, kind: check.kind });
+      await recordOutgoing(conv, input.clientRef, storedWamid(conv, wamid), check.kind, input.caption, user.id, undefined, file);
     } catch (e) {
       await recordOutgoing(conv, input.clientRef, null, check.kind, input.caption, user.id, (e as { detail?: string }).detail?.slice(0, 300) ?? "Falha no envio", file);
       done(conv.id);
@@ -281,7 +287,7 @@ export const sendWhatsAppTemplate = defineAction(
     const { data: dup } = await admin.from("messages").select("id").eq("client_ref", input.clientRef).maybeSingle();
     if (dup) return ok(null);
     try {
-      const wamid = await sendTemplate(loaded.conv.number_id, loaded.conv.contact_e164, tpl.name, tpl.language, input.params);
+      const wamid = await sendTemplate(loaded.conv.number_id, addressOf(loaded.conv), tpl.name, tpl.language, input.params);
       await recordOutgoing(loaded.conv, input.clientRef, wamid, "template", preview || tpl.name, user.id);
     } catch (e) {
       await recordOutgoing(loaded.conv, input.clientRef, null, "template", preview || tpl.name, user.id, (e as { detail?: string }).detail?.slice(0, 300) ?? "Falha no envio");
@@ -309,12 +315,13 @@ export const toggleImportant = defineAction({ schema: z.object({ id: z.uuid(), i
 
 export const markConversationRead = defineAction({ schema: z.object({ id: z.uuid() }), permission: "inbox.read" }, async ({ id }) => {
   const supabase = await createClient();
-  const res = must(await supabase.from("conversations").update({ unread_count: 0 }).eq("id", id).select("number_id, contact_e164")) as { number_id: string; contact_e164: string }[];
+  const res = must(await supabase.from("conversations").update({ unread_count: 0 }).eq("id", id).select("number_id, contact_e164, group_jid")) as { number_id: string; contact_e164: string | null; group_jid: string | null }[];
   if (res.length) {
     const channel = await numberProvider(res[0].number_id);
     if (channel.provider === "waha" ? channel.status === "ativo" : whatsappConfigured()) {
-      const { data: last } = await supabase.from("messages").select("wamid").eq("conversation_id", id).eq("direction", "entrada").order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (last?.wamid) await markRead(res[0].number_id, last.wamid, res[0].contact_e164);
+      const { data: last } = await supabase.from("messages").select("wamid, imported").eq("conversation_id", id).eq("direction", "entrada").order("created_at", { ascending: false }).limit(1).maybeSingle();
+      // Abrir uma conversa antiga do histórico não manda tique azul para ninguém.
+      if (last?.wamid && !last.imported) await markRead(res[0].number_id, unscopedWamid(last.wamid), addressOf(res[0]));
     }
   }
   return ok(null);
@@ -368,11 +375,12 @@ export const createLeadFromConversation = defineAction(
     const supabase = await createClient();
     const conv = must(await supabase.from("conversations").select("id, contact_e164, lead_id, assignee_id").eq("id", input.conversationId).single()) as {
       id: string;
-      contact_e164: string;
+      contact_e164: string | null;
       lead_id: string | null;
       assignee_id: string | null;
     };
     if (conv.lead_id) return fail("conflict", "Esta conversa já está vinculada a um lead.");
+    if (!conv.contact_e164) return fail("business_rule", "Grupo não vira lead. Ligue o grupo a um cliente.");
     // Evita duplicado: procura o telefone nas duas formas (com e sem o 9º dígito).
     const variants = brPhoneVariants(conv.contact_e164);
     const { data: existing } = await supabase.from("leads").select("id, name").is("deleted_at", null).or(variants.map((v) => `phone_e164.eq.${v},whatsapp_e164.eq.${v}`).join(",")).limit(1).maybeSingle();
@@ -416,4 +424,24 @@ export const setConversationTags = defineAction({ schema: z.object({ id: z.uuid(
   if (input.tagIds.length) must(await supabase.from("conversation_tags").insert(input.tagIds.map((tag_id) => ({ conversation_id: input.id, tag_id }))));
   done(input.id);
   return ok(null);
+});
+
+/** Liga o grupo ou a conversa a um cliente da empresa. */
+export const setConversationClient = defineAction({ schema: z.object({ id: z.uuid(), clientId: z.uuid().nullable() }), permission: "inbox.reply" }, async (input) => {
+  const supabase = await createClient();
+  if (input.clientId) {
+    const { data: client } = await supabase.from("clients").select("id").eq("id", input.clientId).maybeSingle();
+    if (!client) return fail("not_found", "Cliente não encontrado.");
+  }
+  const res = must(await supabase.from("conversations").update({ client_id: input.clientId }).eq("id", input.id).select("id")) as { id: string }[];
+  if (!res.length) return fail("forbidden", "Você não pode alterar esta conversa.");
+  done(input.id);
+  return ok(null, input.clientId ? "Conversa ligada ao cliente." : "Cliente removido da conversa.");
+});
+
+/** Mensagens anteriores às que estão na tela. */
+export const loadOlderMessages = defineAction({ schema: z.object({ conversationId: z.uuid(), before: z.iso.datetime({ offset: true }) }), permission: "inbox.read" }, async ({ conversationId, before }) => {
+  const supabase = await createClient();
+  const rows = must(await supabase.from("messages").select(MESSAGE_COLUMNS).eq("conversation_id", conversationId).lt("created_at", before).order("created_at", { ascending: false }).limit(MESSAGE_PAGE)) as unknown as Message[];
+  return ok({ messages: rows.reverse(), hasMore: rows.length === MESSAGE_PAGE });
 });

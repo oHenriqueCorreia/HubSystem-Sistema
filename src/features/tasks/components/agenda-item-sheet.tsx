@@ -115,6 +115,7 @@ function Details({ entry, onClose, onChanged, owners, meId, canManageEvents, can
         <SheetDescription>
           <span className="first-letter:uppercase">{longDate(entry.start)}</span>, {agendaTime(entry)}
         </SheetDescription>
+        {entry.priority && <p className={cn("text-xs font-semibold", entry.priority === "urgente" ? "text-danger" : entry.priority === "alta" ? "text-warning" : "text-muted-foreground")}>Prioridade {entry.priority === "media" ? "média" : entry.priority}</p>}
       </SheetHeader>
       <div className="grid gap-5 px-4 pb-6">
         <dl className="grid grid-cols-2 gap-3 text-sm">

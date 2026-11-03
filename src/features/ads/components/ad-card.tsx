@@ -50,7 +50,7 @@ export function AdCard({ ad, currency, showCampaign = true }: { ad: AdRow; curre
           {showCampaign && <p className="truncate text-xs text-muted-foreground" title={ad.campaign}>{ad.campaign}</p>}
         </div>
         {ad.image_url && ad.body && <p className="line-clamp-2 text-xs text-muted-foreground">{ad.body}</p>}
-        <dl className="grid grid-cols-3 gap-x-2 gap-y-2 border-t pt-3 text-xs">
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-3 border-t pt-3 text-xs sm:grid-cols-3 [&>div]:min-w-0 [&_dd]:break-normal">
           <div className="grid gap-0.5">
             <dt className="text-muted-foreground">Investimento</dt>
             <dd className="tabular font-semibold">{money(m.spend)}</dd>

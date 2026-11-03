@@ -1,3 +1,4 @@
+import { MobileFilters } from "@/components/app/mobile-filters";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Receipt } from "lucide-react";
@@ -45,6 +46,9 @@ export default async function LancamentosPage({ params, searchParams }: PageProp
     pagina: Number(str(sp.pagina) ?? 1) || 1,
   };
   const today = todayLocal();
+  const monthFrom = `${today.slice(0, 7)}-01`;
+  const monthTo = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  const last90 = new Date(Date.parse(`${today}T12:00:00Z`) - 89 * 86_400_000).toISOString().slice(0, 10);
   const [result, lookups, contracts] = await Promise.all([
     listTransactions(scope, filters, today),
     getLookups(scope),
@@ -57,6 +61,13 @@ export default async function LancamentosPage({ params, searchParams }: PageProp
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && v) q.set(k, v);
     q.set("pagina", String(p));
+    return `/financeiro/${scope}/lancamentos?${q.toString()}`;
+  };
+  const periodHref = (de: string, ate: string) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && v && !["pagina", "de", "ate"].includes(k)) q.set(k, v);
+    q.set("de", de);
+    q.set("ate", ate);
     return `/financeiro/${scope}/lancamentos?${q.toString()}`;
   };
 
@@ -77,7 +88,13 @@ export default async function LancamentosPage({ params, searchParams }: PageProp
 
   return (
     <div className="grid gap-4">
+      <nav aria-label="Atalhos de período" className="flex min-w-0 gap-2 overflow-x-auto pb-1 text-sm">
+        <Button asChild variant={filters.de === monthFrom && filters.ate === monthTo ? "default" : "outline"} size="sm" className="shrink-0"><Link href={periodHref(monthFrom, monthTo)}>Este mês</Link></Button>
+        <Button asChild variant={filters.de === last90 && filters.ate === today ? "default" : "outline"} size="sm" className="shrink-0"><Link href={periodHref(last90, today)}>Últimos 90 dias</Link></Button>
+        {(filters.de || filters.ate) && <Button asChild variant="ghost" size="sm" className="shrink-0"><Link href={`/financeiro/${scope}/lancamentos`}>Todo o período</Link></Button>}
+      </nav>
       <form className="flex flex-wrap items-end gap-3" role="search" aria-label="Filtrar lançamentos">
+        <MobileFilters active={hasFilters ? 1 : 0}>
         <div className="grid gap-1">
           <Label htmlFor="f-q" className="text-xs">
             Descrição
@@ -110,6 +127,7 @@ export default async function LancamentosPage({ params, searchParams }: PageProp
             <Link href={`/financeiro/${scope}/lancamentos`}>Limpar</Link>
           </Button>
         )}
+        </MobileFilters>
         {contracts.length > 0 && <ReceivablesDialog contracts={contracts} lookups={lookups} />}
       </form>
 

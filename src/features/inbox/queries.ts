@@ -1,9 +1,14 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { MESSAGE_COLUMNS, MESSAGE_PAGE, type Message } from "./message-columns";
+
+export type { Message };
 
 export type ConversationListItem = {
   id: string;
-  contact_e164: string;
+  kind: "contato" | "grupo";
+  contact_e164: string | null;
+  group_jid: string | null;
   contact_name: string;
   status: "aberta" | "encerrada";
   waiting_reply: boolean;
@@ -14,23 +19,24 @@ export type ConversationListItem = {
   lead: { id: string; name: string } | null;
   tags: { id: string; name: string; color: string }[];
   number_id: string;
-  preview: { direction: string; type: string; body: string | null; media_name: string | null; status: string } | null;
+  preview: { direction: string; type: string; body: string | null; media_name: string | null; status: string; sender_name: string | null } | null;
 };
 
-export type InboxFilters = { q?: string; status?: "abertas" | "aguardando" | "encerradas" | "todas"; responsavel?: string; etiqueta?: string; numero?: string; de?: string; ate?: string };
+export type InboxFilters = { q?: string; status?: "abertas" | "aguardando" | "grupos" | "encerradas" | "todas"; responsavel?: string; etiqueta?: string; numero?: string; de?: string; ate?: string };
 
 const PAGE = 50;
 
 /** Conversas paginadas (mais recentes primeiro), nunca todas de uma vez. */
 export async function listConversations(f: InboxFilters, userId: string, page = 0) {
   const supabase = await createClient();
-  const cols = `id, number_id, contact_e164, contact_name, status, waiting_reply, unread_count, last_message_at, last_inbound_at, assignee_id,
+  const cols = `id, number_id, kind, contact_e164, group_jid, contact_name, status, waiting_reply, unread_count, last_message_at, last_inbound_at, assignee_id,
     lead:leads(id, name), conversation_tags(tag:tags(id, name, color))${f.etiqueta ? ", tag_filter:conversation_tags!inner(tag_id)" : ""}`;
   let q = supabase.from("conversations").select(cols, { count: "exact" });
   const status = f.status ?? "abertas";
   if (status === "abertas") q = q.eq("status", "aberta");
   if (status === "aguardando") q = q.eq("status", "aberta").eq("waiting_reply", true);
   if (status === "encerradas") q = q.eq("status", "encerrada");
+  if (status === "grupos") q = q.eq("kind", "grupo");
   if (f.responsavel === "eu") q = q.eq("assignee_id", userId);
   else if (f.responsavel === "sem") q = q.is("assignee_id", null);
   else if (f.responsavel) q = q.eq("assignee_id", f.responsavel);
@@ -59,34 +65,16 @@ export async function listConversations(f: InboxFilters, userId: string, page = 
   return { items: items.map((i) => ({ ...i, preview: byId.get(i.id) ?? null })), total: count ?? items.length, hasMore: (count ?? 0) > (page + 1) * PAGE };
 }
 
-export type Message = {
-  id: string;
-  direction: "entrada" | "saida" | "nota";
-  type: string;
-  body: string | null;
-  media_id: string | null;
-  media_mime: string | null;
-  media_name: string | null;
-  status: string;
-  error: string | null;
-  author_id: string | null;
-  important: boolean;
-  created_at: string;
-  wamid: string | null;
-  client_ref: string | null;
-  reply_to_wamid: string | null;
-};
-
 export async function getConversation(id: string) {
   const supabase = await createClient();
   const [conv, msgs] = await Promise.all([
     supabase
       .from("conversations")
-      .select("id, number_id, contact_e164, contact_name, status, assignee_id, last_inbound_at, outcome, lead:leads(id, name, company_name, next_contact_at, contact_opt_out_at, whatsapp_consent_at, owner_id), conversation_tags(tag_id)")
+      .select("id, number_id, kind, contact_e164, group_jid, client_id, contact_name, status, assignee_id, last_inbound_at, outcome, lead:leads(id, name, company_name, next_contact_at, contact_opt_out_at, whatsapp_consent_at, owner_id), conversation_tags(tag_id)")
       .eq("id", id)
       .maybeSingle(),
-    // Últimas 200 mensagens (o suficiente para o atendimento; o histórico completo fica no banco).
-    supabase.from("messages").select("id, direction, type, body, media_id, media_mime, media_name, status, error, author_id, important, created_at, wamid, client_ref, reply_to_wamid").eq("conversation_id", id).order("created_at", { ascending: false }).limit(200),
+    // Últimas mensagens; as anteriores carregam sob demanda na própria conversa.
+    supabase.from("messages").select(MESSAGE_COLUMNS).eq("conversation_id", id).order("created_at", { ascending: false }).limit(MESSAGE_PAGE),
   ]);
   if (conv.error) throw conv.error;
   if (!conv.data) return null;
@@ -95,7 +83,8 @@ export async function getConversation(id: string) {
     ...conv.data,
     lead: (lead ?? null) as { id: string; name: string; company_name: string | null; next_contact_at: string | null; contact_opt_out_at: string | null; whatsapp_consent_at: string | null; owner_id: string | null } | null,
     tagIds: ((conv.data.conversation_tags as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id),
-    messages: ((msgs.data ?? []) as Message[]).reverse(),
+    messages: ((msgs.data ?? []) as unknown as Message[]).reverse(),
+    hasOlder: (msgs.data ?? []).length === MESSAGE_PAGE,
     origin: await getConversationOrigin(id),
   };
 }
@@ -130,14 +119,23 @@ async function getConversationOrigin(conversationId: string): Promise<Conversati
 
 export async function getInboxSetup() {
   const supabase = await createClient();
-  const [numbers, templates] = await Promise.all([
+  const [numbers, templates, imports] = await Promise.all([
     supabase.rpc("my_whatsapp_numbers"),
     supabase.from("whatsapp_templates").select("id, name, language, category, status, components").order("name"),
+    supabase.from("whatsapp_imports").select("number_id, contacts_done, groups_done, messages_done").in("status", ["importando", "aguardando"]),
   ]);
   return {
     numbers: (numbers.data ?? []) as { id: string; provider: "cloud" | "waha"; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null }[],
     templates: (templates.data ?? []) as { id: string; name: string; language: string; category: string | null; status: string; components: { type: string; text?: string }[] }[],
+    activeImports: (imports.data ?? []) as { number_id: string; contacts_done: number; groups_done: number; messages_done: number }[],
   };
+}
+
+/** Clientes para ligar a um grupo ou conversa. */
+export async function listClientOptions() {
+  const supabase = await createClient();
+  const { data } = await supabase.from("clients").select("id, legal_name, lead:leads(name)").order("legal_name").limit(500);
+  return ((data ?? []) as unknown as { id: string; legal_name: string | null; lead: { name: string } | { name: string }[] | null }[]).map((c) => ({ id: c.id, name: c.legal_name || (Array.isArray(c.lead) ? c.lead[0]?.name : c.lead?.name) || "Cliente sem nome" }));
 }
 
 export async function listQuickReplies() {

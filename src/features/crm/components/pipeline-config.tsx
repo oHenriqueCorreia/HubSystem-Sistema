@@ -95,9 +95,9 @@ export function PipelineConfig({ pipeline, counts }: { pipeline: Pipeline; count
             </div>
             <ol className="grid gap-1.5">
               {stages.map((s, i) => (
-                <li key={s.id} className="flex items-center gap-2 rounded-lg border p-2 text-sm">
+                <li key={s.id} className="flex flex-wrap items-center gap-2 rounded-lg border p-2 text-sm">
                   <span className={cn("size-2.5 shrink-0 rounded-full", STAGE_DOT[s.color])} aria-hidden="true" />
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 pointer-coarse:basis-[calc(100%-2rem)]">
                     <span className="block truncate font-medium">{s.name}</span>
                     <span className="text-xs text-muted-foreground">
                       {KIND_LABEL[s.kind]}

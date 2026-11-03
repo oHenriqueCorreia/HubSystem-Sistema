@@ -36,7 +36,7 @@ export function FinanceRings({ rows, size }: { rows: DashboardRow[]; size?: numb
   const payable = sumOf(rows, "despesa", "previsto");
   const total = received + paid;
   return (
-    <div className="grid grid-cols-3 items-start gap-2">
+    <div className="grid min-w-0 grid-cols-1 items-start gap-2 min-[420px]:grid-cols-3">
       <ProgressRing label="Recebido" value={received} total={received + receivable} tone="success" size={size} />
       <ProgressRing label="Pago" value={paid} total={paid + payable} tone="danger" size={size} />
       <ProgressRing label="Entradas no total movimentado" value={received} total={total} tone="primary" size={size} />

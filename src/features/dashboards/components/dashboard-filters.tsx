@@ -2,17 +2,23 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CalendarDays, CalendarRange } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MobileFilters } from "@/components/app/mobile-filters";
 import { cn } from "cn";
 import { PRESETS, type Preset } from "../period";
 
 const STORAGE = "hub:dashboard-periodo";
 
-/** Filtros numa linha acima dos gráficos; o período escolhido é lembrado. */
+const shortDate = (d: string) => new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`)).replace(/\./g, "");
+
+const chip = (on: boolean) => cn("shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors", on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground");
+
+/** Atalhos numa linha só; mês específico e intervalo abrem quando pedidos. O período escolhido é lembrado. */
 export function DashboardFilters({
   preset,
   from,
@@ -33,6 +39,8 @@ export function DashboardFilters({
   const pathname = usePathname();
   const params = useSearchParams();
   const router = useRouter();
+  const pickedMonth = preset === "mes" && Boolean(params.get("mes"));
+  const [panel, setPanel] = useState<"mes" | "custom" | null>(preset === "custom" ? "custom" : pickedMonth ? "mes" : null);
 
   useEffect(() => {
     try {
@@ -50,68 +58,98 @@ export function DashboardFilters({
     q.set("periodo", p);
     q.delete("de");
     q.delete("ate");
+    q.delete("mes");
     return `${pathname}?${q.toString()}`;
   };
+  const keep = extra?.map((e) => params.get(e.name) && <input key={e.name} type="hidden" name={e.name} value={params.get(e.name) ?? ""} />);
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <nav aria-label="Período" className="inline-flex flex-wrap rounded-lg border bg-surface p-0.5">
-        {presets.map(([p, label]) => (
-          <Link
-            key={p}
-            href={href(p)}
-            aria-current={preset === p ? "true" : undefined}
-            className={cn("rounded-md px-3 py-1.5 text-sm font-medium", preset === p ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-          >
-            {label}
-          </Link>
-        ))}
+    <div className="grid min-w-0 gap-2">
+      <nav aria-label="Período" className="flex min-w-0 gap-0.5 overflow-x-auto rounded-lg border bg-surface p-0.5 sm:w-fit sm:flex-wrap">
+        {presets.map(([p, label]) => {
+          const on = preset === p && !pickedMonth;
+          return (
+            <Link key={p} href={href(p)} scroll={false} onClick={() => setPanel(null)} aria-current={on ? "true" : undefined} className={chip(on)}>
+              {label}
+            </Link>
+          );
+        })}
+        <button type="button" aria-expanded={panel === "mes"} onClick={() => setPanel((v) => (v === "mes" ? null : "mes"))} className={cn(chip(pickedMonth), "inline-flex items-center gap-1.5")} aria-current={pickedMonth ? "true" : undefined}>
+          <CalendarDays className="size-4" aria-hidden="true" /> Escolher mês
+        </button>
+        <button type="button" aria-expanded={panel === "custom"} onClick={() => setPanel((v) => (v === "custom" ? null : "custom"))} className={cn(chip(preset === "custom"), "inline-flex items-center gap-1.5")} aria-current={preset === "custom" ? "true" : undefined}>
+          <CalendarRange className="size-4" aria-hidden="true" /> De… até…
+        </button>
       </nav>
-      <form className="flex flex-wrap items-end gap-2" aria-label="Período personalizado">
-        <input type="hidden" name="periodo" value="custom" />
-        {extra?.map((e) => params.get(e.name) && <input key={e.name} type="hidden" name={e.name} value={params.get(e.name) ?? ""} />)}
-        <div className="grid gap-1">
-          <Label htmlFor="d-de" className="text-xs">
-            De
-          </Label>
-          <Input id="d-de" name="de" type="date" defaultValue={from} className="w-40" />
-        </div>
-        <div className="grid gap-1">
-          <Label htmlFor="d-ate" className="text-xs">
-            Até
-          </Label>
-          <Input id="d-ate" name="ate" type="date" defaultValue={to} className="w-40" />
-        </div>
-        <Button type="submit" variant="outline">
-          Aplicar
-        </Button>
-      </form>
+
+      {panel === "mes" && (
+        <form className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-2 rounded-lg border bg-surface p-2 sm:w-fit" aria-label="Selecionar mês">
+          <input type="hidden" name="periodo" value="mes" />
+          {keep}
+          <div className="grid min-w-0 gap-1">
+            <Label htmlFor="d-mes" className="text-xs">
+              Mês
+            </Label>
+            <Input id="d-mes" name="mes" type="month" placeholder="2026-08…" pattern="d{4}-d{2}" defaultValue={from.slice(0, 7)} className="w-full min-w-0 sm:w-44" />
+          </div>
+          <Button type="submit">Ver mês</Button>
+        </form>
+      )}
+      {panel === "custom" && (
+        <form className="grid min-w-0 grid-cols-2 items-end gap-2 rounded-lg border bg-surface p-2 sm:flex sm:w-fit sm:flex-wrap" aria-label="Período personalizado">
+          <input type="hidden" name="periodo" value="custom" />
+          {keep}
+          <div className="grid min-w-0 gap-1">
+            <Label htmlFor="d-de" className="text-xs">
+              De
+            </Label>
+            <Input id="d-de" name="de" type="date" defaultValue={from} className="w-full min-w-0 sm:w-40" />
+          </div>
+          <div className="grid min-w-0 gap-1">
+            <Label htmlFor="d-ate" className="text-xs">
+              Até
+            </Label>
+            <Input id="d-ate" name="ate" type="date" defaultValue={to} className="w-full min-w-0 sm:w-40" />
+          </div>
+          <Button type="submit" className="col-span-2 sm:col-span-1">
+            Aplicar período
+          </Button>
+        </form>
+      )}
+
+      <p className="text-xs text-muted-foreground tabular" aria-live="polite">
+        Mostrando de {shortDate(from)} a {shortDate(to)}
+      </p>
+
       {extra && extra.length > 0 && (
-        <form className="flex flex-wrap items-end gap-2" aria-label="Outros filtros">
+        <form className="flex min-w-0 flex-wrap items-end gap-2" aria-label="Outros filtros">
           <input type="hidden" name="periodo" value={preset} />
+          {pickedMonth && <input type="hidden" name="mes" value={params.get("mes") ?? ""} />}
           {preset === "custom" && (
             <>
               <input type="hidden" name="de" value={from} />
               <input type="hidden" name="ate" value={to} />
             </>
           )}
-          {extra.map((e) => (
-            <div key={e.name} className="grid gap-1">
-              <Label htmlFor={`x-${e.name}`} className="text-xs">
-                {e.label}
-              </Label>
-              <select id={`x-${e.name}`} name={e.name} defaultValue={e.value ?? ""} className="h-9 rounded-md border bg-background px-2 text-sm">
-                {e.options.map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-          <Button type="submit" variant="outline">
-            Filtrar
-          </Button>
+          <MobileFilters active={extra.filter((e) => e.value).length}>
+            {extra.map((e) => (
+              <div key={e.name} className="grid min-w-0 gap-1">
+                <Label htmlFor={`x-${e.name}`} className="text-xs">
+                  {e.label}
+                </Label>
+                <select id={`x-${e.name}`} name={e.name} defaultValue={e.value ?? ""} className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm sm:w-auto">
+                  {e.options.map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+            <Button type="submit" variant="outline" className="max-md:col-span-2">
+              Filtrar
+            </Button>
+          </MobileFilters>
         </form>
       )}
     </div>

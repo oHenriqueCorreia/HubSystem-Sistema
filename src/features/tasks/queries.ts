@@ -180,6 +180,7 @@ export type CalendarEvent = {
   title: string;
   description: string | null;
   kind: "reuniao" | "compromisso" | "bloqueio";
+  priority: "baixa" | "media" | "alta" | "urgente" | null;
   starts_at: string;
   ends_at: string;
   all_day: boolean;
@@ -211,7 +212,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
   const [events, tasks, publications, socialAccounts] = await Promise.all([
     supabase
       .from("calendar_events")
-      .select("id, title, description, kind, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name))")
+      .select("id, title, description, kind, priority, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name))")
       .is("deleted_at", null)
       .lt("starts_at", endIso)
       .gt("ends_at", startIso)
@@ -219,7 +220,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
       .limit(1000),
     supabase
       .from("tasks")
-      .select("id, title, description, due_at, has_time, duration_minutes, owner_id, status, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name)), content:content_items(status), list:task_columns(id, name, board:task_boards(id, name))")
+      .select("id, title, description, priority, due_at, has_time, duration_minutes, owner_id, status, lead_id, client_id, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name)), content:content_items(status), list:task_columns(id, name, board:task_boards(id, name))")
       .is("deleted_at", null)
       .not("due_at", "is", null)
       .gte("due_at", startIso)
@@ -242,6 +243,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
     return {
       id: e.id as string,
       source: "evento",
+      priority: e.priority as AgendaEntry["priority"],
       type: e.kind as AgendaEntry["type"],
       title: e.title as string,
       start: e.starts_at as string,
@@ -274,6 +276,7 @@ export async function listAgendaEntries(range: { start: Date; end: Date }, filte
     return {
       id: t.id as string,
       source: "tarefa",
+      priority: t.priority as AgendaEntry["priority"],
       type: hasTime ? "tarefa" : "prazo",
       title: t.title as string,
       start: due,
@@ -358,7 +361,7 @@ export async function getEvent(id: string): Promise<CalendarEvent | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("calendar_events")
-    .select("id, title, description, kind, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, reminder_minutes, send_updates, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name)), event_attendees(user_id), event_guests(email, name, optional, response_status)")
+    .select("id, title, description, kind, priority, status, starts_at, ends_at, all_day, location, meet_url, owner_id, lead_id, client_id, reminder_minutes, send_updates, lead:leads(id, name), client:clients(id, legal_name, lead:leads(name)), event_attendees(user_id), event_guests(email, name, optional, response_status)")
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();

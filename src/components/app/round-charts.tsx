@@ -1,5 +1,6 @@
 "use client";
 
+import { FitNumber } from "./fit-number";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { cn } from "cn";
@@ -39,9 +40,9 @@ export function Donut({ rows, money = true, centerLabel = "Total", empty = "Nada
     <div className={cn("grid items-center gap-3", !compact && "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]")}>
       <div className="relative min-w-0">
         <DonutPlot slices={slices} active={active} onActive={setActive} height={height} />
-        <div className="pointer-events-none absolute inset-0 grid place-content-center px-[22%] text-center" aria-hidden="true">
+        <div className="@container pointer-events-none absolute inset-y-0 left-1/2 grid w-[56%] max-w-44 -translate-x-1/2 place-content-center text-center" aria-hidden="true">
           <span className="truncate text-xs text-muted-foreground">{current ? current.name : centerLabel}</span>
-          <span className="text-lg leading-tight font-semibold tabular">{current ? fmt(current.value) : fmt(counted)}</span>
+          <FitNumber text={current ? fmt(current.value) : fmt(counted)} maxRem={1.125} className="leading-tight" />
           {current && <span className="text-xs text-muted-foreground tabular">{pct(current.percent)}</span>}
         </div>
       </div>
@@ -55,7 +56,7 @@ export function Donut({ rows, money = true, centerLabel = "Total", empty = "Nada
           >
             <span className="size-2.5 self-center rounded-sm" style={{ background: COLORS[i % COLORS.length] }} aria-hidden="true" />
             <span className="break-words">{s.name}</span>
-            <span className="text-right tabular">
+            <span className="text-right whitespace-nowrap tabular">
               {fmt(s.value)} <span className="text-muted-foreground">{pct(s.percent)}</span>
             </span>
           </li>
@@ -106,7 +107,7 @@ export function ProgressRing({ label, value, total, tone = "primary", hint, size
   const circumference = 2 * Math.PI * r;
   const visible = !motion || shown ? percent : 0;
   return (
-    <div className="grid justify-items-center gap-1.5 text-center" role="img" aria-label={`${label}: ${Math.round(percent)}%. ${formatBRL(value)} de ${formatBRL(total)}.`}>
+    <div className="grid min-w-0 justify-items-center gap-1.5 text-center" role="img" aria-label={`${label}: ${Math.round(percent)}%. ${formatBRL(value)} de ${formatBRL(total)}.`}>
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--muted)" strokeWidth={stroke} />
@@ -128,7 +129,14 @@ export function ProgressRing({ label, value, total, tone = "primary", hint, size
         </span>
       </div>
       <p className="text-xs font-medium">{label}</p>
-      <p className="text-xs text-muted-foreground tabular">{hint ?? `${formatBRL(value)} de ${formatBRL(total)}`}</p>
+      <p className="grid min-w-0 text-xs text-muted-foreground tabular">
+        {hint ?? (
+          <>
+            <span className="whitespace-nowrap">{formatBRL(value)}</span>
+            <span className="whitespace-nowrap">de {formatBRL(total)}</span>
+          </>
+        )}
+      </p>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { PasswordInput } from "@/components/app/password-input";
 import { connectWhatsAppNumber, disconnectWhatsAppNumber, syncWhatsAppTemplates } from "../actions";
+import { HistoryDialog } from "./history-import";
 import { QrConnectDialog } from "./qr-connect";
 
 type WaNumber = { id: string; provider: "cloud" | "waha"; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null };
@@ -47,6 +48,7 @@ export function WhatsAppSetup({ numbers, configured, qrConfigured, canManage, te
             </div>
             <Badge variant={n.status === "ativo" ? "default" : "outline"}>{STATUS_LABEL[n.status] ?? n.status}</Badge>
             {canManage && qr && n.status !== "ativo" && <QrConnectDialog numberId={n.id} needsServer={n.status === "desconectado" && !qrConfigured} newSession={n.status === "desconectado"} label="Reconectar" variant="outline" />}
+            {canManage && qr && (n.status === "ativo" || n.status === "aguardando_qr") && <HistoryDialog numberId={n.id} />}
             {canManage && !qr && n.status === "ativo" && (
               <Button
                 variant="outline"

@@ -9,7 +9,8 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { publicEnv } from "@/lib/env";
 import { fail, ok } from "@/domain/shared/result";
 import { displayPhoneFromMe, sessionNameFor, validWahaUrl } from "@/domain/whatsapp/waha";
-import { wahaPing, wahaQr, wahaRestart, wahaSession, wahaStartSession, type WahaConn } from "@/lib/waha";
+import { wahaHistoryReady, wahaPing, wahaQr, wahaResetForHistory, wahaRestart, wahaSession, wahaStartSession, type WahaConn } from "@/lib/waha";
+import { runImportStep } from "@/lib/whatsapp-import";
 
 const webhookUrl = (numberId: string) => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/whatsapp/waha/${numberId}`;
 
@@ -135,4 +136,72 @@ export const reconnectQrNumber = defineAction({ schema: z.object({ id: z.uuid() 
   await createAdminClient().from("whatsapp_numbers").update({ status: "aguardando_qr", last_error: null, updated_at: new Date().toISOString() }).eq("id", id);
   refresh();
   return ok(null);
+});
+
+export type ImportJob = { id: string; status: "importando" | "aguardando" | "concluida" | "erro" | "cancelada"; include_contacts: boolean; include_groups: boolean; pass: number; contacts_done: number; groups_done: number; skipped: number; messages_done: number; last_error: string | null };
+const JOB_COLUMNS = "id, status, include_contacts, include_groups, pass, contacts_done, groups_done, skipped, messages_done, last_error";
+/** Quanto cada chamada trabalha. A tela chama de novo até terminar; sem a tela, a rodada automática continua. */
+const STEP_MS = 25_000;
+
+async function latestJob(numberId: string) {
+  const { data } = await createAdminClient().from("whatsapp_imports").select(JOB_COLUMNS).eq("number_id", numberId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  return data as ImportJob | null;
+}
+
+/** Diz se o número já pode compilar ou se precisa ler o QR Code de novo, e como está a última compilação. */
+export const getHistoryState = defineAction({ schema: z.object({ id: z.uuid() }), permission: "inbox.manage" }, async ({ id }, { user }) => {
+  const number = await loadQrNumber(id, user.organizationId);
+  if (!number) return fail("not_found", "Número não encontrado.");
+  try {
+    const session = await wahaSession(number.conn);
+    return ok({ ready: wahaHistoryReady(session) && session.status === "WORKING", job: await latestJob(id) });
+  } catch {
+    return fail("network", "Não foi possível falar com o servidor do WhatsApp. Confira se ele está ligado.");
+  }
+});
+
+/** O histórico só vem no momento do QR Code: sai do aparelho e prepara uma leitura nova. */
+export const prepareHistorySync = defineAction({ schema: z.object({ id: z.uuid() }), permission: "inbox.manage" }, async ({ id }, { user }) => {
+  const number = await loadQrNumber(id, user.organizationId);
+  if (!number) return fail("not_found", "Número não encontrado.");
+  if (number.status === "desconectado") return fail("business_rule", "Este número foi desconectado. Conecte de novo pelo QR Code.");
+  try {
+    await wahaResetForHistory(number.conn, webhookUrl(id), number.secret);
+  } catch {
+    return fail("network", "Não foi possível falar com o servidor do WhatsApp. Confira se ele está ligado.");
+  }
+  await createAdminClient().from("whatsapp_numbers").update({ status: "aguardando_qr", last_error: null, updated_at: new Date().toISOString() }).eq("id", id);
+  refresh();
+  return ok(null);
+});
+
+export const startHistoryImport = defineAction({ schema: z.object({ id: z.uuid(), contacts: z.boolean(), groups: z.boolean() }).refine((v) => v.contacts || v.groups, "Escolha conversas, grupos ou os dois."), permission: "inbox.manage" }, async ({ id, contacts, groups }, { user }) => {
+  const number = await loadQrNumber(id, user.organizationId);
+  if (!number) return fail("not_found", "Número não encontrado.");
+  const admin = createAdminClient();
+  const { data: created, error } = await admin
+    .from("whatsapp_imports")
+    .insert({ organization_id: user.organizationId, number_id: id, include_contacts: contacts, include_groups: groups, created_by: user.id })
+    .select(JOB_COLUMNS)
+    .maybeSingle();
+  // Já existe uma em andamento: acompanha a que está rodando em vez de começar outra.
+  if (error && error.code !== "23505") return fail("network", "Não foi possível começar a compilação.");
+  const job = (created as ImportJob | null) ?? (await latestJob(id));
+  return job ? ok(job) : fail("network", "Não foi possível começar a compilação.");
+});
+
+export const continueHistoryImport = defineAction({ schema: z.object({ id: z.uuid(), jobId: z.uuid() }), permission: "inbox.manage" }, async ({ id, jobId }, { user }) => {
+  const admin = createAdminClient();
+  const { data: job } = await admin.from("whatsapp_imports").select("organization_id, number_id").eq("id", jobId).maybeSingle();
+  if (!job || job.organization_id !== user.organizationId || job.number_id !== id) return fail("not_found", "Compilação não encontrada.");
+  await runImportStep(jobId, STEP_MS);
+  revalidatePath("/atendimento");
+  const { data } = await admin.from("whatsapp_imports").select(JOB_COLUMNS).eq("id", jobId).single();
+  return ok(data as ImportJob);
+});
+
+export const cancelHistoryImport = defineAction({ schema: z.object({ jobId: z.uuid() }), permission: "inbox.manage" }, async ({ jobId }, { user }) => {
+  await createAdminClient().from("whatsapp_imports").update({ status: "cancelada", finished_at: new Date().toISOString(), lease_until: null }).eq("id", jobId).eq("organization_id", user.organizationId).in("status", ["importando", "aguardando"]);
+  revalidatePath("/atendimento");
+  return ok(null, "Compilação interrompida. O que já entrou continua no Atendimento.");
 });

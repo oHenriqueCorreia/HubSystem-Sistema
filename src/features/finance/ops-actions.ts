@@ -9,6 +9,7 @@ import { SendBlocked, sendAutomated } from "@/lib/inbox-send";
 import { fail, ok } from "@/domain/shared/result";
 import { brPhoneVariants, normalizePhone } from "@/domain/shared/phone";
 import { buildChargeMessage, type PaymentProfile } from "@/domain/finance/charge";
+import { canRepeatMonthly } from "@/domain/finance/bulk";
 import { likelyDuplicate, matchCandidates, suggestRule, type CategoryRule, type MatchTxn } from "@/domain/finance/statement";
 import type { CurrentUser } from "@/lib/auth/dal";
 import { getLookups, prepareScope } from "./queries";
@@ -33,11 +34,58 @@ export const getTransferOptions = defineAction({ schema: z.object({ to: scopeEnu
   return ok({ accounts: lookups.accounts.filter((a) => a.is_active), categories: lookups.categories.filter((c) => c.is_active) });
 });
 
-export const transferTransaction = defineAction({ schema: z.object({ id: z.uuid(), categoryId: z.uuid().nullable(), accountId: z.uuid().nullable() }) }, async (input) => {
+export const transferTransaction = defineAction({ schema: z.object({ id: z.uuid(), categoryId: z.uuid().nullable(), accountId: z.uuid().nullable(), recurring: z.boolean().default(false) }) }, async (input) => {
   const supabase = await createClient();
-  const to = must(await supabase.rpc("transfer_transaction_scope", { p_id: input.id, p_category: input.categoryId, p_account: input.accountId })) as FinanceScope;
+  const to = must(await supabase.rpc(input.recurring ? "transfer_personal_to_company_recurring" : "transfer_transaction_scope", { p_id: input.id, p_category: input.categoryId, p_account: input.accountId })) as FinanceScope;
   refresh();
-  return ok({ to }, `Lançamento transferido para ${to === "empresa" ? "a empresa" : "o pessoal"}. Saldos e gráficos das duas áreas foram atualizados.`);
+  return ok({ to }, input.recurring ? "Receita transferida para a empresa e recorrência mensal criada." : `Lançamento transferido para ${to === "empresa" ? "a empresa" : "o pessoal"}. Saldos e gráficos das duas áreas foram atualizados.`);
+});
+
+// Mensagens escritas pelas regras do banco já explicam o motivo; o resto vira uma frase genérica.
+const reasonOf = (error: { code?: string; message?: string }) => (["P0001", "P0002", "42501"].includes(error.code ?? "") && error.message ? error.message : "Não foi possível mover este lançamento.");
+
+const bulkIds = z.array(z.uuid()).min(1, "Selecione ao menos um lançamento.").max(100, "Selecione até 100 lançamentos por vez.");
+
+/** Corrige vários lançamentos na área errada. Cada um é independente: um problema não trava os outros. */
+export const bulkTransferTransactions = defineAction(
+  { schema: z.object({ ids: bulkIds, revenueCategoryId: z.uuid().nullable(), expenseCategoryId: z.uuid().nullable(), accountId: z.uuid().nullable(), recurring: z.boolean().default(false) }) },
+  async (input) => {
+    const supabase = await createClient();
+    const rows = must(await supabase.from("financial_transactions").select("id, kind, status, description, contract_id, recurrence_id, installment_group_id, scope").in("id", input.ids).is("deleted_at", null)) as { id: string; kind: string; status: string; description: string; contract_id: string | null; recurrence_id: string | null; installment_group_id: string | null; scope: FinanceScope }[];
+    const failed: { description: string; reason: string }[] = [];
+    let moved = 0;
+    let repeating = 0;
+    for (const t of rows) {
+      const repeat = input.recurring && t.scope === "pessoal" && canRepeatMonthly(t);
+      const { error } = await supabase.rpc(repeat ? "transfer_personal_to_company_recurring" : "transfer_transaction_scope", { p_id: t.id, p_category: t.kind === "receita" ? input.revenueCategoryId : input.expenseCategoryId, p_account: input.accountId });
+      if (error) {
+        failed.push({ description: t.description, reason: reasonOf(error) });
+        continue;
+      }
+      moved++;
+      if (repeat) repeating++;
+    }
+    if (moved) refresh();
+    const words = [`${moved} ${moved === 1 ? "lançamento movido" : "lançamentos movidos"}`];
+    if (repeating) words.push(`${repeating} ${repeating === 1 ? "virou receita recorrente" : "viraram receitas recorrentes"}`);
+    return ok({ moved, failed }, `${words.join(", ")}.`);
+  },
+);
+
+export const bulkDeleteTransactions = defineAction({ schema: z.object({ ids: bulkIds }) }, async ({ ids }) => {
+  const supabase = await createClient();
+  const res = must(await supabase.from("financial_transactions").update({ deleted_at: new Date().toISOString() }).in("id", ids).is("deleted_at", null).select("id")) as { id: string }[];
+  if (!res.length) return fail("forbidden", "Você não pode excluir estes lançamentos.");
+  refresh();
+  const skipped = ids.length - res.length;
+  return ok({ deleted: res.map((r) => r.id) }, `${res.length} ${res.length === 1 ? "lançamento excluído" : "lançamentos excluídos"}.${skipped ? ` ${skipped} sem permissão para excluir.` : ""}`);
+});
+
+export const bulkRestoreTransactions = defineAction({ schema: z.object({ ids: bulkIds }) }, async ({ ids }) => {
+  const supabase = await createClient();
+  must(await supabase.from("financial_transactions").update({ deleted_at: null }).in("id", ids));
+  refresh();
+  return ok(null, "Lançamentos restaurados.");
 });
 
 export const getTxnHistory = defineAction({ schema: z.object({ id: z.uuid() }) }, async ({ id }) => {

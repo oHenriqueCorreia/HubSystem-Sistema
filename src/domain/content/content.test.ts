@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { driveDownloadUrl, driveFileId, formatProblem, isAuthError, metaErrorMessage, publishProblem } from "./index";
+import { driveDownloadUrl, driveFileId, formatProblem, storyVideoProblem, isAuthError, metaErrorMessage, publishProblem } from "./index";
 
 describe("formatos", () => {
   it("post leva imagem; vídeo e reels levam um vídeo", () => {
@@ -7,6 +7,14 @@ describe("formatos", () => {
     expect(formatProblem("post", { images: 0, videos: 1, caption: "" })).not.toBeNull();
     expect(formatProblem("reels", { images: 0, videos: 1, caption: "" })).toBeNull();
     expect(formatProblem("reels", { images: 0, videos: 0, caption: "" })).not.toBeNull();
+    expect(formatProblem("stories", { images: 1, videos: 0, caption: "" })).toBeNull();
+    expect(formatProblem("stories", { images: 0, videos: 1, caption: "" })).toBeNull();
+    expect(formatProblem("stories", { images: 0, videos: 0, caption: "" })).not.toBeNull();
+    expect(formatProblem("stories", { images: 2, videos: 0, caption: "" })).not.toBeNull();
+    expect(formatProblem("stories", { images: 1, videos: 1, caption: "" })).not.toBeNull();
+    expect(storyVideoProblem(30)).toBeNull();
+    expect(storyVideoProblem(90)).toMatch(/60 segundos/);
+    expect(storyVideoProblem(1)).toMatch(/3 segundos/);
     expect(formatProblem("video", { images: 1, videos: 1, caption: "" })).not.toBeNull();
   });
 });

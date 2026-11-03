@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avatarColor, chatInitials, dayLabel, groupMessagesByDay, listTime, messagePreview, wahaReplyId } from "./chat";
+import { avatarColor, chatInitials, dayLabel, groupMessagesByDay, listTime, messagePreview, wahaReplyId, chatTitle, historyFileNote, senderLabel } from "./chat";
 
 describe("avatar", () => {
   it("a mesma pessoa sempre tem a mesma cor", () => {
@@ -50,5 +50,25 @@ describe("citação", () => {
   it("monta o id no formato do WAHA", () => {
     expect(wahaReplyId(false, "5548@c.us", "ABC")).toBe("false_5548@c.us_ABC");
     expect(wahaReplyId(true, "5548@c.us", "ABC")).toBe("true_5548@c.us_ABC");
+  });
+});
+
+describe("grupos e histórico", () => {
+  const phone = (e: string) => `tel ${e}`;
+  it("mostra quem escreveu no grupo", () => {
+    expect(senderLabel("Ana", "5548@c.us", phone)).toBe("Ana");
+    expect(senderLabel(null, "5548999990000@c.us", phone)).toBe("tel +5548999990000");
+    expect(senderLabel(null, "123@lid", phone)).toBe("Participante");
+    expect(senderLabel(null, null, phone)).toBe("Participante");
+  });
+  it("avisa quando o arquivo antigo não veio", () => {
+    expect(historyFileNote({ imported: true, media_id: null, type: "image" })).toBe("Foto do histórico, sem o arquivo");
+    expect(historyFileNote({ imported: true, media_id: null, type: "text" })).toBeNull();
+    expect(historyFileNote({ imported: false, media_id: null, type: "image" })).toBeNull();
+  });
+  it("grupo sem nome não quebra sem telefone", () => {
+    expect(chatTitle({ contact_name: "", contact_e164: null }, phone)).toBe("Grupo sem nome");
+    expect(chatTitle({ contact_name: "Empresa X", contact_e164: null }, phone)).toBe("Empresa X");
+    expect(chatTitle({ contact_name: "", contact_e164: "+55" }, phone)).toBe("tel +55");
   });
 });

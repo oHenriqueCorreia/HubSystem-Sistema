@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import {
   DndContext,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
-  closestCorners,
   useDroppable,
   useSensor,
   useSensors,
@@ -37,6 +36,7 @@ import { STAGE_DOT, TAG_COLOR_LABEL } from "@/features/crm/components/chips";
 import type { TagColor } from "@/features/crm/types";
 import { TAG_COLORS } from "@/features/tags/schemas";
 import { cn } from "cn";
+import { pointerFirst } from "@/lib/dnd";
 import { dayKey } from "@/domain/calendar";
 import { todayLocal } from "@/domain/shared/dates";
 import { positionBetween } from "@/features/crm/types";
@@ -178,8 +178,10 @@ function TaskBoard({
     setCols(initial());
   }
 
+  const [dragging, setDragging] = useState(false);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    // Mouse e toque separados: assim o dedo que só quer rolar a tela não pega a tarefa.
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
@@ -219,11 +221,17 @@ function TaskBoard({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragEnd={onDragEnd}
+      autoScroll={AUTO_SCROLL}
+      collisionDetection={pointerFirst}
+      onDragStart={() => setDragging(true)}
+      onDragCancel={() => setDragging(false)}
+      onDragEnd={(e) => {
+        setDragging(false);
+        onDragEnd(e);
+      }}
       accessibility={{ screenReaderInstructions: { draggable: "Pressione espaço para pegar, setas para mover entre listas e espaço para soltar." } }}
     >
-      <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 sm:-mx-6 sm:snap-none sm:px-6">
+      <div className={cn("-mx-4 flex scroll-pl-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 sm:-mx-6 sm:px-6", !dragging && "snap-x snap-mandatory sm:snap-none")}>
         {columns.map((c, i) => (
           <BoardColumn key={c.id} column={c} count={cols[c.id]?.length ?? 0} columns={columns} index={i} canConfigure={canConfigure}>
             <SortableContext items={(cols[c.id] ?? []).map((t) => t.id)} strategy={verticalListSortingStrategy}>
@@ -500,6 +508,9 @@ function DeleteColumnDialog({ column, count, columns, onClose }: { column: TaskC
     </AlertDialog>
   );
 }
+
+// Devagar o bastante para soltar na etapa vizinha: o padrão atravessa o quadro inteiro em menos de um segundo.
+const AUTO_SCROLL = { acceleration: 4, interval: 12, threshold: { x: 0.15, y: 0.15 } };
 
 function SortableTask({ task, now, onOpen }: { task: Task; now: number; onOpen: (t: Task) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });

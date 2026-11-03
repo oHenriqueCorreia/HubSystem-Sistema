@@ -1,3 +1,5 @@
+export type AgendaPriority = "baixa" | "media" | "alta" | "urgente";
+
 import { dayKey } from "./index";
 
 export type AgendaType = "reuniao" | "compromisso" | "bloqueio" | "tarefa" | "prazo" | "publicacao";
@@ -11,6 +13,7 @@ export type AgendaEntry = {
   start: string;
   end: string;
   allDay: boolean;
+  priority?: AgendaPriority | null;
   ownerId: string | null;
   status: string;
   statusLabel: string;
@@ -47,7 +50,7 @@ export function statusGroup(entry: Pick<AgendaEntry, "status">): AgendaStatusGro
   return "aberto";
 }
 
-export type AgendaFilter = { q?: string; type?: AgendaType | null; ownerIds?: string[]; clientId?: string | null; status?: AgendaStatusGroup | null };
+export type AgendaFilter = { q?: string; type?: AgendaType | null; priority?: AgendaPriority | null; ownerIds?: string[]; clientId?: string | null; status?: AgendaStatusGroup | null };
 
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
@@ -55,6 +58,7 @@ export function filterAgenda(entries: AgendaEntry[], f: AgendaFilter) {
   const q = f.q?.trim() ? normalize(f.q.trim()) : null;
   return entries.filter((e) => {
     if (f.type && e.type !== f.type) return false;
+    if (f.priority && e.priority !== f.priority) return false;
     if (f.ownerIds?.length && !(e.ownerId && f.ownerIds.includes(e.ownerId))) return false;
     if (f.clientId && e.clientId !== f.clientId) return false;
     if (f.status ? statusGroup(e) !== f.status : statusGroup(e) === "cancelado") return false;

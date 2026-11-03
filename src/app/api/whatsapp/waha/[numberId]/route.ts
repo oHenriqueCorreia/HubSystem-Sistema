@@ -2,9 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decrypt } from "@/lib/crypto";
 import { isOptOut } from "@/lib/whatsapp";
-import { validWahaSignature, wahaDownload } from "@/lib/waha";
+import { validWahaSignature, wahaDownload, wahaGroupName } from "@/lib/waha";
 import { brPhoneVariants } from "@/domain/shared/phone";
-import { bareMessageId, displayPhoneFromMe, parseWahaEvent, type WahaMedia } from "@/domain/whatsapp/waha";
+import { bareMessageId, displayPhoneFromMe, parseWahaEvent, scopedWamid, type WahaMedia } from "@/domain/whatsapp/waha";
 
 export const maxDuration = 60;
 
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const raw = await request.text();
 
   const admin = createAdminClient();
-  const { data: number } = await admin.from("whatsapp_numbers").select("id, organization_id, provider, status, webhook_secret_enc, waha_url, token_enc").eq("id", numberId).maybeSingle();
+  const { data: number } = await admin.from("whatsapp_numbers").select("id, organization_id, provider, status, webhook_secret_enc, waha_url, waha_session, token_enc").eq("id", numberId).maybeSingle();
   if (!number || number.provider !== "waha" || !number.webhook_secret_enc) return new NextResponse(null, { status: 404 });
 
   let secret = "";
@@ -81,7 +81,43 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   if (event.kind === "ack") {
-    await admin.rpc("whatsapp_status", { p_wamid: event.wamid, p_status: event.status, p_error: null });
+    await admin.rpc("whatsapp_status", { p_wamid: event.group ? scopedWamid(number.id, event.wamid) : event.wamid, p_status: event.status, p_error: null });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (event.kind === "group_message") {
+    const wamid = scopedWamid(number.id, event.wamid);
+    const { data: known } = await admin.from("messages").select("id").eq("wamid", wamid).maybeSingle();
+    if (known) return NextResponse.json({ ok: true });
+    const conn = { url: number.waha_url as string, key: decrypt(number.token_enc) };
+    let mediaId: string | null = null;
+    if (event.media) {
+      try {
+        mediaId = await storeMedia(conn, number.organization_id, number.id, event.wamid, event.media);
+      } catch {
+        console.error("[waha-webhook] falha ao guardar mídia");
+      }
+    }
+    // O nome do grupo não vem na mensagem: busca uma vez, na primeira.
+    const { data: existing } = await admin.from("conversations").select("contact_name").eq("number_id", number.id).eq("group_jid", event.groupJid).maybeSingle();
+    const groupName = existing?.contact_name ? null : await wahaGroupName({ ...conn, session: number.waha_session as string }, event.groupJid).catch(() => null);
+    const { error } = await admin.rpc("whatsapp_group_message", {
+      p_number: number.id,
+      p_group_jid: event.groupJid,
+      p_group_name: groupName,
+      p_wamid: wamid,
+      p_from_me: event.fromMe,
+      p_type: event.type,
+      p_body: event.body,
+      p_media_id: mediaId,
+      p_media_mime: event.media?.mime ?? null,
+      p_media_name: event.media?.name ?? null,
+      p_at: event.at,
+      p_sender_jid: event.senderJid,
+      p_sender_name: event.senderName || null,
+      p_reply_to: event.replyTo ? scopedWamid(number.id, bareMessageId(event.replyTo)) : null,
+    });
+    if (error) console.error("[waha-webhook] falha ao gravar mensagem de grupo", error.code);
     return NextResponse.json({ ok: true });
   }
 

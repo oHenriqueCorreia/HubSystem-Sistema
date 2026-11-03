@@ -1,5 +1,6 @@
 "use client";
 
+import { MobileFilters } from "@/components/app/mobile-filters";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -91,6 +92,7 @@ export function TaskFilters({
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar tarefas…" aria-label="Buscar tarefas" className="pl-8" />
       </div>
+      <MobileFilters active={["responsavel", "periodo", "prioridade", "etiqueta", "status"].filter((k) => params.get(k)).length}>
       {canSeeOthers && (
         <Select value={params.get("responsavel") ?? ALL} onValueChange={(v) => update("responsavel", v)}>
           <SelectTrigger className="w-44" aria-label="Responsável">
@@ -156,6 +158,7 @@ export function TaskFilters({
           <SelectItem value="todas">Todas</SelectItem>
         </SelectContent>
       </Select>
+      </MobileFilters>
       {pending && <LoaderCircle className="size-4 animate-spin text-muted-foreground" aria-label="Atualizando" />}
     </div>
   );

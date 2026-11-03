@@ -7,9 +7,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
-  closestCorners,
   useDroppable,
   useSensor,
   useSensors,
@@ -40,6 +39,7 @@ import { formatPhone } from "@/domain/shared/phone";
 import { formatRelative } from "@/domain/shared/dates";
 import { leadMapsUrl } from "@/domain/crm/maps";
 import { cn } from "cn";
+import { pointerFirst } from "@/lib/dnd";
 import { moveDeal } from "../actions";
 import { isStale, positionBetween, type BoardCard, type CrmLookups, type Pipeline, type Stage } from "../types";
 import { NextContactBadge, STAGE_DOT, TagChip } from "./chips";
@@ -54,6 +54,9 @@ function group(cards: BoardCard[], stages: Stage[]): Columns {
   for (const k of Object.keys(cols)) cols[k].sort((a, b) => a.position - b.position);
   return cols;
 }
+
+// Devagar o bastante para soltar na etapa vizinha: o padrão atravessa o quadro inteiro em menos de um segundo.
+const AUTO_SCROLL = { acceleration: 4, interval: 12, threshold: { x: 0.15, y: 0.15 } };
 
 export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipeline; cards: BoardCard[]; lookups: CrmLookups; canMove: boolean }) {
   const router = useRouter();
@@ -80,7 +83,8 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
   const ownerById = useMemo(() => new Map(lookups.owners.map((o) => [o.id, o.full_name || o.email])), [lookups]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    // Mouse e toque separados: assim o dedo que só quer rolar a tela não pega o cartão.
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
@@ -215,7 +219,8 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
     <>
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        autoScroll={AUTO_SCROLL}
+        collisionDetection={pointerFirst}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
@@ -231,7 +236,7 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
           },
         }}
       >
-        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 sm:-mx-6 sm:snap-none sm:px-6" role="list" aria-label={`Etapas do funil ${pipeline.name}`}>
+        <div className={cn("-mx-4 flex scroll-pl-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 sm:-mx-6 sm:px-6", !activeId && "snap-x snap-mandatory sm:snap-none")} role="list" aria-label={`Etapas do funil ${pipeline.name}`}>
           {pipeline.stages.map((stage) => {
             const list = columns[stage.id] ?? [];
             const limit = limits[stage.id] ?? PAGE;
@@ -385,7 +390,7 @@ function SortableCard({
           canMove ? (
             <button
               type="button"
-              className="-ml-1 cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
+              className="-ml-1 cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing pointer-coarse:p-2.5"
               aria-label={`Arrastar ${card.lead.name}`}
               {...attributes}
               {...listeners}

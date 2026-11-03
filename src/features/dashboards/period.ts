@@ -54,8 +54,8 @@ export function resolvePeriod(sp: Record<string, string | string[] | undefined>)
       to = typeof sp.ate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.ate) ? sp.ate : today;
       break;
     default:
-      from = monthStart(today);
-      to = monthEnd(today);
+      from = typeof sp.mes === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.mes) ? `${sp.mes}-01` : monthStart(today);
+      to = monthEnd(from);
   }
   // Período anterior de mesma duração (para comparação).
   const days = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
@@ -78,6 +78,7 @@ export const FINANCE_PRESETS: [Preset, string][] = [
   ["mes", "Este mês"],
   ["proximo_mes", "Próximo mês"],
   ["mes_passado", "Mês passado"],
+  ["90d", "Últimos 90 dias"],
   ["ano", "Este ano"],
 ];
 

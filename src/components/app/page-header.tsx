@@ -44,7 +44,8 @@ export function PageHeader({
     >
       <div className="grid min-w-0 gap-1">
         {breadcrumbs && breadcrumbs.length > 0 && (
-          <Breadcrumb>
+          // Trilha sem link não leva a lugar nenhum: no celular, só ocuparia espaço.
+          <Breadcrumb className={breadcrumbs.some((c) => c.href) ? undefined : "max-md:hidden"}>
             <BreadcrumbList>
               {breadcrumbs.map((c, i) => (
                 <Fragment key={`${c.label}-${i}`}>
@@ -66,7 +67,7 @@ export function PageHeader({
         <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
         {description && <p className="max-w-prose text-sm text-muted-foreground">{description}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 max-md:[&>*]:flex-auto">{actions}</div>}
     </header>
   );
 }

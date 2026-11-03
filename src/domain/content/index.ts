@@ -1,11 +1,24 @@
 export type ContentStatus = "em_producao" | "aguardando_aprovacao" | "ajustes_solicitados" | "aprovado" | "agendado" | "publicado" | "erro";
 export type SchedulePlatform = "facebook" | "instagram";
-export type ContentFormat = "post" | "video" | "reels";
+export const CONTENT_FORMATS = ["post", "video", "reels", "stories"] as const;
+export type ContentFormat = (typeof CONTENT_FORMATS)[number];
 
-export const FORMAT_LABEL: Record<ContentFormat, string> = { post: "Post", video: "Vídeo", reels: "Reels" };
+export const FORMAT_LABEL: Record<ContentFormat, string> = { post: "Post", video: "Vídeo", reels: "Reels", stories: "Stories" };
+
+/** Limites de duração do vídeo de stories na Meta. */
+export const STORY_MIN_SECONDS = 3;
+export const STORY_MAX_SECONDS = 60;
+
+export function storyVideoProblem(seconds: number): string | null {
+  if (!Number.isFinite(seconds)) return null;
+  if (seconds > STORY_MAX_SECONDS) return `Stories aceitam vídeo de até ${STORY_MAX_SECONDS} segundos. Este tem ${Math.round(seconds)}.`;
+  if (seconds < STORY_MIN_SECONDS) return `Stories pedem vídeo de pelo menos ${STORY_MIN_SECONDS} segundos.`;
+  return null;
+}
 
 /** O que cada formato pede, antes de olhar a plataforma. */
 export function formatProblem(format: ContentFormat, m: PublishMedia): string | null {
+  if (format === "stories") return m.images + m.videos === 1 ? null : "Stories leva uma imagem ou um vídeo, um de cada vez.";
   if (format === "post") return m.videos > 0 ? "Post leva imagens. Para vídeo, crie um Vídeo ou Reels." : null;
   if (m.images > 0) return `${FORMAT_LABEL[format]} leva só o vídeo: remova as imagens.`;
   if (m.videos !== 1) return `${FORMAT_LABEL[format]} precisa de um vídeo.`;

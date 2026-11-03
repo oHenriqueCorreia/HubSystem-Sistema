@@ -66,11 +66,12 @@ export async function socialRevoke(userToken: string) {
   await call("/me/permissions", { method: "POST", token: userToken, body: { method: "delete" } }).catch(() => null);
 }
 
-export type MediaPlan = { imageUrls: string[]; videoUrl: string | null; caption: string; format: "post" | "video" | "reels" };
+export type MediaPlan = { imageUrls: string[]; videoUrl: string | null; caption: string; format: "post" | "video" | "reels" | "stories" };
 export type PublishResult = { done: true; externalId: string; permalink: string | null } | { done: false; containerId: string };
 
 export async function publishFacebook(pageId: string, token: string, m: MediaPlan): Promise<PublishResult> {
   const link = (id: string) => `https://www.facebook.com/${id}`;
+  if (m.format === "stories") return publishFacebookStory(pageId, token, m);
   if (m.videoUrl && m.format === "reels") {
     // Reels do Facebook: abre o envio, a Meta baixa o arquivo do link e depois publica.
     const started = await call<{ video_id: string; upload_url?: string }>(`/${pageId}/video_reels`, { method: "POST", token, body: { upload_phase: "start" } });
@@ -102,8 +103,36 @@ export async function publishFacebook(pageId: string, token: string, m: MediaPla
   return { done: true, externalId: r.id, permalink: link(r.id) };
 }
 
+/** Stories da Página: foto sobe sem publicar e vira story; vídeo sobe em etapas, como o Reels. A Meta não dá link público de story. */
+async function publishFacebookStory(pageId: string, token: string, m: MediaPlan): Promise<PublishResult> {
+  if (m.videoUrl) {
+    const started = await call<{ video_id: string; upload_url?: string }>(`/${pageId}/video_stories`, { method: "POST", token, body: { upload_phase: "start" } });
+    const res = await fetch(started.upload_url ?? `https://rupload.facebook.com/video-upload/${version()}/${started.video_id}`, {
+      method: "POST",
+      headers: { Authorization: `OAuth ${token}`, file_url: m.videoUrl },
+      cache: "no-store",
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) throw Object.assign(new Error("meta_api"), { detail: `envio do vídeo recusado (${res.status})` }) as GraphFailure;
+    for (let i = 0; i < 6; i++) {
+      const state = await call<{ status?: { video_status?: string; processing_phase?: { status?: string } } }>(`/${started.video_id}?fields=status`, { token }).catch(() => null);
+      const video = state?.status?.video_status;
+      if (video === "error") throw Object.assign(new Error("meta_api"), { detail: "o Facebook não conseguiu processar o vídeo" }) as GraphFailure;
+      if (video === "ready") break;
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    const done = await call<{ post_id?: string }>(`/${pageId}/video_stories`, { method: "POST", token, body: { upload_phase: "finish", video_id: started.video_id } });
+    return { done: true, externalId: done.post_id ?? started.video_id, permalink: null };
+  }
+  const photo = await call<{ id: string }>(`/${pageId}/photos`, { method: "POST", token, body: { url: m.imageUrls[0], published: false } });
+  const done = await call<{ post_id?: string }>(`/${pageId}/photo_stories`, { method: "POST", token, body: { photo_id: photo.id } });
+  return { done: true, externalId: done.post_id ?? photo.id, permalink: null };
+}
+
 /** Cria o contêiner do Instagram. A Meta baixa a mídia dos links, que precisam estar públicos neste momento. */
 export async function instagramContainer(igId: string, token: string, m: MediaPlan) {
+  // Stories não têm legenda.
+  if (m.format === "stories") return (await call<{ id: string }>(`/${igId}/media`, { method: "POST", token, body: { media_type: "STORIES", ...(m.videoUrl ? { video_url: m.videoUrl } : { image_url: m.imageUrls[0] }) } })).id;
   if (m.videoUrl) return (await call<{ id: string }>(`/${igId}/media`, { method: "POST", token, body: { media_type: "REELS", video_url: m.videoUrl, caption: m.caption } })).id;
   if (m.imageUrls.length === 1) return (await call<{ id: string }>(`/${igId}/media`, { method: "POST", token, body: { image_url: m.imageUrls[0], caption: m.caption } })).id;
   const children: string[] = [];

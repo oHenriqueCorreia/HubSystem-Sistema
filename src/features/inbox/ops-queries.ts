@@ -36,8 +36,8 @@ export async function getRadar(settings: InboxSettings, nowMs: number) {
   const clientLimit = new Date(nowMs - settings.radar_client_minutes * 60_000).toISOString();
   const contactLimit = new Date(nowMs - settings.radar_contact_hours * 3600_000).toISOString();
   const [waitingUs, waitingClient] = await Promise.all([
-    supabase.from("conversations").select(columns).eq("status", "aberta").eq("waiting_reply", true).lt("last_message_at", clientLimit).order("last_message_at").limit(100),
-    supabase.from("conversations").select(columns).eq("status", "aberta").eq("waiting_reply", false).lt("last_message_at", contactLimit).order("last_message_at").limit(100),
+    supabase.from("conversations").select(columns).eq("kind", "contato").eq("status", "aberta").eq("waiting_reply", true).lt("last_message_at", clientLimit).order("last_message_at").limit(100),
+    supabase.from("conversations").select(columns).eq("kind", "contato").eq("only_history", false).eq("status", "aberta").eq("waiting_reply", false).lt("last_message_at", contactLimit).order("last_message_at").limit(100),
   ]);
   if (waitingUs.error) throw waitingUs.error;
   if (waitingClient.error) throw waitingClient.error;

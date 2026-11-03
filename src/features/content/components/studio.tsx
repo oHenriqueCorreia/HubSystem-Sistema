@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Clapperboard, Copy, ExternalLink, Heart, Image as ImageIcon, LoaderCircle, MessageCircle, Plus, Send, Settings2, ThumbsUp, Upload, Video, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, CircleDashed, Clapperboard, Copy, ExternalLink, Heart, Image as ImageIcon, LoaderCircle, MessageCircle, Plus, Send, Settings2, ThumbsUp, Upload, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,31 @@ import { FormAlert, FormField } from "@/components/app/form-field";
 import { useMotionOk } from "@/components/app/use-motion";
 import { dayKey, minutesOfDay } from "@/domain/calendar";
 import { addDays, listDays, monthRange } from "@/domain/calendar/agenda";
-import { FORMAT_LABEL, formatProblem, IG_CAPTION_MAX, MAX_VIDEO_BYTES, PLATFORM_LABEL, publishProblem, SCHEDULE_STATUS_LABEL, VIDEO_TYPES, type ContentFormat } from "@/domain/content";
+import { FORMAT_LABEL, formatProblem, IG_CAPTION_MAX, MAX_VIDEO_BYTES, PLATFORM_LABEL, publishProblem, SCHEDULE_STATUS_LABEL, storyVideoProblem, VIDEO_TYPES, type ContentFormat } from "@/domain/content";
 import { createClient } from "@/lib/supabase/client";
 import { getWorkspaceOptions } from "@/features/tasks/actions";
 import { addDriveVideo, approveInternally, createStudioDraft, prepareImageUpload, prepareVideoUpload, refreshSocialAccounts, registerImage, registerVideo, requestApproval, scheduleContent } from "../actions";
 import type { ScheduleRow, SocialAccount } from "../queries";
 
-const FORMAT_ICON = { post: ImageIcon, video: Video, reels: Clapperboard };
+const FORMAT_ICON = { post: ImageIcon, video: Video, reels: Clapperboard, stories: CircleDashed };
+
+/** Duração do vídeo escolhido, lida no próprio navegador. Sem conseguir ler, a Meta confere na publicação. */
+function videoSeconds(file: File) {
+  return new Promise<number>((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(video.duration);
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(Number.NaN);
+    };
+    video.src = url;
+  });
+}
 const NONE = "__nenhum__";
 
 const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
@@ -230,7 +248,7 @@ export function Planner({ month, schedules, today, hrefBase, onCreate }: { month
           );
         })}
       </ol>
-      {schedules.length === 0 && <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Nada programado neste mês. Crie um post, vídeo ou reels para começar.</p>}
+      {schedules.length === 0 && <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Nada programado neste mês. Crie um post, vídeo, reels ou stories para começar.</p>}
     </section>
   );
 }
@@ -259,13 +277,14 @@ async function toJpeg(file: File): Promise<Blob> {
 function PhonePreview({ account, format, caption, images, video, driveUrl }: { account: SocialAccount | null; format: ContentFormat; caption: string; images: string[]; video: string | null; driveUrl: string }) {
   const name = account?.name ?? "Sua conta";
   const instagram = account?.platform === "instagram";
-  const vertical = format === "reels";
+  const story = format === "stories";
+  const vertical = format === "reels" || story;
   const motion = useMotionOk();
   const media = video ? (
     <video src={video} muted loop autoPlay={motion} controls playsInline aria-label="Prévia do vídeo" className={cn("w-full bg-black object-cover", vertical ? "aspect-[9/16]" : "aspect-video")} />
   ) : images.length ? (
     // eslint-disable-next-line @next/next/no-img-element -- prévia local do arquivo escolhido
-    <img src={images[0]} alt="" width={280} height={280} className="aspect-square w-full object-cover" />
+    <img src={images[0]} alt="" width={280} height={280} className={cn("w-full object-cover", story ? "aspect-[9/16]" : "aspect-square")} />
   ) : (
     <span className={cn("grid w-full place-items-center bg-muted text-xs text-muted-foreground", vertical ? "aspect-[9/16]" : "aspect-square")}>{driveUrl ? "Vídeo do Google Drive" : "Sua mídia aparece aqui"}</span>
   );
@@ -281,7 +300,15 @@ function PhonePreview({ account, format, caption, images, video, driveUrl }: { a
   return (
     <div className="mx-auto w-full max-w-[17.5rem] rounded-[2rem] border-4 border-foreground/80 bg-surface p-1 shadow-lg" role="group" aria-label="Prévia da publicação">
       <div className="max-h-[32rem] overflow-y-auto rounded-[1.6rem] bg-surface">
-        {instagram ? (
+        {story ? (
+          <div className="relative overflow-hidden rounded-[1.6rem] bg-black">
+            {media}
+            <div className="absolute inset-x-0 top-0 flex items-center gap-2 bg-gradient-to-b from-black/60 to-transparent p-2.5 text-white">
+              {account ? <AccountAvatar account={account} size="sm" /> : <span className="size-8 rounded-full bg-white/30" />}
+              <span className="truncate text-xs font-semibold">{name}</span>
+            </div>
+          </div>
+        ) : instagram ? (
           <>
             {owner}
             {media}
@@ -338,7 +365,9 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
   const [link, setLink] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [dragging, setDragging] = useState(false);
-  const isVideo = format !== "post";
+  const [showPreview, setShowPreview] = useState(false);
+  const story = format === "stories";
+  const isVideo = format === "video" || format === "reels";
   const hasClient = clientId !== NONE;
   const previewAccount = usable.find((a) => a.id === previewId) ?? usable.find((a) => selected.includes(a.id)) ?? null;
 
@@ -361,7 +390,8 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
     return () => created.forEach((u) => URL.revokeObjectURL(u));
   }, [files]);
 
-  const counts = { images: isVideo ? 0 : files.length, videos: isVideo ? (files.length ? 1 : driveUrl.trim() ? 1 : 0) : 0, caption };
+  const videoFiles = files.filter((f) => f.type.startsWith("video/")).length;
+  const counts = { images: files.length - videoFiles, videos: videoFiles || (isVideo && driveUrl.trim() ? 1 : 0), caption: story ? "" : caption };
   const problem = useMemo(() => {
     const own = formatProblem(format, counts);
     if (own) return own;
@@ -373,9 +403,25 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
     // eslint-disable-next-line react-hooks/exhaustive-deps -- counts é derivado destes valores
   }, [format, files, driveUrl, caption, selected, usable]);
 
+  async function addStory(file: File) {
+    if (file.type.startsWith("video/")) {
+      if (!VIDEO_TYPES.includes(file.type)) return setError("Envie o vídeo em MP4 ou MOV.");
+      if (file.size > MAX_VIDEO_BYTES) return setError("O vídeo passa de 50 MB. Stories precisam de um arquivo menor.");
+      const tooLong = storyVideoProblem(await videoSeconds(file));
+      if (tooLong) return setError(tooLong);
+    } else if (!file.type.startsWith("image/")) {
+      return setError("Envie uma imagem ou um vídeo.");
+    }
+    setFiles([file]);
+  }
+
   function addFiles(list: FileList | File[]) {
     const incoming = Array.from(list);
     setError(null);
+    if (story) {
+      if (incoming[0]) void addStory(incoming[0]);
+      return;
+    }
     if (isVideo) {
       const video = incoming.find((f) => VIDEO_TYPES.includes(f.type));
       if (!video) return setError("Envie o vídeo em MP4 ou MOV.");
@@ -410,7 +456,7 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
     const client = createClient();
     for (const file of files) {
       setProgress(`Enviando ${file.name}…`);
-      if (isVideo) {
+      if (file.type.startsWith("video/")) {
         const prep = await prepareVideoUpload({ contentId, size: file.size, mime: file.type });
         if (!prep.ok) throw new Error(prep.message);
         const { error: e } = await client.storage.from("content-media").uploadToSignedUrl(prep.data.path, prep.data.token, file, { contentType: file.type });
@@ -440,8 +486,8 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
       let contentId: string | null = null;
       try {
         setProgress("Criando…");
-        const name = title.trim() || caption.trim().slice(0, 60) || `${FORMAT_LABEL[format]} sem título`;
-        const draft = await createStudioDraft({ format, title: name, caption, clientId: hasClient ? clientId : null, date: date || null, time: date ? time : null });
+        const name = title.trim() || (story ? "" : caption.trim().slice(0, 60)) || `${FORMAT_LABEL[format]} sem título`;
+        const draft = await createStudioDraft({ format, title: name, caption: story ? "" : caption, clientId: hasClient ? clientId : null, date: date || null, time: date ? time : null });
         if (!draft.ok) throw new Error(Object.values(draft.fieldErrors ?? {})[0]?.[0] ?? draft.message);
         contentId = draft.data.id;
         await upload(contentId);
@@ -562,15 +608,16 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
                 }}
                 className={cn("grid gap-2 rounded-xl border-2 border-dashed p-4 text-center text-sm transition-colors", dragging && "border-primary bg-accent")}
               >
-                <input ref={input} type="file" multiple={!isVideo} accept={isVideo ? "video/mp4,video/quicktime" : "image/*"} className="sr-only" tabIndex={-1} aria-label={isVideo ? "Arquivo de vídeo" : "Imagens"} onChange={(e) => {
+                <input ref={input} type="file" multiple={format === "post"} accept={story ? "image/*,video/mp4,video/quicktime" : isVideo ? "video/mp4,video/quicktime" : "image/*"} className="sr-only" tabIndex={-1} aria-label={story ? "Imagem ou vídeo do stories" : isVideo ? "Arquivo de vídeo" : "Imagens"} onChange={(e) => {
                     if (e.target.files?.length) addFiles(e.target.files);
                     // Sem isto, escolher de novo um arquivo removido não faz nada.
                     e.target.value = "";
                   }} />
                 <Upload className="mx-auto size-5 text-muted-foreground" aria-hidden="true" />
-                <p className="text-muted-foreground">{isVideo ? "Arraste o vídeo (MP4 ou MOV, até 50 MB)" : "Arraste as imagens (até 10)"}</p>
+                <p className="text-muted-foreground max-md:hidden">{story ? "Arraste uma imagem ou um vídeo de até 60 segundos, na vertical" : isVideo ? "Arraste o vídeo (MP4 ou MOV, até 50 MB)" : "Arraste as imagens (até 10)"}</p>
+                <p className="text-muted-foreground md:hidden">{story ? "Uma imagem ou um vídeo de até 60 segundos, na vertical" : isVideo ? "MP4 ou MOV, até 50 MB" : "Até 10 imagens"}</p>
                 <Button type="button" variant="outline" size="sm" className="justify-self-center" onClick={() => input.current?.click()}>
-                  Escolher {isVideo ? "vídeo" : "imagens"}
+                  Escolher {story ? "arquivo" : isVideo ? "vídeo" : "imagens"}
                 </Button>
                 {files.length > 0 && (
                   <ul className="flex flex-wrap justify-center gap-1.5 text-left">
@@ -594,12 +641,18 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
                 )}
               </div>
 
-              <FormField label="Legenda" optional={format !== "post" || files.length > 0}>
-                <Textarea rows={5} value={caption} maxLength={IG_CAPTION_MAX} onChange={(e) => setCaption(e.target.value)} placeholder="Escreva a legenda, com hashtags se quiser…" />
-              </FormField>
-              <p className="-mt-3 text-right text-xs text-muted-foreground tabular">
-                {caption.length} de {IG_CAPTION_MAX}
-              </p>
+              {story ? (
+                <p className="text-sm text-muted-foreground">Stories não têm legenda: escreva o texto na própria arte. Fica no ar por 24 horas.</p>
+              ) : (
+                <>
+                  <FormField label="Legenda" optional={format !== "post" || files.length > 0}>
+                    <Textarea rows={5} value={caption} maxLength={IG_CAPTION_MAX} onChange={(e) => setCaption(e.target.value)} placeholder="Escreva a legenda, com hashtags se quiser…" />
+                  </FormField>
+                  <p className="-mt-3 text-right text-xs text-muted-foreground tabular">
+                    {caption.length} de {IG_CAPTION_MAX}
+                  </p>
+                </>
+              )}
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <FormField label="Nome interno" optional hint="Só a equipe vê. Em branco, usa o começo da legenda.">
@@ -658,9 +711,12 @@ export function Composer({ accounts, initialAccount, trigger, initialFormat = "p
               </div>
             </div>
 
-            <aside className="grid content-start gap-2">
+            <Button type="button" variant="outline" className="lg:hidden" aria-expanded={showPreview} onClick={() => setShowPreview((v) => !v)}>
+              {showPreview ? "Esconder a prévia" : "Ver como fica"}
+            </Button>
+            <aside className={cn("content-start gap-2 lg:grid", showPreview ? "grid" : "hidden")}>
               <p className="text-center text-xs text-muted-foreground">{previewAccount ? `Como fica no ${PLATFORM_LABEL[previewAccount.platform]}` : "Prévia"}</p>
-              <PhonePreview account={previewAccount} format={format} caption={caption} images={isVideo ? [] : urls} video={isVideo ? (urls[0] ?? null) : null} driveUrl={driveUrl} />
+              <PhonePreview account={previewAccount} format={format} caption={caption} images={urls.filter((_, i) => !files[i]?.type.startsWith("video/"))} video={urls.find((_, i) => files[i]?.type.startsWith("video/")) ?? null} driveUrl={driveUrl} />
             </aside>
           </div>
         )}
@@ -675,6 +731,7 @@ export function CreateButtons({ accounts, account }: { accounts: SocialAccount[]
       <Composer accounts={accounts} initialAccount={account} initialFormat="post" trigger={<Button><Plus aria-hidden="true" /> Criar post</Button>} />
       <Composer accounts={accounts} initialAccount={account} initialFormat="video" trigger={<Button variant="outline"><Video aria-hidden="true" /> Vídeo</Button>} />
       <Composer accounts={accounts} initialAccount={account} initialFormat="reels" trigger={<Button variant="outline"><Clapperboard aria-hidden="true" /> Reels</Button>} />
+      <Composer accounts={accounts} initialAccount={account} initialFormat="stories" trigger={<Button variant="outline"><CircleDashed aria-hidden="true" /> Stories</Button>} />
     </>
   );
 }
@@ -698,8 +755,10 @@ export function RecentPublished({ schedules }: { schedules: ScheduleRow[] }) {
               <a href={s.permalink} target="_blank" rel="noreferrer" aria-label={`Ver ${s.title} na rede`} className="text-primary">
                 <ExternalLink className="size-4" aria-hidden="true" />
               </a>
-            ) : (
+            ) : s.status === "erro" ? (
               <span className="text-xs text-danger">Erro</span>
+            ) : (
+              <span className="text-xs text-muted-foreground">Publicado</span>
             )}
           </li>
         ))}

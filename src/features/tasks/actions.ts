@@ -35,6 +35,7 @@ import {
   taskColumnUpdateSchema,
   taskMoveSchema,
   taskStatusSchema,
+  agendaPrefsSchema,
 } from "./schemas";
 
 type SavedFilter = { name: string; filter: AgendaFilter };
@@ -190,6 +191,7 @@ function eventRow(input: z.output<typeof eventFormSchema>) {
     title: input.title,
     description: input.description || null,
     kind: input.kind,
+    priority: input.priority ?? null,
     starts_at: starts,
     ends_at: ends,
     all_day: input.allDay,
@@ -338,6 +340,14 @@ async function saveFilters(userId: string, change: (list: SavedFilter[]) => Save
   const prefs = current.preferences ?? {};
   must(await supabase.from("profiles").update({ preferences: { ...prefs, agenda_filters: change((prefs.agenda_filters as SavedFilter[] | undefined) ?? []) } }).eq("id", userId));
 }
+
+/** Cores, densidade e o que aparece: vale para a pessoa, em qualquer aparelho. */
+export const saveAgendaPrefs = defineAction({ schema: agendaPrefsSchema }, async (input, { user }) => {
+  const supabase = await createClient();
+  const current = must(await supabase.from("profiles").select("preferences").eq("id", user.id).single()) as { preferences: Record<string, unknown> | null };
+  must(await supabase.from("profiles").update({ preferences: { ...(current.preferences ?? {}), agenda_view: input } }).eq("id", user.id));
+  return ok(null);
+});
 
 export const saveAgendaFilter = defineAction({ schema: savedAgendaFilterSchema }, async (input, { user }) => {
   await saveFilters(user.id, (list) => [...list.filter((f) => f.name !== input.name), input].slice(-20));

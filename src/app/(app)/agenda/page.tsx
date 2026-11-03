@@ -10,6 +10,7 @@ import type { AgendaStatusGroup, AgendaType } from "@/domain/calendar/agenda";
 import { CalendarViewClient } from "@/features/tasks/components/calendar-view";
 import { viewRange, type CalendarView } from "@/domain/calendar";
 import { todayLocal } from "@/domain/shared/dates";
+import { parseAgendaPrefs } from "@/domain/calendar/agenda-prefs";
 
 export const metadata: Metadata = { title: "Agenda" };
 
@@ -44,9 +45,9 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ label: "Trabalho" }, { label: "Agenda" }]} title="Agenda" description="Reuniões, compromissos e tarefas com horário. Clique num horário livre para criar." />
+      <PageHeader breadcrumbs={[{ label: "Trabalho" }, { label: "Agenda" }]} title="Agenda" description="Reuniões, compromissos e tarefas com horário. Escolha um horário livre para criar." />
       <PageBody className="grid gap-3">
-        <nav aria-label="Modo da agenda" className="flex gap-2 text-sm">
+        <nav aria-label="Modo da agenda" className="flex items-center gap-3 text-sm">
           <Link href="/agenda?visao=lista" aria-current={asList ? "page" : undefined} className={asList ? "font-semibold text-foreground" : "text-primary hover:underline"}>
             Lista e filtros
           </Link>
@@ -64,6 +65,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
             canEditTasks={Boolean(user.permissions["tasks.update"])}
             canPublish={Boolean(user.permissions["content.publish"])}
             savedFilters={(user.preferences.agenda_filters as SavedAgendaFilter[] | undefined) ?? []}
+            initialPrefs={parseAgendaPrefs(user.preferences.agenda_view)}
             initialTab="semana"
           />
         ) : (
@@ -81,6 +83,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
             canEditTasks={Boolean(user.permissions["tasks.update"])}
             canPublish={Boolean(user.permissions["content.publish"])}
             clients={clients}
+            initialPrefs={parseAgendaPrefs(user.preferences.agenda_view)}
           />
         </Suspense>
         )}

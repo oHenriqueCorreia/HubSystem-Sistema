@@ -264,17 +264,87 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+  /* Celular e tablet: item de grade ou coluna nunca alarga a página. O que for maior rola dentro do próprio espaço. */
+  @media (max-width: 1023px) {
+    :where(.grid) > *,
+    :where(.flex-col) > * {
+      min-width: 0;
+    }
+  }
+  body {
+    overflow-wrap: break-word;
+  }
   /* Alvos de toque confortáveis em telas de toque (WCAG 2.5.8) */
   @media (pointer: coarse) {
-    [data-slot="button"],
+    .hub-btn,
     [data-slot="select-trigger"],
     [data-slot="input"],
-    [data-slot="toggle-group-item"] {
+    [data-slot="toggle-group-item"],
+    [data-slot="tabs-trigger"],
+    [role="menuitem"],
+    [role="menuitemradio"],
+    [role="option"],
+    select {
       min-height: 44px;
     }
-    [data-slot="checkbox"] {
-      min-width: 22px;
-      min-height: 22px;
+    .hub-btn {
+      min-width: 44px;
+    }
+    summary {
+      padding-block: 0.75rem;
+    }
+    /* Abas, filtros e seletores de período */
+    #conteudo nav:not([data-slot="breadcrumb"]) a,
+    a.hub-tab {
+      display: inline-flex;
+      min-height: 44px;
+      align-items: center;
+    }
+    #conteudo nav:not([data-slot="breadcrumb"]) button,
+    button[aria-pressed],
+    [role="tab"],
+    [role="group"] > button {
+      min-height: 44px;
+    }
+    /* Controles pequenos mantêm o desenho, mas o dedo acerta numa área maior */
+    [data-slot="checkbox"],
+    [data-slot="switch"],
+    [role="checkbox"],
+    [role="switch"],
+    [data-slot="breadcrumb-link"],
+    #conteudo a.text-primary,
+    .hub-hit {
+      position: relative;
+    }
+    [data-slot="checkbox"]::after,
+    [role="checkbox"]::after {
+      position: absolute;
+      inset: -11px;
+      content: "";
+    }
+    [data-slot="switch"]::after,
+    [role="switch"]::after {
+      position: absolute;
+      inset: -13px 0;
+      content: "";
+    }
+    /* Só na vertical: para os lados, a área passaria da borda e criaria rolagem na página. */
+    [data-slot="breadcrumb-link"]::after,
+    #conteudo a.text-primary::after {
+      position: absolute;
+      inset: -12px 0;
+      content: "";
+    }
+    .hub-hit::after {
+      position: absolute;
+      inset: -6px 0;
+      content: "";
+    }
+    .overflow-x-auto {
+      scrollbar-width: none;
+    }
+    .overflow-x-auto::-webkit-scrollbar {
+      display: none;
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -364,4 +434,137 @@
   right: -8px;
   background: var(--chat-out);
   clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+/* -----------------------------------------------------------------------------
+   Celular. Fora de camada de propósito: precisa vencer as classes utilitárias.
+   ----------------------------------------------------------------------------- */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Quem recebe foco ou é rolado até a tela não fica escondido atrás da barra de cima. */
+  scroll-padding-top: 3.5rem;
+}
+
+/* Troca de tela suave. A redução de movimento já encurta toda animação. */
+.hub-page-enter {
+  animation: hub-page-enter 160ms ease-out;
+}
+@keyframes hub-page-enter {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 767px) {
+  /* O gesto de voltar do navegador não dispara ao rolar abas e quadros para o lado. */
+  html {
+    overscroll-behavior-x: none;
+  }
+
+  /* Com menos de 16 px, o iPhone dá zoom sozinho ao tocar no campo. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* Formulários sobem de baixo, na largura toda, ao alcance do polegar. */
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-content"] {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    overflow-y: auto;
+    /* O componente centraliza com variáveis de deslocamento: zerar é o que garante o encaixe. */
+    --tw-translate-x: 0;
+    --tw-translate-y: 0;
+    translate: 0 0 !important;
+    border-radius: 1rem 1rem 0 0;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  /* Painéis laterais usam a tela toda: em 3/4 da largura, o conteúdo fica espremido. */
+  [data-slot="sheet-content"][data-side="left"],
+  [data-slot="sheet-content"][data-side="right"] {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Opções lado a lado quebram a linha em vez de sair da tela. */
+  [data-slot="toggle-group"] {
+    flex-wrap: wrap;
+  }
+
+  /* Tabela que não cabe vira cartões (mobile-tables.tsx marca quais). */
+  table[data-cards] thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  table[data-cards],
+  table[data-cards] tbody {
+    display: block;
+    width: 100%;
+  }
+  table[data-cards] tr {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.75rem;
+  }
+  table[data-cards] td {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0;
+    border: 0;
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  table[data-cards] td::before {
+    flex-shrink: 0;
+    max-width: 45%;
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    text-align: left;
+    content: attr(data-label);
+  }
+  table[data-cards] td[data-label=""]::before {
+    display: none;
+  }
+  table[data-cards] td:first-child {
+    justify-content: flex-start;
+    font-weight: 500;
+    text-align: left;
+  }
+  table[data-cards] td:first-child::before {
+    display: none;
+  }
+
+  /* Com o teclado aberto, o menu de baixo só ocupa espaço. */
+  body:has(#conteudo input:focus, #conteudo textarea:focus) .hub-bottom-nav {
+    display: none;
+  }
+
+  /* Conversa aberta usa a tela inteira, como no WhatsApp. */
+  body:has([data-chat-open]) .hub-bottom-nav,
+  body:has([data-chat-open]) .hub-topbar {
+    display: none;
+  }
+  body:has([data-chat-open]) #conteudo {
+    padding-bottom: 0;
+  }
 }

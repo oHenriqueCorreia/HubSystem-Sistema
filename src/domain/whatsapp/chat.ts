@@ -50,6 +50,18 @@ export function messagePreview(m: { type: string; body: string | null; media_nam
   return TYPE_LABEL[m.type] ?? "Mensagem";
 }
 
+const FILE_TYPES = ["image", "video", "audio", "document", "sticker"];
+
+/** Mídia antiga do histórico não é baixada: a bolha avisa o que era. */
+export const historyFileNote = (m: { imported?: boolean; media_id: string | null; type: string }) => (m.imported && !m.media_id && FILE_TYPES.includes(m.type) ? `${TYPE_LABEL[m.type]} do histórico, sem o arquivo` : null);
+
+/** Quem escreveu no grupo: o nome do WhatsApp ou, sem ele, o telefone. */
+export function senderLabel(name: string | null, jid: string | null, phone: (e164: string) => string) {
+  if (name?.trim()) return name.trim();
+  const digits = jid?.endsWith("@lid") ? "" : (jid?.split("@")[0].split(":")[0] ?? "");
+  return /^\d{8,15}$/.test(digits) ? phone(`+${digits}`) : "Participante";
+}
+
 export type DayGroup<T> = { day: string; label: string; items: T[] };
 
 /** Agrupa em ordem, no dia de São Paulo. */
@@ -65,6 +77,9 @@ export function groupMessagesByDay<T extends { created_at: string }>(messages: T
 }
 
 /** Id de citação no formato do WAHA. */
-export const wahaReplyId = (fromMe: boolean, chatId: string, wamid: string) => `${fromMe ? "true" : "false"}_${chatId}_${wamid}`;
+export const wahaReplyId = (fromMe: boolean, chatId: string, wamid: string, participant?: string | null) => `${fromMe ? "true" : "false"}_${chatId}_${wamid}${participant ? `_${participant}` : ""}`;
+
+/** Nome que aparece na conversa: grupo sem nome ainda não tem telefone para mostrar. */
+export const chatTitle = (c: { contact_name: string; contact_e164: string | null }, phone: (e164: string) => string) => c.contact_name || (c.contact_e164 ? phone(c.contact_e164) : "Grupo sem nome");
 
 export const EMOJIS = ["😀", "😂", "🥰", "😍", "😉", "😊", "🙂", "🤔", "😅", "😎", "🤩", "😢", "😭", "😡", "🙏", "👍", "👎", "👏", "🤝", "💪", "👋", "✌️", "👌", "❤️", "💙", "💚", "🔥", "✨", "🎉", "🚀", "✅", "❌", "⚠️", "📌", "📅", "⏰", "💰", "💵", "🏠", "🚗", "📞", "📷", "📄", "🔗"];

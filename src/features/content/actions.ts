@@ -13,7 +13,7 @@ import { socialRevoke } from "@/lib/meta-social";
 import { zonedIso } from "@/domain/calendar";
 import { fail, ok } from "@/domain/shared/result";
 import { after } from "next/server";
-import { driveFileId, formatProblem, MAX_VIDEO_BYTES, publishProblem, VIDEO_TYPES, type ContentFormat, type SchedulePlatform } from "@/domain/content";
+import { driveFileId, formatProblem, MAX_VIDEO_BYTES, publishProblem, VIDEO_TYPES, type ContentFormat, type SchedulePlatform, CONTENT_FORMATS } from "@/domain/content";
 import { socialListAccounts } from "@/lib/meta-social";
 
 const LINK_DAYS = 14;
@@ -67,7 +67,7 @@ export const createContentTask = defineAction(
 export const createStudioDraft = defineAction(
   {
     schema: z.object({
-      format: z.enum(["post", "video", "reels"]),
+      format: z.enum(CONTENT_FORMATS),
       title: z.string().trim().min(1, "Dê um nome à publicação.").max(200),
       caption: z.string().max(2200, "A legenda aceita até 2.200 caracteres.").default(""),
       clientId: z.uuid().nullable().default(null),
@@ -131,7 +131,7 @@ export const approveInternally = defineAction({ schema: z.object({ id: z.uuid() 
   return ok(null, "Conteúdo aprovado pela equipe.");
 });
 
-export const setContentFormat = defineAction({ schema: z.object({ id: z.uuid(), format: z.enum(["post", "video", "reels"]) }), permission: "content.manage" }, async ({ id, format }) => {
+export const setContentFormat = defineAction({ schema: z.object({ id: z.uuid(), format: z.enum(CONTENT_FORMATS) }), permission: "content.manage" }, async ({ id, format }) => {
   const supabase = await createClient();
   must(await supabase.from("content_items").update({ format }).eq("id", id));
   refresh(id);

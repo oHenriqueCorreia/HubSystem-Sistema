@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowLeft, Ban, Check, CheckCheck, ChevronDown, Clock, CornerUpLeft, FileText, Info, Lock, Megaphone, Paperclip, RefreshCw, Search, Send, Smile, Star, TriangleAlert, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, Ban, Check, CheckCheck, ChevronDown, Clock, CornerUpLeft, FileText, Info, Lock, Megaphone, Paperclip, RefreshCw, Search, Send, Smile, Star, TriangleAlert, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { formatDateTime, todayLocal } from "@/domain/shared/dates";
 import { formatPhone } from "@/domain/shared/phone";
-import { avatarColor, chatInitials, chatTime, EMOJIS, groupMessagesByDay, messagePreview } from "@/domain/whatsapp/chat";
+import { avatarColor, chatInitials, chatTime, chatTitle, EMOJIS, groupMessagesByDay, historyFileNote, messagePreview, senderLabel } from "@/domain/whatsapp/chat";
 import { baseMime } from "@/domain/whatsapp/media";
 import { fillQuickReply, matchQuickReplies, shortcutQuery, type QuickReply } from "@/domain/whatsapp/quick-replies";
 import { createClient } from "@/lib/supabase/client";
 import { TagPicker } from "@/features/tags/components/tag-picker";
 import type { Tag } from "@/features/crm/types";
-import { addInternalNote, assignConversation, markConversationRead, prepareWhatsAppUpload, sendWhatsAppMedia, sendWhatsAppMessage, setConversationStatus, setConversationTags, toggleImportant } from "../actions";
+import { addInternalNote, assignConversation, loadOlderMessages, markConversationRead, prepareWhatsAppUpload, sendWhatsAppMedia, sendWhatsAppMessage, setConversationClient, setConversationStatus, setConversationTags, toggleImportant } from "../actions";
 import type { ConversationOrigin, Message } from "../queries";
 import { AttachButton, AudioRecorder, QuickReplyMenu } from "./composer-tools";
 import { CloseDialog, CreateLeadDialog, TemplateDialog } from "./conversation-dialogs";
@@ -30,7 +30,11 @@ type Owner = { id: string; full_name: string; email: string };
 type Template = { id: string; name: string; language: string; status: string; components: { type: string; text?: string }[] };
 type Conversation = {
   id: string;
-  contact_e164: string;
+  kind: "contato" | "grupo";
+  contact_e164: string | null;
+  group_jid: string | null;
+  client_id: string | null;
+  hasOlder: boolean;
   contact_name: string;
   status: string;
   assignee_id: string | null;
@@ -42,8 +46,15 @@ type Conversation = {
 };
 type Pending = { clientRef: string; body: string; at: string; failed: boolean; replyToId: string | null };
 
-export function ChatAvatar({ name, seed, className }: { name: string; seed: string; className?: string }) {
+export function ChatAvatar({ name, seed, className, group = false }: { name: string; seed: string; className?: string; group?: boolean }) {
   const letters = chatInitials(name);
+  if (group) {
+    return (
+      <span className={cn("grid shrink-0 place-items-center rounded-full font-semibold text-white select-none", className ?? "size-10 text-sm")} style={{ background: avatarColor(seed) }} aria-hidden="true">
+        <Users className="size-3/5" />
+      </span>
+    );
+  }
   return (
     <span className={cn("grid shrink-0 place-items-center rounded-full font-semibold text-white select-none", className ?? "size-10 text-sm")} style={{ background: avatarColor(seed) }} aria-hidden="true">
       {letters || (
@@ -82,6 +93,7 @@ export function ChatView({
   templates,
   tags,
   pipelines,
+  clients,
   names,
   canReply,
   canManage,
@@ -96,6 +108,7 @@ export function ChatView({
   templates: Template[];
   tags: Tag[];
   pipelines: { id: string; name: string }[];
+  clients: { id: string; name: string }[];
   names: Record<string, string>;
   canReply: boolean;
   canManage: boolean;
@@ -122,13 +135,19 @@ export function ChatView({
   const [dragging, setDragging] = useState(false);
   const [unseen, setUnseen] = useState(0);
   const [atBottom, setAtBottom] = useState(true);
+  const [older, setOlder] = useState<Message[]>([]);
+  const [hasOlder, setHasOlder] = useState(conversation.hasOlder);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [busy, startTransition] = useTransition();
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const [now] = useState(() => Date.now());
   const today = todayLocal();
 
-  const display = conversation.contact_name || formatPhone(conversation.contact_e164);
+  const group = conversation.kind === "grupo";
+  const display = chatTitle(conversation, formatPhone);
+  const seed = conversation.contact_e164 ?? conversation.group_jid ?? conversation.id;
+  const allMessages = useMemo(() => [...older, ...conversation.messages], [older, conversation.messages]);
   // A janela de 24 horas e os modelos são regras da API oficial; o QR Code só precisa estar conectado.
   const qr = provider === "waha";
   const windowOpen = qr || Boolean(conversation.last_inbound_at && now - new Date(conversation.last_inbound_at).getTime() < 24 * 3600_000);
@@ -138,7 +157,7 @@ export function ChatView({
   const approved = useMemo(() => (qr ? [] : templates.filter((t) => t.status === "APPROVED")), [qr, templates]);
   const query = !noteMode && !replyMenuClosed ? shortcutQuery(text) : null;
   const matches = useMemo(() => (query === null ? [] : matchQuickReplies(quickReplies, query)), [query, quickReplies]);
-  const byWamid = useMemo(() => new Map(conversation.messages.filter((m) => m.wamid).map((m) => [m.wamid!, m])), [conversation.messages]);
+  const byWamid = useMemo(() => new Map(allMessages.filter((m) => m.wamid).map((m) => [m.wamid!, m])), [allMessages]);
 
   // Enviada confirmada pelo servidor sai da lista local: quem aparece é a mensagem real.
   const refs = useMemo(() => new Set(conversation.messages.map((m) => m.client_ref).filter(Boolean)), [conversation.messages]);
@@ -146,9 +165,9 @@ export function ChatView({
 
   const filtered = useMemo(() => {
     const q = term.trim().toLowerCase();
-    if (!q) return conversation.messages;
-    return conversation.messages.filter((m) => (m.body ?? "").toLowerCase().includes(q) || (m.media_name ?? "").toLowerCase().includes(q));
-  }, [conversation.messages, term]);
+    if (!q) return allMessages;
+    return allMessages.filter((m) => (m.body ?? "").toLowerCase().includes(q) || (m.media_name ?? "").toLowerCase().includes(q));
+  }, [allMessages, term]);
   const groups = useMemo(() => groupMessagesByDay(filtered, today), [filtered, today]);
 
   const toBottom = (smooth = false) => {
@@ -195,6 +214,58 @@ export function ChatView({
       after?.();
       router.refresh();
     });
+  }
+
+  async function showOlder() {
+    const first = allMessages[0];
+    const el = scroller.current;
+    if (!first || !el) return;
+    setLoadingOlder(true);
+    const before = el.scrollHeight;
+    const res = await loadOlderMessages({ conversationId: conversation.id, before: first.created_at }).catch(() => null);
+    setLoadingOlder(false);
+    if (!res?.ok) return void toast.error(res?.message ?? "Não foi possível carregar as mensagens anteriores.");
+    setOlder((list) => [...res.data.messages, ...list]);
+    setHasOlder(res.data.hasMore);
+    // Mantém na tela a mensagem que a pessoa estava lendo.
+    requestAnimationFrame(() => {
+      el.scrollTop += el.scrollHeight - before;
+    });
+  }
+
+  /** Arrastar a mensagem para a direita responde a ela, como no WhatsApp. */
+  function swipeToReply(m: Message) {
+    let startX = 0;
+    let startY = 0;
+    let row: HTMLElement | null = null;
+    const release = () => {
+      if (!row) return;
+      row.style.transition = "transform 150ms ease-out";
+      row.style.transform = "";
+      row = null;
+    };
+    return {
+      onTouchStart: (e: React.TouchEvent<HTMLDivElement>) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        row = e.currentTarget;
+        row.style.transition = "";
+      },
+      onTouchMove: (e: React.TouchEvent<HTMLDivElement>) => {
+        if (!row) return;
+        const dx = e.touches[0].clientX - startX;
+        if (Math.abs(e.touches[0].clientY - startY) > 24) return release();
+        if (dx > 0) row.style.transform = `translateX(${Math.min(dx, 72)}px)`;
+      },
+      onTouchEnd: (e: React.TouchEvent<HTMLDivElement>) => {
+        if (row && e.changedTouches[0].clientX - startX > 56) {
+          setReplyTo(m);
+          input.current?.focus();
+        }
+        release();
+      },
+      onTouchCancel: release,
+    };
   }
 
   function chooseReply(reply: QuickReply) {
@@ -256,9 +327,18 @@ export function ChatView({
     input.current?.focus();
   }
 
-  const quotedPending = (p: Pending) => conversation.messages.find((m) => m.id === p.replyToId);
+  const quotedPending = (p: Pending) => allMessages.find((m) => m.id === p.replyToId);
   const composerDisabled = !noteMode && !canSend;
   const showSend = Boolean(text.trim() || (file && !noteMode));
+
+  const statusButton =
+    conversation.status === "aberta" ? (
+      <CloseDialog conversationId={conversation.id} />
+    ) : (
+      <Button variant="outline" size="sm" disabled={busy} onClick={() => run(() => setConversationStatus({ id: conversation.id, status: "aberta", outcome: "" }))}>
+        Reabrir
+      </Button>
+    );
 
   return (
     <section
@@ -278,18 +358,18 @@ export function ChatView({
         pickFile(e.dataTransfer.files[0]);
       }}
     >
-      <header className="flex items-center gap-2 border-b bg-[var(--chat-panel)] px-2 py-2 sm:px-3">
+      <header className="flex items-center gap-1 border-b bg-[var(--chat-panel)] px-1 py-1 pt-[max(0.25rem,env(safe-area-inset-top))] sm:gap-2 sm:px-3 sm:py-2">
         <Button asChild variant="ghost" size="icon-sm" className="md:hidden">
           <Link href="/atendimento" aria-label="Voltar para a lista">
             <ArrowLeft aria-hidden="true" />
           </Link>
         </Button>
-        <button type="button" onClick={() => setInfo(true)} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-left" aria-label={`Dados de ${display}`}>
-          <ChatAvatar name={conversation.contact_name} seed={conversation.contact_e164} />
+        <button type="button" onClick={() => setInfo(true)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-lg text-left" aria-label={`Dados de ${display}`}>
+          <ChatAvatar name={conversation.contact_name} seed={seed} group={group} />
           <span className="grid min-w-0">
             <span className="truncate font-semibold">{display}</span>
             <span className="truncate text-xs text-muted-foreground">
-              {conversation.status === "encerrada" ? "Atendimento encerrado" : conversation.lead ? conversation.lead.name : formatPhone(conversation.contact_e164)}
+              {group ? "Grupo" : conversation.status === "encerrada" ? "Atendimento encerrado" : conversation.lead ? conversation.lead.name : formatPhone(conversation.contact_e164 ?? "")}
             </span>
           </span>
         </button>
@@ -297,14 +377,7 @@ export function ChatView({
           <Search aria-hidden="true" />
         </Button>
         <span className="hidden sm:contents">{leadPanel}</span>
-        {canReply &&
-          (conversation.status === "aberta" ? (
-            <CloseDialog conversationId={conversation.id} />
-          ) : (
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => run(() => setConversationStatus({ id: conversation.id, status: "aberta", outcome: "" }))}>
-              Reabrir
-            </Button>
-          ))}
+        {canReply && !group && <span className="hidden sm:contents">{statusButton}</span>}
         <Button variant="ghost" size="icon-sm" aria-label="Dados do contato" onClick={() => setInfo(true)}>
           <Info aria-hidden="true" />
         </Button>
@@ -346,6 +419,11 @@ export function ChatView({
         }}
         className="chat-wallpaper min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-[6%]"
       >
+        {hasOlder && !term && (
+          <button type="button" disabled={loadingOlder} onClick={() => void showOlder()} className="mx-auto mb-2 flex min-h-11 items-center gap-2 rounded-lg bg-[var(--chat-pill)] px-4 text-sm font-medium shadow-xs hover:bg-accent disabled:opacity-60">
+            {loadingOlder && <RefreshCw className="size-4 animate-spin" aria-hidden="true" />} Ver mensagens anteriores
+          </button>
+        )}
         {groups.length === 0 && visiblePending.length === 0 && (
           <p className="mx-auto mt-6 w-fit rounded-lg bg-[var(--chat-pill)] px-3 py-1.5 text-center text-xs text-muted-foreground shadow-xs">{term ? "Nenhuma mensagem encontrada." : "Nenhuma mensagem ainda. Diga olá."}</p>
         )}
@@ -366,16 +444,23 @@ export function ChatView({
                 );
               }
               const mine = m.direction === "saida";
-              const firstOfRun = g.items[i - 1]?.direction !== m.direction;
+              const firstOfRun = g.items[i - 1]?.direction !== m.direction || g.items[i - 1]?.sender_jid !== m.sender_jid;
+              const fileNote = historyFileNote(m);
               const quoted = m.reply_to_wamid ? byWamid.get(m.reply_to_wamid) : null;
               const media = `/api/whatsapp/media/${m.id}`;
               return (
-                <div key={m.id} className={cn("group flex items-center gap-1", mine ? "justify-end" : "justify-start", firstOfRun && "mt-1.5")}>
+                <div key={m.id} {...(canReply ? swipeToReply(m) : {})} className={cn("group flex touch-pan-y items-center gap-1", mine ? "justify-end" : "justify-start", firstOfRun && "mt-1.5")}>
                   {mine && canReply && <BubbleMenu message={m} onReply={() => { setReplyTo(m); input.current?.focus(); }} onStar={() => run(() => toggleImportant({ id: m.id, important: !m.important }))} />}
                   <div className={cn("chat-bubble relative max-w-[85%] rounded-lg px-2 pt-1.5 pb-1 text-sm shadow-xs sm:max-w-[65%]", mine ? "bg-[var(--chat-out)]" : "bg-[var(--chat-in)]", firstOfRun && (mine ? "rounded-tr-none chat-tail-out" : "rounded-tl-none chat-tail-in"))}>
+                    {group && !mine && firstOfRun && (
+                      <p className="mb-0.5 truncate text-xs font-semibold" style={{ color: `color-mix(in oklab, ${avatarColor(m.sender_jid ?? m.sender_name ?? "")} 70%, var(--foreground))` }}>
+                        {senderLabel(m.sender_name, m.sender_jid, formatPhone)}
+                      </p>
+                    )}
+                    {fileNote && <p className="mb-0.5 text-xs italic opacity-70">{fileNote}</p>}
                     {m.reply_to_wamid && (
                       <div className="mb-1 rounded border-l-4 border-[#06cf9c] bg-black/5 px-2 py-1 text-xs dark:bg-white/10">
-                        <p className="font-semibold text-[#047a5e] dark:text-[#7ae3c3]">{quoted ? (quoted.direction === "saida" ? "Você" : display) : "Mensagem citada"}</p>
+                        <p className="font-semibold text-[#047a5e] dark:text-[#7ae3c3]">{quoted ? (quoted.direction === "saida" ? "Você" : group ? senderLabel(quoted.sender_name, quoted.sender_jid, formatPhone) : display) : "Mensagem citada"}</p>
                         <p className="line-clamp-2 break-words opacity-80">{quoted ? messagePreview(quoted) : "Mensagem anterior"}</p>
                       </div>
                     )}
@@ -400,7 +485,7 @@ export function ChatView({
                     )}
                     <div className="flex flex-wrap items-end justify-end gap-x-2">
                       <div className="mr-auto min-w-0 break-words whitespace-pre-wrap">
-                        {m.body ? <Highlight text={m.body} term={term.trim()} /> : !m.media_id ? <span className="italic opacity-70">{m.type === "unsupported" ? "Conteúdo não suportado" : messagePreview(m)}</span> : null}
+                        {m.body ? <Highlight text={m.body} term={term.trim()} /> : !m.media_id && !fileNote ? <span className="italic opacity-70">{m.type === "unsupported" ? "Conteúdo não suportado" : messagePreview(m)}</span> : null}
                       </div>
                       <p className={cn("flex shrink-0 items-center gap-1 pt-0.5 text-[11px] text-muted-foreground", mine && "dark:text-white/75")}>
                         {m.important && <Star className="size-3 fill-current" role="img" aria-label="Importante" />}
@@ -477,7 +562,7 @@ export function ChatView({
       )}
 
       {canReply && (
-        <footer className="grid gap-1.5 bg-[var(--chat-panel)] px-2 py-2 sm:px-3">
+        <footer className="grid gap-1.5 bg-[var(--chat-panel)] px-1 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] sm:px-3 sm:py-2">
           {blocked && (
             <p role="alert" className="flex items-center gap-2 text-sm text-danger">
               <Ban className="size-4 shrink-0" aria-hidden="true" /> Este contato pediu para não receber mensagens. Envios bloqueados; observações internas continuam liberadas.
@@ -491,7 +576,7 @@ export function ChatView({
           {replyTo && (
             <div className="flex items-center gap-2 rounded-lg bg-black/5 py-1 pr-1 pl-2 dark:bg-white/10">
               <div className="min-w-0 flex-1 border-l-4 border-[#06cf9c] pl-2 text-xs">
-                <p className="font-semibold text-[#047a5e] dark:text-[#7ae3c3]">{replyTo.direction === "saida" ? "Você" : display}</p>
+                <p className="font-semibold text-[#047a5e] dark:text-[#7ae3c3]">{replyTo.direction === "saida" ? "Você" : group ? senderLabel(replyTo.sender_name, replyTo.sender_jid, formatPhone) : display}</p>
                 <p className="truncate opacity-80">{messagePreview(replyTo)}</p>
               </div>
               <Button type="button" variant="ghost" size="icon-sm" aria-label="Cancelar citação" onClick={() => setReplyTo(null)}>
@@ -509,7 +594,7 @@ export function ChatView({
             </p>
           )}
 
-          <div className="flex items-end gap-1">
+          <div className="flex items-end gap-0.5 sm:gap-1">
             <Popover>
               <PopoverTrigger asChild>
                 <Button type="button" variant="ghost" size="icon" aria-label="Emojis" disabled={composerDisabled}>
@@ -606,13 +691,13 @@ export function ChatView({
       <Sheet open={info} onOpenChange={setInfo}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-md">
           <SheetHeader>
-            <SheetTitle className="sr-only">Dados do contato</SheetTitle>
-            <SheetDescription className="sr-only">Responsável, etiquetas e lead da conversa.</SheetDescription>
+            <SheetTitle className="sr-only">{group ? "Dados do grupo" : "Dados do contato"}</SheetTitle>
+            <SheetDescription className="sr-only">Responsável, etiquetas, cliente e lead da conversa.</SheetDescription>
           </SheetHeader>
           <div className="grid justify-items-center gap-2 px-4 pb-2 text-center">
-            <ChatAvatar name={conversation.contact_name} seed={conversation.contact_e164} className="size-24 text-3xl" />
+            <ChatAvatar name={conversation.contact_name} seed={seed} group={group} className="size-24 text-3xl" />
             <p className="text-lg font-semibold break-words">{display}</p>
-            <p className="text-sm text-muted-foreground tabular">{formatPhone(conversation.contact_e164)}</p>
+            <p className="text-sm text-muted-foreground tabular">{group ? "Grupo do WhatsApp" : formatPhone(conversation.contact_e164 ?? "")}</p>
           </div>
           <div className="grid gap-5 px-4 pb-6 text-sm">
             <div className="flex flex-wrap justify-center gap-2">
@@ -622,7 +707,8 @@ export function ChatView({
                 </Button>
               )}
               <span className="sm:hidden">{leadPanel}</span>
-              {!conversation.lead && canCreateLead && <CreateLeadDialog conversationId={conversation.id} defaultName={conversation.contact_name} pipelines={pipelines} />}
+              {canReply && !group && <span className="sm:hidden">{statusButton}</span>}
+              {!group && !conversation.lead && canCreateLead && <CreateLeadDialog conversationId={conversation.id} defaultName={conversation.contact_name} pipelines={pipelines} />}
             </div>
             {(canManage || canReply) && (
               <div className="grid gap-1.5">
@@ -642,6 +728,31 @@ export function ChatView({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+            {canReply && clients.length > 0 && (
+              <div className="grid gap-1.5">
+                <label htmlFor="chat-cliente" className="font-medium">
+                  Cliente
+                </label>
+                <Select value={conversation.client_id ?? "__sem__"} onValueChange={(v) => run(() => setConversationClient({ id: conversation.id, clientId: v === "__sem__" ? null : v }))}>
+                  <SelectTrigger id="chat-cliente" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__sem__">Sem cliente</SelectItem>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {conversation.client_id && (
+                  <Link href={`/clientes/${conversation.client_id}`} className="justify-self-start text-sm text-primary hover:underline">
+                    Abrir cliente
+                  </Link>
+                )}
               </div>
             )}
             <div className="grid gap-1.5">
@@ -664,11 +775,11 @@ export function ChatView({
                 </p>
               </div>
             )}
-            {conversation.messages.some((m) => m.important) && (
+            {allMessages.some((m) => m.important) && (
               <div className="grid gap-1">
                 <p className="font-medium">Mensagens importantes</p>
                 <ul className="grid gap-1">
-                  {conversation.messages
+                  {allMessages
                     .filter((m) => m.important)
                     .slice(-10)
                     .map((m) => (

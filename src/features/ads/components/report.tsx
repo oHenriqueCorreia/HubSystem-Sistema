@@ -1,3 +1,4 @@
+import { FitNumber } from "@/components/app/fit-number";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Megaphone } from "lucide-react";
@@ -65,9 +66,9 @@ export function EfficiencyGrid({ totals, currency }: { totals: Totals; currency:
   return (
     <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
       {items.map(([label, value, hint]) => (
-        <div key={label} className="grid content-start gap-1 rounded-xl border bg-surface p-4">
+        <div key={label} className="@container grid min-w-0 content-start gap-1 rounded-xl border bg-surface p-4">
           <dt className="text-xs text-muted-foreground">{label}</dt>
-          <dd className="tabular text-xl font-semibold">{value}</dd>
+          <dd className="min-w-0"><FitNumber text={String(value)} maxRem={1.25} /></dd>
           {hint && <dd className="text-xs text-muted-foreground">{hint}</dd>}
         </div>
       ))}

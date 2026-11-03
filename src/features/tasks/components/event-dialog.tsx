@@ -94,6 +94,7 @@ export function EventDialog({
           title: event.title,
           description: event.description ?? "",
           kind: event.kind,
+          priority: event.priority,
           date: dayKey(event.starts_at),
           startTime: hhmm(event.starts_at),
           endTime: hhmm(event.ends_at),
@@ -112,6 +113,7 @@ export function EventDialog({
           title: "",
           description: "",
           kind: "reuniao",
+          priority: null,
           date: draft?.date ?? dayKey(new Date()),
           startTime: start,
           endTime: plus30(start),
@@ -230,6 +232,26 @@ export function EventDialog({
               Dia inteiro
             </label>
           </div>
+          <FormField label="Prioridade" optional hint="Aparece na cor do item, na agenda.">
+            <Controller
+              control={form.control}
+              name="priority"
+              render={({ field }) => (
+                <Select value={field.value ?? "__sem__"} onValueChange={(v) => field.onChange(v === "__sem__" ? null : v)}>
+                  <SelectTrigger className="w-full" aria-label="Prioridade">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__sem__">Sem prioridade</SelectItem>
+                    <SelectItem value="urgente">Urgente</SelectItem>
+                    <SelectItem value="alta">Alta</SelectItem>
+                    <SelectItem value="media">Média</SelectItem>
+                    <SelectItem value="baixa">Baixa</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </FormField>
           <div className="grid gap-3 sm:grid-cols-3">
             <FormField label="Data" error={errors.date?.message} required>
               <Input type="date" {...form.register("date")} />

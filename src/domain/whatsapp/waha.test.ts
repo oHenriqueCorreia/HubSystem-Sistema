@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bareMessageId, displayPhoneFromMe, messageIdFromResponse, parseWahaEvent, referralFromRaw, sessionNameFor, validWahaUrl } from "./waha";
+import { bareMessageId, chatKind, displayPhoneFromMe, historyItem, messageIdFromResponse, parseWahaEvent, phoneOfJid, referralFromRaw, scopedWamid, sessionNameFor, unscopedWamid, validWahaUrl } from "./waha";
 
 const message = (payload: Record<string, unknown>) => ({ event: "message.any", session: "hub", payload });
 
@@ -7,6 +7,19 @@ describe("ids de mensagem", () => {
   it("reduz o id composto do webhook à cauda usada no envio", () => {
     expect(bareMessageId("true_5548999990000@c.us_3EB0ABC")).toBe("3EB0ABC");
     expect(bareMessageId("3EB0ABC")).toBe("3EB0ABC");
+  });
+
+  it("em grupo, não confunde o id da mensagem com quem escreveu", () => {
+    expect(bareMessageId("false_120363000@g.us_3EB0ABC_5548999990000@c.us")).toBe("3EB0ABC");
+    expect(bareMessageId("true_120363000@g.us_3EB0ABC")).toBe("3EB0ABC");
+  });
+
+  it("cada número guarda a própria cópia da mensagem de grupo", () => {
+    const a = scopedWamid("11111111-aaaa-4aaa-aaaa-aaaaaaaaaaaa", "ABC");
+    const b = scopedWamid("22222222-aaaa-4aaa-aaaa-aaaaaaaaaaaa", "ABC");
+    expect(a).not.toBe(b);
+    expect(unscopedWamid(a)).toBe("ABC");
+    expect(unscopedWamid("ABC")).toBe("ABC");
   });
 
   it("entende os formatos da resposta de envio", () => {
@@ -34,8 +47,28 @@ describe("parseWahaEvent", () => {
     expect(e).toMatchObject({ kind: "message", phone: "+5548999990000" });
   });
 
-  it("ignora @lid sem telefone, grupos, estados e canais", () => {
-    for (const from of ["123@lid", "120363@g.us", "status@broadcast", "120@newsletter"]) {
+  it("lê mensagem de grupo com quem escreveu", () => {
+    const e = parseWahaEvent(message({ id: "false_120363000@g.us_ABC_5548999990000@c.us", from: "120363000@g.us", participant: "5548999990000@c.us", fromMe: false, body: "Bom dia", timestamp: 1790000000, _data: { pushName: "Ana", key: { remoteJid: "120363000@g.us", participant: "5548999990000@c.us" }, message: { conversation: "Bom dia" } } }));
+    expect(e).toMatchObject({ kind: "group_message", wamid: "ABC", groupJid: "120363000@g.us", senderJid: "5548999990000@c.us", senderName: "Ana", fromMe: false, type: "text", body: "Bom dia" });
+  });
+
+  it("no grupo, eco do celular sem to acha o grupo pela chave", () => {
+    const e = parseWahaEvent(message({ id: "true_120363000@g.us_XYZ", from: "120363000@g.us", fromMe: true, body: "Oi", _data: { key: { remoteJid: "120363000@g.us", fromMe: true } } }));
+    expect(e).toMatchObject({ kind: "group_message", fromMe: true, groupJid: "120363000@g.us", senderJid: null });
+  });
+
+  it("reação em grupo não vira mensagem", () => {
+    const e = parseWahaEvent(message({ id: "false_120363000@g.us_ABC_55@c.us", from: "120363000@g.us", fromMe: false, _data: { key: { remoteJid: "120363000@g.us" }, message: { reactionMessage: { text: "👍" } } } }));
+    expect(e.kind).toBe("ignored");
+  });
+
+  it("confirmação de grupo avisa que é de grupo", () => {
+    expect(parseWahaEvent({ event: "message.ack", payload: { id: "true_120363000@g.us_ABC", ack: 3 } })).toMatchObject({ kind: "ack", wamid: "ABC", group: true });
+    expect(parseWahaEvent({ event: "message.ack", payload: { id: "true_55@c.us_ABC", ack: 3 } })).toMatchObject({ kind: "ack", group: false });
+  });
+
+  it("ignora @lid sem telefone, estados e canais", () => {
+    for (const from of ["123@lid", "status@broadcast", "120@newsletter"]) {
       expect(parseWahaEvent(message({ id: "false_x_ABC", from, fromMe: false })).kind).toBe("ignored");
     }
   });
@@ -51,9 +84,9 @@ describe("parseWahaEvent", () => {
 
   it("traduz confirmações de entrega e leitura", () => {
     const ack = (n: number) => parseWahaEvent({ event: "message.ack", payload: { id: "true_55@c.us_ABC", ack: n } });
-    expect(ack(2)).toEqual({ kind: "ack", wamid: "ABC", status: "entregue" });
-    expect(ack(3)).toEqual({ kind: "ack", wamid: "ABC", status: "lida" });
-    expect(ack(-1)).toEqual({ kind: "ack", wamid: "ABC", status: "erro" });
+    expect(ack(2)).toEqual({ kind: "ack", wamid: "ABC", status: "entregue", group: false });
+    expect(ack(3)).toEqual({ kind: "ack", wamid: "ABC", status: "lida", group: false });
+    expect(ack(-1)).toEqual({ kind: "ack", wamid: "ABC", status: "erro", group: false });
     expect(ack(0).kind).toBe("ignored");
   });
 
@@ -98,5 +131,45 @@ describe("configuração do servidor", () => {
     expect(sessionNameFor("0f1fb8d3-99c2-4b1b-a130-38b064df2863")).toMatch(/^hub_[a-z0-9]{24}$/);
     expect(displayPhoneFromMe("554899990000:12@c.us")).toBe("+5548999990000");
     expect(displayPhoneFromMe(null)).toBe("");
+  });
+});
+
+describe("histórico", () => {
+  it("classifica os endereços", () => {
+    expect(chatKind("120363000@g.us")).toBe("grupo");
+    expect(chatKind("5548999990000@c.us")).toBe("contato");
+    expect(chatKind("123@lid")).toBe("contato");
+    expect(chatKind("status@broadcast")).toBe("ignorar");
+    expect(chatKind("120@newsletter")).toBe("ignorar");
+    expect(phoneOfJid("554899990000@s.whatsapp.net")).toBe("+5548999990000");
+    expect(phoneOfJid("123@lid")).toBeNull();
+    expect(phoneOfJid(null)).toBeNull();
+  });
+
+  it("mensagem de texto de contato", () => {
+    expect(historyItem({ id: "false_5548@c.us_ABC", timestamp: 1790000000, fromMe: false, body: "Oi", _data: { message: { conversation: "Oi" } } }, null)).toMatchObject({ wamid: "ABC", direction: "entrada", type: "text", body: "Oi", sender_name: null });
+  });
+
+  it("foto antiga guarda o tipo e a legenda, sem baixar", () => {
+    expect(historyItem({ id: "true_5548@c.us_ABC", timestamp: 1790000000, fromMe: true, body: "Legenda", hasMedia: true, _data: { message: { imageMessage: { mimetype: "image/jpeg" } } } }, null)).toMatchObject({ direction: "saida", type: "image", body: "Legenda" });
+  });
+
+  it("abre mensagem temporária e documento com legenda", () => {
+    expect(historyItem({ id: "false_5548@c.us_A", timestamp: 1, fromMe: false, _data: { message: { ephemeralMessage: { message: { videoMessage: {} } } } } }, null)?.type).toBe("video");
+    expect(historyItem({ id: "false_5548@c.us_B", timestamp: 1, fromMe: false, _data: { message: { documentWithCaptionMessage: { message: { documentMessage: {} } } } } }, null)?.type).toBe("document");
+  });
+
+  it("deixa de fora reação e aviso de sistema", () => {
+    expect(historyItem({ id: "false_5548@c.us_A", timestamp: 1, fromMe: false, _data: { message: { reactionMessage: {} } } }, null)).toBeNull();
+    expect(historyItem({ id: "false_5548@c.us_B", timestamp: 1, fromMe: false, _data: { message: { protocolMessage: {} } } }, null)).toBeNull();
+  });
+
+  it("em grupo, guarda quem escreveu e o prefixo do número", () => {
+    const item = historyItem({ id: "false_120363000@g.us_ABC_5548@c.us", timestamp: 1790000000, fromMe: false, body: "Oi", participant: "5548@c.us", replyTo: { id: "DEF" }, _data: { pushName: "Ana", message: { conversation: "Oi" } } }, "11111111-aaaa-4aaa-aaaa-aaaaaaaaaaaa");
+    expect(item).toMatchObject({ wamid: "11111111:ABC", sender_name: "Ana", sender_jid: "5548@c.us", reply_to: "11111111:DEF" });
+  });
+
+  it("guarda o telefone alternativo de quem tem id oculto", () => {
+    expect(historyItem({ id: "false_123@lid_A", timestamp: 1, fromMe: false, body: "Oi", _data: { key: { remoteJidAlt: "5548@s.whatsapp.net" } } }, null)?.alt).toBe("5548@s.whatsapp.net");
   });
 });

@@ -40,6 +40,12 @@ describe("filtros da agenda", () => {
     expect(filterAgenda(list, { clientId: "c1" }).map((e) => e.id)).toEqual(["a"]);
   });
 
+  it("isola prioridades altas sem esconder compromissos de outros tipos na visão geral", () => {
+    const list = [entry({ id: "urgente", source: "tarefa", type: "prazo", priority: "urgente" }), entry({ id: "alta", source: "tarefa", type: "tarefa", priority: "alta" }), entry({ id: "reuniao" })];
+    expect(filterAgenda(list, {}).map((e) => e.id)).toEqual(["urgente", "alta", "reuniao"]);
+    expect(filterAgenda(list, { priority: "urgente" }).map((e) => e.id)).toEqual(["urgente"]);
+  });
+
   it("pesquisa ignora acento e olha também cliente e quadro", () => {
     const list = [entry({ id: "a", title: "Apresentação" }), entry({ id: "b", title: "Outra", clientName: "Padaria", boardName: "Produção" })];
     expect(filterAgenda(list, { q: "apresentacao" }).map((e) => e.id)).toEqual(["a"]);

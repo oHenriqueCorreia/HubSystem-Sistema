@@ -29,12 +29,16 @@ export async function wahaPing(conn: Pick<WahaConn, "url" | "key">) {
   await call(conn, "/api/sessions", { timeoutMs: 10000 });
 }
 
+// O histórico só vem com o store ligado antes do QR Code: mudar depois exige ler o código de novo.
+const sessionConfig = (webhookUrl: string, secret: string) => ({
+  ignore: { status: true, groups: false, channels: true, broadcast: true },
+  noweb: { store: { enabled: true, fullSync: true } },
+  webhooks: [{ url: webhookUrl, events: EVENTS, hmac: { key: secret } }],
+});
+
 /** Cria a sessão ou, se já existir, atualiza o webhook e a inicia de novo. */
 export async function wahaStartSession(conn: WahaConn, webhookUrl: string, secret: string) {
-  const config = {
-    ignore: { status: true, groups: true, channels: true, broadcast: true },
-    webhooks: [{ url: webhookUrl, events: EVENTS, hmac: { key: secret } }],
-  };
+  const config = sessionConfig(webhookUrl, secret);
   try {
     await call(conn, "/api/sessions", { method: "POST", body: JSON.stringify({ name: conn.session, start: true, config }) });
   } catch (e) {
@@ -44,7 +48,7 @@ export async function wahaStartSession(conn: WahaConn, webhookUrl: string, secre
   }
 }
 
-export type WahaSession = { status: string; me: { id?: string; pushName?: string } | null };
+export type WahaSession = { status: string; me: { id?: string; pushName?: string } | null; config?: { ignore?: { groups?: boolean }; noweb?: { store?: { enabled?: boolean } } } | null };
 
 export const wahaSession = (conn: WahaConn) => call<WahaSession>(conn, `/api/sessions/${conn.session}`);
 
@@ -58,13 +62,45 @@ export async function wahaRestart(conn: WahaConn) {
   await call(conn, `/api/sessions/${conn.session}/restart`, { method: "POST" });
 }
 
+/** Sessão pronta para o histórico e os grupos. Se não estiver, é preciso ler o QR Code de novo. */
+export const wahaHistoryReady = (session: WahaSession) => session.config?.noweb?.store?.enabled === true && session.config?.ignore?.groups === false;
+
+/** Sai do aparelho e sobe a sessão com o histórico ligado, pronta para um novo QR Code. */
+export async function wahaResetForHistory(conn: WahaConn, webhookUrl: string, secret: string) {
+  await call(conn, `/api/sessions/${conn.session}/logout`, { method: "POST" }).catch((e) => {
+    if ((e as { status?: number }).status !== 404) throw e;
+  });
+  await wahaStartSession(conn, webhookUrl, secret);
+}
+
+export type WahaChat = { id: string; name?: string | null };
+
+/** Conversas do aparelho, das mais recentes para as mais antigas. */
+export const wahaChatsOverview = (conn: WahaConn, limit: number, offset: number) => call<WahaChat[]>(conn, `/api/${conn.session}/chats/overview?limit=${limit}&offset=${offset}`, { timeoutMs: 20000 });
+
+/** Mensagens de uma conversa, das mais recentes para as mais antigas, sem baixar mídia. */
+export const wahaChatMessages = (conn: WahaConn, chatId: string, limit: number, offset: number) =>
+  call<unknown[]>(conn, `/api/${conn.session}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&offset=${offset}&downloadMedia=false&sortBy=messageTimestamp&sortOrder=desc`, { timeoutMs: 20000 });
+
+export async function wahaGroupName(conn: WahaConn, groupId: string) {
+  const r = await call<{ subject?: string; name?: string }>(conn, `/api/${conn.session}/groups/${encodeURIComponent(groupId)}`, { timeoutMs: 8000 });
+  return r.subject ?? r.name ?? null;
+}
+
+/** Telefone real de quem tem id oculto (@lid), quando o servidor já conhece. */
+export async function wahaLidPhone(conn: WahaConn, lid: string) {
+  const r = await call<{ pn?: string | null }>(conn, `/api/${conn.session}/lids/${encodeURIComponent(lid)}`, { timeoutMs: 8000 });
+  return r.pn ?? null;
+}
+
 /** Desconecta o aparelho e apaga a sessão no servidor. */
 export async function wahaDeleteSession(conn: WahaConn) {
   await call(conn, `/api/sessions/${conn.session}`, { method: "DELETE" }).catch(() => null);
 }
 
-/** Endereço de envio do contato: o WhatsApp pode registrar o número com ou sem o 9º dígito. */
+/** Endereço de envio do contato: o WhatsApp pode registrar o número com ou sem o 9º dígito. Grupo já é o endereço. */
 export async function wahaChatId(conn: WahaConn, e164: string) {
+  if (e164.endsWith("@g.us")) return e164;
   let answered = false;
   for (const variant of brPhoneVariants(e164)) {
     const digits = variant.replace(/\D/g, "");
@@ -76,8 +112,8 @@ export async function wahaChatId(conn: WahaConn, e164: string) {
   throw Object.assign(new Error("waha_numero"), { detail: answered ? "Este número não tem WhatsApp." : "Não foi possível falar com o servidor do WhatsApp. Confira se ele está ligado." });
 }
 
-export async function wahaSendText(conn: WahaConn, chatId: string, text: string, replyTo?: { wamid: string; fromMe: boolean } | null) {
-  const reply = replyTo ? { reply_to: wahaReplyId(replyTo.fromMe, chatId, replyTo.wamid) } : {};
+export async function wahaSendText(conn: WahaConn, chatId: string, text: string, replyTo?: { wamid: string; fromMe: boolean; participant?: string | null } | null) {
+  const reply = replyTo ? { reply_to: wahaReplyId(replyTo.fromMe, chatId, replyTo.wamid, replyTo.participant) } : {};
   const r = await call<unknown>(conn, "/api/sendText", { method: "POST", body: JSON.stringify({ session: conn.session, chatId, text, ...reply }) });
   return messageIdFromResponse(r);
 }

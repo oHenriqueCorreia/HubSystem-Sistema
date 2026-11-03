@@ -1,3 +1,4 @@
+import { parseAgendaPrefs } from "@/domain/calendar/agenda-prefs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
@@ -181,6 +182,7 @@ export default async function InicioPage() {
             canEditTasks={Boolean(user.permissions["tasks.update"])}
             canPublish={Boolean(user.permissions["content.publish"])}
             savedFilters={(user.preferences.agenda_filters as SavedAgendaFilter[] | undefined) ?? []}
+            initialPrefs={parseAgendaPrefs(user.preferences.agenda_view)}
           />
         </Panel>
       ) : null,

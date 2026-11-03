@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ChevronLeft, ChevronRight, LoaderCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,10 @@ import { cn } from "cn";
 import { dayKey, findConflicts, layoutDay, minutesOfDay, shiftDay, type CalendarView, type CalItem } from "@/domain/calendar";
 import { todayLocal } from "@/domain/shared/dates";
 import { EventDialog, type EventDraft } from "./event-dialog";
-import { AGENDA_TYPE_LABEL, type AgendaEntry, type AgendaType } from "@/domain/calendar/agenda";
+import { AGENDA_TYPE_LABEL, type AgendaEntry } from "@/domain/calendar/agenda";
+import { DEFAULT_AGENDA_PREFS, priorityColor, visibleDays, type AgendaPrefs } from "@/domain/calendar/agenda-prefs";
+import { MobileFilters } from "@/components/app/mobile-filters";
+import { AgendaCustomize, AgendaLegend, entryLook, PriorityTag, useAgendaPrefs } from "./agenda-customize";
 import { AGENDA_STYLE, AgendaItemSheet } from "./agenda-item-sheet";
 import type { CalendarEvent } from "../queries";
 
@@ -35,7 +38,7 @@ export function CalendarViewClient({
   view,
   day,
   days,
-  items,
+  items: allItems,
   owners,
   meId,
   canManage,
@@ -44,6 +47,7 @@ export function CalendarViewClient({
   canEditTasks,
   canPublish,
   clients,
+  initialPrefs = DEFAULT_AGENDA_PREFS,
 }: {
   view: CalendarView;
   day: string;
@@ -57,6 +61,7 @@ export function CalendarViewClient({
   canEditTasks: boolean;
   canPublish: boolean;
   clients: { id: string; legal_name: string }[];
+  initialPrefs?: AgendaPrefs;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -65,6 +70,9 @@ export function CalendarViewClient({
   const [dialog, setDialog] = useState<{ event?: CalendarEvent | null; draft?: EventDraft | null } | null>(null);
   const [selected, setSelected] = useState<AgendaEntry | null>(null);
   const today = todayLocal();
+  const [prefs, updatePrefs] = useAgendaPrefs(initialPrefs);
+  const items = useMemo(() => allItems.filter((i) => !prefs.hiddenTypes.includes(i.meta.entry.type)), [allItems, prefs.hiddenTypes]);
+  const shownDays = visibleDays(days, prefs);
   const conflicts = useMemo(() => findConflicts(items), [items]);
   const ownerName = useMemo(() => new Map(owners.map((o) => [o.id, o.full_name || o.email])), [owners]);
 
@@ -102,6 +110,12 @@ export function CalendarViewClient({
 
   const conflictCount = conflicts.size;
 
+  // Sete colunas não cabem no celular: sem visão escolhida, abre no dia.
+  useEffect(() => {
+    if (!params.get("visao") && window.matchMedia("(max-width: 767px)").matches) nav({ visao: "dia" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só na abertura da tela
+  }, []);
+
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -116,11 +130,31 @@ export function CalendarViewClient({
             <ChevronRight aria-hidden="true" />
           </Button>
         </div>
-        <h2 className="text-base font-semibold first-letter:uppercase" aria-live="polite">
+        <h2 className="min-w-0 text-base font-semibold first-letter:uppercase" aria-live="polite">
           {labelFor(view, day, days)}
         </h2>
         {pending && <LoaderCircle className="size-4 animate-spin text-muted-foreground" aria-label="Carregando" />}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 md:ml-auto md:w-auto">
+          <nav aria-label="Visão" className="inline-flex rounded-lg border bg-surface p-0.5">
+            {(["dia", "semana", "mes"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => nav({ visao: v })}
+                aria-pressed={view === v}
+                className={cn("rounded-md px-3 py-1 text-sm font-medium", view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+              >
+                {v === "dia" ? "Dia" : v === "semana" ? "Semana" : "Mês"}
+              </button>
+            ))}
+          </nav>
+          <AgendaCustomize prefs={prefs} onChange={updatePrefs} />
+          {canManage && (
+            <Button size="sm" className="max-md:flex-auto" onClick={() => quickCreate(view === "mes" ? today : day)}>
+              <Plus aria-hidden="true" /> Novo evento
+            </Button>
+          )}
+          <MobileFilters active={["responsavel", "tipo", "cliente", "situacao"].filter((k) => params.get(k)).length}>
           {canSeeOthers && (
             <Select value={params.get("responsavel") ?? ALL} onValueChange={(v) => nav({ responsavel: v })}>
               <SelectTrigger className="w-44" aria-label="Agenda de">
@@ -175,24 +209,7 @@ export function CalendarViewClient({
               <SelectItem value="cancelado">Só cancelados</SelectItem>
             </SelectContent>
           </Select>
-          <nav aria-label="Visão" className="inline-flex rounded-lg border bg-surface p-0.5">
-            {(["dia", "semana", "mes"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => nav({ visao: v })}
-                aria-pressed={view === v}
-                className={cn("rounded-md px-3 py-1 text-sm font-medium", view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-              >
-                {v === "dia" ? "Dia" : v === "semana" ? "Semana" : "Mês"}
-              </button>
-            ))}
-          </nav>
-          {canManage && (
-            <Button size="sm" onClick={() => quickCreate(view === "mes" ? today : day)}>
-              <Plus aria-hidden="true" /> Novo evento
-            </Button>
-          )}
+          </MobileFilters>
         </div>
       </div>
 
@@ -203,20 +220,20 @@ export function CalendarViewClient({
       )}
 
       {view === "mes" ? (
-        <div className="overflow-x-auto rounded-xl border bg-surface">
-          <div className="grid min-w-[42rem] grid-cols-7 border-b text-xs font-medium text-muted-foreground" aria-hidden="true">
-            {WEEKDAYS.map((w) => (
+        <div className="overflow-hidden rounded-xl border bg-surface">
+          <div className="grid border-b text-center text-xs font-medium text-muted-foreground md:text-left" style={{ gridTemplateColumns: `repeat(${prefs.weekends ? 7 : 5}, minmax(0, 1fr))` }} aria-hidden="true">
+            {WEEKDAYS.filter((_, i) => prefs.weekends || (i !== 0 && i !== 6)).map((w) => (
               <div key={w} className="px-2 py-1.5">
                 {w}
               </div>
             ))}
           </div>
-          <div className="grid min-w-[42rem] grid-cols-7" role="grid" aria-label="Mês">
-            {days.map((d) => {
+          <div className="grid" style={{ gridTemplateColumns: `repeat(${prefs.weekends ? 7 : 5}, minmax(0, 1fr))` }} role="grid" aria-label="Mês">
+            {shownDays.map((d) => {
               const list = (byDay.get(d) ?? []).sort((a, b) => a.start.localeCompare(b.start));
               const outside = d.slice(0, 7) !== day.slice(0, 7);
               return (
-                <div key={d} role="gridcell" className={cn("min-h-28 border-r border-b p-1 last:border-r-0", outside && "bg-muted/40")}>
+                <div key={d} role="gridcell" className={cn("relative min-h-16 min-w-0 border-r border-b p-1 last:border-r-0 md:min-h-28", outside && "bg-muted/40")}>
                   <button
                     type="button"
                     onClick={() => nav({ visao: "dia", data: d })}
@@ -228,10 +245,23 @@ export function CalendarViewClient({
                   >
                     {Number(d.slice(8))}
                   </button>
-                  <ul className="grid gap-0.5">
+                  {/* Celular: pontos e o total; tocar abre o dia inteiro. */}
+                  <button type="button" onClick={() => nav({ visao: "dia", data: d })} className="absolute inset-0 grid content-end justify-items-center gap-0.5 pb-1.5 md:hidden" aria-label={`Abrir o dia ${d.split("-").reverse().join("/")}: ${list.length} ${list.length === 1 ? "item" : "itens"}`}>
+                    {list.length > 0 && (
+                      <>
+                        <span className="flex flex-wrap justify-center gap-0.5" aria-hidden="true">
+                          {list.slice(0, 4).map((it) => (
+                            <span key={it.id} className="size-1.5 rounded-full" style={{ background: priorityColor(it.meta.entry.priority, prefs) ?? "var(--muted-foreground)" }} />
+                          ))}
+                        </span>
+                        <span className="text-[11px] leading-none text-muted-foreground tabular" aria-hidden="true">{list.length}</span>
+                      </>
+                    )}
+                  </button>
+                  <ul className="hidden min-w-0 gap-0.5 md:grid">
                     {list.slice(0, 3).map((it) => (
                       <li key={`${it.id}-${d}`}>
-                        <ItemChip item={it} conflict={conflicts.has(it.id)} onOpen={openItem} compact />
+                        <ItemChip item={it} conflict={conflicts.has(it.id)} onOpen={openItem} compact prefs={prefs} />
                       </li>
                     ))}
                     {list.length > 3 && (
@@ -253,28 +283,18 @@ export function CalendarViewClient({
           </div>
         </div>
       ) : (
-        <TimeGrid days={view === "dia" ? [day] : days} byDay={byDay} today={today} conflicts={conflicts} onOpen={openItem} onSlot={quickCreate} canManage={canManage} ownerName={ownerName} showOwner={canSeeOthers} />
+        <TimeGrid prefs={prefs} days={view === "dia" ? [day] : shownDays} byDay={byDay} today={today} conflicts={conflicts} onOpen={openItem} onSlot={quickCreate} canManage={canManage} ownerName={ownerName} showOwner={canSeeOthers} />
       )}
 
-      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        {(Object.keys(AGENDA_TYPE_LABEL) as AgendaType[]).map((t) => {
-          const Icon = AGENDA_STYLE[t].icon;
-          return (
-            <span key={t} className="inline-flex items-center gap-1">
-              <span className={cn("grid size-4 place-items-center rounded border", AGENDA_STYLE[t].className)}>
-                <Icon className="size-3" aria-hidden="true" />
-              </span>
-              {AGENDA_TYPE_LABEL[t]}
-            </span>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <AgendaLegend prefs={prefs} onChange={updatePrefs} />
         <span className="inline-flex items-center gap-1">
           <AlertTriangle className="size-3.5 text-warning" aria-hidden="true" /> Conflito de horário
         </span>
         <Link href="/tarefas" className="text-primary hover:underline">
           Ver todas as tarefas
         </Link>
-      </p>
+      </div>
 
       <AgendaItemSheet
         entry={selected}
@@ -303,20 +323,22 @@ export function CalendarViewClient({
   );
 }
 
-function ItemChip({ item, conflict, onOpen, compact }: { item: Item; conflict: boolean; onOpen: (i: Item) => void; compact?: boolean }) {
+function ItemChip({ item, conflict, onOpen, compact, prefs }: { item: Item; conflict: boolean; onOpen: (i: Item) => void; compact?: boolean; prefs: AgendaPrefs }) {
   const time = item.allDay
     ? "Dia inteiro"
     : new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(item.start));
   const done = ["concluida", "concluido", "cancelado", "cancelada"].includes(item.meta.status);
   const style = AGENDA_STYLE[item.meta.entry.type];
+  const look = entryLook(item.meta.entry, prefs);
   const Icon = style.icon;
   return (
     <button
       type="button"
       onClick={() => onOpen(item)}
+      style={look.style}
       className={cn(
-        "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-xs",
-        style.className,
+        "flex w-full min-w-0 items-center gap-1 rounded border px-1 py-0.5 text-left text-xs",
+        look.className,
         conflict && "ring-1 ring-warning",
         done && "line-through opacity-60",
       )}
@@ -345,7 +367,9 @@ function TimeGrid({
   canManage,
   ownerName,
   showOwner,
+  prefs,
 }: {
+  prefs: AgendaPrefs;
   days: string[];
   byDay: Map<string, Item[]>;
   today: string;
@@ -366,28 +390,28 @@ function TimeGrid({
   return (
     <div className="overflow-x-auto rounded-xl border bg-surface">
       <div className="grid" style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(${days.length > 1 ? "7.5rem" : "12rem"}, 1fr))` }}>
-        <div className="sticky left-0 border-b bg-surface" />
+        <div className="sticky left-0 z-20 border-b bg-surface" />
         {days.map((d) => (
           <div key={d} className={cn("border-b border-l px-2 py-1.5 text-center text-xs font-medium", d === today && "text-primary")}>
             {fmtDay(d)}
           </div>
         ))}
 
-        <div className="sticky left-0 border-b bg-surface px-1 py-1 text-[11px] text-muted-foreground">Dia todo</div>
+        <div className="sticky left-0 z-20 border-b bg-surface px-1 py-1 text-[11px] text-muted-foreground">Dia todo</div>
         {days.map((d) => (
           <div key={`ad-${d}`} className="grid min-h-8 gap-0.5 border-b border-l p-0.5">
             {(byDay.get(d) ?? [])
               .filter((i) => i.allDay)
               .map((i) => (
-                <ItemChip key={i.id} item={i} conflict={false} onOpen={onOpen} compact />
+                <ItemChip key={i.id} item={i} conflict={false} onOpen={onOpen} compact prefs={prefs} />
               ))}
           </div>
         ))}
 
-        <div className="sticky left-0 bg-surface">
+        <div className="sticky left-0 z-20 bg-surface">
           {hours.map((h) => (
-            <div key={h} className="relative border-b text-right text-[11px] text-muted-foreground" style={{ height: HOUR_PX }}>
-              <span className="absolute -top-2 right-1 tabular">{String(h).padStart(2, "0")}:00</span>
+            <div key={h} className="border-b pt-0.5 pr-1 text-right text-[11px] leading-none text-muted-foreground tabular" style={{ height: HOUR_PX }}>
+              {String(h).padStart(2, "0")}:00
             </div>
           ))}
         </div>
@@ -415,29 +439,36 @@ function TimeGrid({
                 const height = Math.max(20, ((Math.min(endMin, END_HOUR * 60) - Math.max(startMin, START_HOUR * 60)) / 60) * HOUR_PX);
                 const pos = layout.get(it.id) ?? { col: 0, cols: 1 };
                 const conflict = conflicts.has(it.id);
-                const blockStyle = AGENDA_STYLE[it.meta.entry.type];
+                const look = entryLook(it.meta.entry, prefs);
+                const clock = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(it.start));
+                // Item curto: hora e título na mesma linha, em vez de um cortar o outro.
+                const short = height < 40;
                 return (
                   <button
                     key={it.id}
                     type="button"
                     onClick={() => onOpen(it)}
                     className={cn(
-                      "absolute overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs shadow-xs",
-                      blockStyle.className,
+                      "absolute z-10 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs leading-tight shadow-xs",
+                      look.className,
                       conflict && "border-warning ring-1 ring-warning",
                       ["concluida", "concluido", "cancelado", "cancelada"].includes(it.meta.status) && "opacity-60 line-through",
                     )}
                     title={`${AGENDA_TYPE_LABEL[it.meta.entry.type]}: ${it.title}`}
-                    style={{ top, height, left: `calc(${(pos.col / pos.cols) * 100}% + 2px)`, width: `calc(${100 / pos.cols}% - 4px)` }}
+                    style={{ ...look.style, top, height, left: `calc(${(pos.col / pos.cols) * 100}% + 2px)`, width: `calc(${100 / pos.cols}% - 4px)` }}
                   >
-                    <span className="flex items-center gap-1 font-medium">
+                    <span className="flex min-w-0 items-center gap-1 font-medium">
                       {conflict && <AlertTriangle className="size-3 shrink-0 text-warning" aria-label="Conflito de horário" />}
+                      {short && <span className="shrink-0 font-normal tabular opacity-80">{clock}</span>}
                       <span className="truncate">{it.title}</span>
                     </span>
-                    <span className="block truncate tabular opacity-80">
-                      {new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(it.start))}
-                      {showOwner && it.ownerId ? ` · ${ownerName.get(it.ownerId) ?? ""}` : ""}
-                    </span>
+                    {!short && (
+                      <span className="block truncate tabular opacity-80">
+                        {clock}
+                        {showOwner && it.ownerId ? ` · ${ownerName.get(it.ownerId) ?? ""}` : ""}
+                      </span>
+                    )}
+                    {!short && height >= 56 && <PriorityTag priority={it.meta.entry.priority} prefs={prefs} />}
                   </button>
                 );
               })}

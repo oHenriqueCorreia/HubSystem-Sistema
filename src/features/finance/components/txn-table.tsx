@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlarmClock, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, BadgeCheck, CircleCheck, CircleDashed, MoreHorizontal, Repeat } from "lucide-react";
+import { AlarmClock, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, BadgeCheck, CircleCheck, CircleDashed, ListChecks, MoreHorizontal, Repeat } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,6 +23,7 @@ import type { Account, Category, CostCenter, FinanceScope, Transaction } from ".
 import { TxnFormDialog } from "./txn-form-dialog";
 import { Attachments } from "@/features/clients/components/attachments";
 import { ChargeDialog, HistoryDialog, TransferDialog } from "./txn-extra-dialogs";
+import { BulkBar } from "./bulk-actions";
 
 type Lookups = { accounts: Account[]; categories: Category[]; costCenters: CostCenter[] };
 
@@ -54,7 +55,25 @@ function StatusBadge({ t, today }: { t: Transaction; today: string }) {
   );
 }
 
-export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope; rows: Transaction[]; lookups: Lookups; perms: { update: boolean; delete: boolean; reconcile: boolean; transfer?: boolean } }) {
+export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope; rows: Transaction[]; lookups: Lookups; perms: { update: boolean; delete: boolean; reconcile: boolean; transfer?: boolean; recurring?: boolean } }) {
+  const canBulk = Boolean(perms.delete || perms.transfer);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selecting, setSelecting] = useState(false);
+  // Trocar de filtro ou de página tira da conta o que não está mais na tela.
+  const selectedRows = useMemo(() => rows.filter((t) => selected.has(t.id)), [rows, selected]);
+  const toggle = (id: string, on: boolean) =>
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const allSelected = rows.length > 0 && selectedRows.length === rows.length;
+  const selectAll = (on: boolean) => setSelected(new Set(on ? rows.map((t) => t.id) : []));
+  const clearSelection = () => {
+    setSelected(new Set());
+    setSelecting(false);
+  };
   const [transferring, setTransferring] = useState<Transaction | null>(null);
   const [charging, setCharging] = useState<Transaction | null>(null);
   const [history, setHistory] = useState<Transaction | null>(null);
@@ -154,6 +173,11 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
         <Table>
           <TableHeader>
             <TableRow>
+              {canBulk && (
+                <TableHead className="w-8">
+                  <Checkbox checked={allSelected} onCheckedChange={(v) => selectAll(v === true)} aria-label="Selecionar todos desta página" />
+                </TableHead>
+              )}
               <TableHead className="w-8">
                 <span className="sr-only">Tipo</span>
               </TableHead>
@@ -170,7 +194,12 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
           </TableHeader>
           <TableBody>
             {rows.map((t) => (
-              <TableRow key={t.id} className={cn(isOverdueTxn(t, today) && "bg-danger-soft/40")}>
+              <TableRow key={t.id} data-state={selected.has(t.id) ? "selected" : undefined} className={cn(isOverdueTxn(t, today) && "bg-danger-soft/40")}>
+                {canBulk && (
+                  <TableCell>
+                    <Checkbox checked={selected.has(t.id)} onCheckedChange={(v) => toggle(t.id, v === true)} aria-label={`Selecionar ${t.description}`} />
+                  </TableCell>
+                )}
                 <TableCell>
                   <KindIcon t={t} />
                 </TableCell>
@@ -199,26 +228,44 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
         </Table>
       </div>
 
-      <ul className="grid gap-2 md:hidden">
+      {canBulk && rows.length > 0 && (
+        <div className="flex items-center justify-between gap-2 md:hidden">
+          <Button variant="outline" aria-pressed={selecting} onClick={() => (selecting ? clearSelection() : setSelecting(true))}>
+            <ListChecks aria-hidden="true" /> {selecting ? "Cancelar seleção" : "Selecionar vários"}
+          </Button>
+          {selecting && (
+            <Button variant="ghost" onClick={() => selectAll(!allSelected)}>
+              {allSelected ? "Desmarcar todos" : "Marcar todos"}
+            </Button>
+          )}
+        </div>
+      )}
+
+      <ul className={cn("grid gap-2 md:hidden", selectedRows.length > 0 && "pb-24")}>
         {rows.map((t) => (
-          <li key={t.id} className={cn("grid gap-1 rounded-lg border bg-surface p-3", isOverdueTxn(t, today) && "border-danger/40")}>
-            <div className="flex items-start gap-2">
+          <li key={t.id} className={cn("grid min-w-0 gap-2 rounded-lg border bg-surface p-3", isOverdueTxn(t, today) && "border-danger/40", selected.has(t.id) && "border-primary ring-1 ring-primary")}>
+            <div className={cn("grid min-w-0 items-start gap-2", selecting ? "grid-cols-[auto_auto_minmax(0,1fr)]" : "grid-cols-[auto_minmax(0,1fr)]")}>
+              {selecting && <Checkbox checked={selected.has(t.id)} onCheckedChange={(v) => toggle(t.id, v === true)} aria-label={`Selecionar ${t.description}`} />}
               <KindIcon t={t} />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.description}</span>
-              {amount(t)}
+              <span className="min-w-0 break-words text-sm font-medium">{t.description}</span>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t pt-2">
+              <span className="min-w-0 flex-1 break-words text-xs text-muted-foreground">
                 {formatDate(t.due_date)} · {t.category_id ? cat.get(t.category_id) : "Sem categoria"}
               </span>
-              <StatusBadge t={t} today={today} />
+              <span className="ml-auto text-right">{amount(t)}</span>
             </div>
-            {actions(t)}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <StatusBadge t={t} today={today} />
+              {actions(t)}
+            </div>
           </li>
         ))}
       </ul>
 
-      {transferring && <TransferDialog txn={transferring} scope={scope} categoryName={transferring.category_id ? cat.get(transferring.category_id) : undefined} accountName={transferring.account_id ? acc.get(transferring.account_id) : undefined} onClose={() => setTransferring(null)} />}
+      {selectedRows.length > 0 && <BulkBar rows={selectedRows} scope={scope} perms={perms} onClear={clearSelection} />}
+
+      {transferring && <TransferDialog canRecur={Boolean(perms.recurring)} txn={transferring} scope={scope} categoryName={transferring.category_id ? cat.get(transferring.category_id) : undefined} accountName={transferring.account_id ? acc.get(transferring.account_id) : undefined} onClose={() => setTransferring(null)} />}
       {charging && <ChargeDialog txn={charging} scope={scope} onClose={() => setCharging(null)} />}
       {history && <HistoryDialog txn={history} onClose={() => setHistory(null)} />}
 

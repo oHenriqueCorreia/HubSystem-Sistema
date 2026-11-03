@@ -58,6 +58,7 @@ export const eventFormSchema = z
     title: z.string().trim().min(1, "Informe o título.").max(200),
     description: z.string().trim().max(10000).optional().nullable(),
     kind: z.enum(["reuniao", "compromisso", "bloqueio"]).default("reuniao"),
+    priority: z.enum(["baixa", "media", "alta", "urgente"]).nullable().default(null),
     date: z.iso.date({ error: "Informe a data." }),
     startTime: z.string().regex(/^\d{2}:\d{2}$/, "Hora inválida."),
     endTime: z.string().regex(/^\d{2}:\d{2}$/, "Hora inválida."),
@@ -132,6 +133,7 @@ export const savedAgendaFilterSchema = z.object({
   filter: z.object({
     q: z.string().trim().max(100).optional(),
     type: z.enum(["reuniao", "compromisso", "bloqueio", "tarefa", "prazo", "publicacao"]).nullable().optional(),
+    priority: z.enum(["baixa", "media", "alta", "urgente"]).nullable().optional(),
     ownerIds: z.array(z.uuid()).max(50).optional(),
     clientId: z.uuid().nullable().optional(),
     status: z.enum(["aberto", "concluido", "cancelado"]).nullable().optional(),
@@ -139,3 +141,14 @@ export const savedAgendaFilterSchema = z.object({
 });
 
 export const availabilitySchema = z.object({ date: z.iso.date(), ownerId: z.uuid().nullable().optional(), minutes: z.number().int().min(15).max(480).default(30) });
+
+const swatch = z.enum(["vermelho", "laranja", "amarelo", "verde", "azul", "roxo", "rosa", "cinza"]);
+
+export const agendaPrefsSchema = z.object({
+  colorBy: z.enum(["tipo", "prioridade"]),
+  density: z.enum(["confortavel", "compacta"]),
+  weekends: z.boolean(),
+  defaultTab: z.enum(["hoje", "semana", "mes"]).nullable(),
+  hiddenTypes: z.array(z.enum(["reuniao", "compromisso", "bloqueio", "tarefa", "prazo", "publicacao"])).max(6),
+  priorityColors: z.object({ urgente: swatch, alta: swatch, media: swatch, baixa: swatch }),
+});

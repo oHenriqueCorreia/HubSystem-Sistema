@@ -1,20 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Check, CheckCheck, MessagesSquare, Search, TriangleAlert } from "lucide-react";
+import { ScrollMemory } from "@/components/app/scroll-memory";
+import { Check, CheckCheck, History, MessagesSquare, Search, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { requirePermission } from "@/lib/auth/dal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatPhone } from "@/domain/shared/phone";
 import { todayLocal } from "@/domain/shared/dates";
-import { listTime, messagePreview } from "@/domain/whatsapp/chat";
+import { chatTitle, listTime, messagePreview } from "@/domain/whatsapp/chat";
 import { whatsappConfigured } from "@/lib/whatsapp";
 import { getCrmLookups } from "@/features/crm/queries";
 import { TagChip } from "@/features/crm/components/chips";
 import type { TagColor } from "@/features/crm/types";
 import { getLeadWork, listCadences } from "@/features/tasks/queries";
 import { LeadWorkPanel } from "@/features/tasks/components/lead-work-panel";
-import { getConversation, getInboxSetup, listConversations, listLeadDeals, listQuickReplies, type InboxFilters } from "@/features/inbox/queries";
+import { getConversation, getInboxSetup, listClientOptions, listConversations, listLeadDeals, listQuickReplies, type InboxFilters } from "@/features/inbox/queries";
 import { ChatAvatar, ChatView } from "@/features/inbox/components/chat-view";
 import { NumbersDialog } from "@/features/inbox/components/numbers-dialog";
 import { WhatsAppSetup } from "@/features/inbox/components/whatsapp-setup";
@@ -24,10 +25,14 @@ import { LeadSidePanel } from "@/features/inbox/components/lead-side-panel";
 
 export const metadata: Metadata = { title: "Atendimento" };
 
+// A compilação de conversas roda em etapas de até 25 segundos nas ações desta tela.
+export const maxDuration = 60;
+
 const str = (v: string | string[] | undefined) => (typeof v === "string" && v ? v : undefined);
 const TABS: [NonNullable<InboxFilters["status"]>, string][] = [
   ["abertas", "Abertas"],
   ["aguardando", "Aguardando resposta"],
+  ["grupos", "Grupos"],
   ["encerradas", "Encerradas"],
   ["todas", "Todas"],
 ];
@@ -54,6 +59,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
     listQuickReplies(),
   ]);
   const selectedLead = selected?.lead ?? null;
+  const clients = selected ? await listClientOptions() : [];
   const [leadDeals, leadWork, cadences] = selectedLead ? await Promise.all([listLeadDeals(selectedLead.id), getLeadWork(selectedLead.id), listCadences()]) : [[], null, []];
   const channel = selected ? setup.numbers.find((n) => n.id === selected.number_id) : undefined;
   const names = Object.fromEntries(lookups.owners.map((o) => [o.id, o.full_name || o.email]));
@@ -76,13 +82,14 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
     <>
       <InboxRealtime />
       <h1 className="sr-only">Atendimento</h1>
+      {selected && <span data-chat-open className="hidden" />}
       <div className={cn("px-3 pt-1", selected && "max-md:hidden")}>
         <InboxNav />
       </div>
       <div
         className={cn(
           "grid grid-cols-[minmax(0,1fr)] overflow-hidden border-t bg-surface md:m-3 md:h-[calc(100dvh-7rem)] md:grid-cols-[23rem_minmax(0,1fr)] md:rounded-xl md:border",
-          selected ? "h-[calc(100dvh-3rem-4.5rem-env(safe-area-inset-bottom))]" : "h-[calc(100dvh-5.75rem-4.5rem-env(safe-area-inset-bottom))]",
+          selected ? "h-dvh" : "h-[calc(100dvh-6.125rem-4.5rem-env(safe-area-inset-bottom))]",
         )}
       >
         <aside aria-label="Conversas" className={cn("flex min-h-0 flex-col border-r", selected && "hidden md:flex")}>
@@ -103,13 +110,13 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
               {filters.numero && <input type="hidden" name="numero" value={filters.numero} />}
             </form>
           </div>
-          <nav aria-label="Filtrar conversas" className="flex gap-1.5 overflow-x-auto border-b px-3 py-2">
+          <nav aria-label="Filtrar conversas" className="flex items-center gap-1.5 overflow-x-auto border-b px-3 py-1 md:py-2">
             {TABS.map(([k, label]) => (
               <Link
                 key={k}
                 href={href({ situacao: k === "abertas" ? undefined : k, pagina: undefined, conversa: undefined })}
                 aria-current={filters.status === k ? "page" : undefined}
-                className={cn("rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors", filters.status === k ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-white" : "bg-muted text-muted-foreground hover:bg-accent")}
+                className={cn("rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap md:text-xs transition-colors", filters.status === k ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-white" : "bg-muted text-muted-foreground hover:bg-accent")}
               >
                 {label}
               </Link>
@@ -117,7 +124,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
             <Link
               href={href({ responsavel: filters.responsavel === "eu" ? undefined : "eu", conversa: undefined })}
               aria-current={filters.responsavel === "eu" ? "page" : undefined}
-              className={cn("rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors", filters.responsavel === "eu" ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-white" : "bg-muted text-muted-foreground hover:bg-accent")}
+              className={cn("rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap md:text-xs transition-colors", filters.responsavel === "eu" ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-white" : "bg-muted text-muted-foreground hover:bg-accent")}
             >
               Minhas
             </Link>
@@ -134,18 +141,26 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
               ))}
             </nav>
           )}
+          {setup.activeImports.length > 0 && (
+            <p className="flex items-center gap-2 border-b bg-info-soft px-3 py-2 text-xs" role="status">
+              <History className="size-4 shrink-0" aria-hidden="true" />
+              <span>Compilando conversas: {setup.activeImports.reduce((a, j) => a + j.contacts_done + j.groups_done, 0).toLocaleString("pt-BR")} até agora.</span>
+            </p>
+          )}
           {list.items.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">{active ? "Nenhuma conversa com estes filtros." : "Conecte um número para começar a receber mensagens."}</p>
+            <p className="p-6 text-center text-sm text-muted-foreground">{!active ? "Conecte um número para começar a receber mensagens." : filters.status === "grupos" ? "Nenhum grupo por aqui. Compile as conversas em Números conectados para trazer os grupos." : "Nenhuma conversa com estes filtros."}</p>
           ) : (
-            <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <ScrollMemory id={`atendimento-${filters.status}`} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {list.items.map((c) => {
-                const name = c.contact_name || formatPhone(c.contact_e164);
                 const mine = c.preview?.direction === "saida";
+                const name = chatTitle(c, formatPhone);
+                const group = c.kind === "grupo";
+                const senderPrefix = group && !mine && c.preview?.sender_name ? `${c.preview.sender_name.split(" ")[0]}: ` : "";
                 const unread = c.unread_count > 0;
                 return (
                   <li key={c.id}>
                     <Link href={href({ conversa: c.id })} aria-current={selected?.id === c.id ? "true" : undefined} className={cn("flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent", selected?.id === c.id && "bg-accent")}>
-                      <ChatAvatar name={c.contact_name} seed={c.contact_e164} className="size-12 text-base" />
+                      <ChatAvatar name={c.contact_name} seed={c.contact_e164 ?? c.group_jid ?? c.id} group={group} className="size-12 text-base" />
                       <span className="grid min-w-0 flex-1 gap-0.5 border-b pb-2.5">
                         <span className="flex items-baseline justify-between gap-2">
                           <span className="truncate font-medium">{name}</span>
@@ -153,7 +168,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
                         </span>
                         <span className="flex items-center gap-1.5">
                           {mine && (c.preview?.status === "lida" ? <CheckCheck className="size-4 shrink-0 text-[#53bdeb]" aria-label="Lida" /> : c.preview?.status === "entregue" ? <CheckCheck className="size-4 shrink-0 text-muted-foreground" aria-label="Entregue" /> : c.preview?.status === "erro" ? <TriangleAlert className="size-3.5 shrink-0 text-danger" aria-label="Erro no envio" /> : <Check className="size-4 shrink-0 text-muted-foreground" aria-label="Enviada" />)}
-                          <span className={cn("min-w-0 flex-1 truncate text-sm", unread ? "font-medium text-foreground" : "text-muted-foreground")}>{messagePreview(c.preview) || (c.lead ? c.lead.name : "Sem mensagens")}</span>
+                          <span className={cn("min-w-0 flex-1 truncate text-sm", unread ? "font-medium text-foreground" : "text-muted-foreground")}>{c.preview ? `${senderPrefix}${messagePreview(c.preview)}` : c.lead ? c.lead.name : "Sem mensagens"}</span>
                           {unread && <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-[#00a884] px-1.5 text-[11px] font-semibold text-white tabular">{c.unread_count}</span>}
                         </span>
                         {(c.tags.length > 0 || (setup.numbers.length > 1 && numberLabel(c.number_id)) || (c.assignee_id && names[c.assignee_id])) && (
@@ -171,7 +186,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
                   </li>
                 );
               })}
-            </ul>
+            </ScrollMemory>
           )}
           {(page > 0 || list.hasMore) && (
             <div className="flex justify-between border-t p-2">
@@ -199,6 +214,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
               templates={setup.templates}
               tags={lookups.tags}
               pipelines={lookups.pipelines.map((p) => ({ id: p.id, name: p.name }))}
+              clients={clients}
               names={names}
               canReply={Boolean(user.permissions["inbox.reply"])}
               canManage={canManage}

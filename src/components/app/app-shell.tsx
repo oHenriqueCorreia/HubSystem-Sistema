@@ -1,7 +1,7 @@
 "use client";
 
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useTheme } from "next-themes";
@@ -38,6 +38,8 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Brand, BrandMark } from "@/components/app/brand";
+import { KeepActiveVisible } from "@/components/app/keep-active-visible";
+import { MobileTables } from "@/components/app/mobile-tables";
 import { NavIconView } from "@/components/app/nav-icon";
 import { signOut } from "@/features/auth/actions";
 import type { NavGroup, NavItem } from "@/config/navigation";
@@ -141,9 +143,15 @@ export function AppShell({
       </Sidebar>
 
       <SidebarInset className="min-w-0">
-        <div className="sticky top-0 z-20 flex h-12 items-center border-b bg-background/95 px-3 backdrop-blur">
+        <KeepActiveVisible />
+        <MobileTables />
+        <div className="hub-topbar sticky top-0 z-20 flex h-12 items-center gap-2 border-b bg-background/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur">
           <SidebarTrigger aria-label="Recolher ou expandir menu" className="hidden md:inline-flex" />
-          <div className="ml-auto">
+          <Link href="/inicio" aria-label="Ir para o início" className="flex min-h-11 min-w-0 items-center gap-2 md:hidden">
+            <BrandMark className="size-7 shrink-0" />
+            <span className="truncate text-sm font-medium">{organizationName}</span>
+          </Link>
+          <div className="ml-auto shrink-0">
             <NotificationBell />
           </div>
         </div>
@@ -217,6 +225,12 @@ function UserMenu({ user, compact }: { user: ShellUser; compact?: boolean }) {
   );
 }
 
+/** Mostra na hora que o toque foi recebido, mesmo se a tela demorar a chegar. */
+function NavPending() {
+  const { pending } = useLinkStatus();
+  return <span className={cn("absolute inset-x-5 top-0 h-0.5 rounded-b bg-primary transition-opacity", pending ? "opacity-100" : "opacity-0")} aria-hidden="true" />;
+}
+
 /** Barra inferior do celular: 4 destinos principais + "Mais". */
 function MobileNav({
   groups,
@@ -238,7 +252,7 @@ function MobileNav({
     <>
       <nav
         aria-label="Navegação principal"
-        className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="hub-bottom-nav fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
         <ul className="grid grid-cols-5">
           {primary.map((item) => {
@@ -249,10 +263,11 @@ function MobileNav({
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
+                    "relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors active:bg-muted",
                     active ? "text-primary" : "text-muted-foreground",
                   )}
                 >
+                  <NavPending />
                   <NavIconView name={item.icon} className="size-5" />
                   {item.label}
                 </Link>

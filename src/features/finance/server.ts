@@ -9,17 +9,19 @@ export async function requireFinance(param: string): Promise<{ scope: FinanceSco
   if (!scope) notFound();
   const user = await requirePermission(scope === "empresa" ? "finance.company.read" : "finance.personal.manage");
   const p = user.permissions;
-  // Transferir exige acesso às duas áreas.
-  const transfer = Boolean(p["finance.company.update"] && p["finance.personal.manage"]);
+  // Mover exige poder tirar de uma área e colocar na outra; recorrência também altera o lançamento já movido.
+  const transfer = Boolean(p["finance.personal.manage"] && (scope === "empresa" ? p["finance.company.update"] : p["finance.company.create"]));
+  const recurring = Boolean(p["finance.personal.manage"] && p["finance.company.create"] && p["finance.company.update"]);
   const perms =
     scope === "pessoal"
-      ? { create: true, update: true, delete: true, reconcile: true, transfer }
+      ? { create: true, update: true, delete: true, reconcile: true, transfer, recurring }
       : {
           create: Boolean(p["finance.company.create"]),
           update: Boolean(p["finance.company.update"]),
           delete: Boolean(p["finance.company.delete"]),
           reconcile: Boolean(p["finance.company.reconcile"]),
           transfer,
+          recurring: false,
         };
   return { scope, user, perms };
 }

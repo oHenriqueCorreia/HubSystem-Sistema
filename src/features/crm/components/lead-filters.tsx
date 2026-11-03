@@ -1,5 +1,6 @@
 "use client";
 
+import { MobileFilters } from "@/components/app/mobile-filters";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { LoaderCircle, Search, X } from "lucide-react";
@@ -117,6 +118,7 @@ export function LeadFilters({ lookups, pipelineId, show = "all" }: { lookups: Cr
           className="pl-8"
         />
       </div>
+      <MobileFilters active={active}>
       {show === "all" && sel("etapa", "Etapa", stages.map((s) => ({ value: s.id, label: s.name })), "w-44")}
       {sel("responsavel", "Responsável", [{ value: "sem", label: "Sem responsável" }, ...lookups.owners.map((o) => ({ value: o.id, label: o.full_name || o.email }))])}
       {lookups.segments.length > 0 && sel("segmento", "Segmento", lookups.segments.map((s) => ({ value: s.id, label: s.name })))}
@@ -140,6 +142,7 @@ export function LeadFilters({ lookups, pipelineId, show = "all" }: { lookups: Cr
           { value: "proximo", label: "Próximo contato" },
           { value: "ultimo", label: "Último contato" },
         ], "w-40")}
+      </MobileFilters>
       {active > 0 && (
         <Button variant="ghost" size="sm" onClick={clearAll}>
           <X aria-hidden="true" /> Limpar filtros ({active})
