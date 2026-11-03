@@ -2,43 +2,49 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { Bell, CheckCheck } from "lucide-react";
+import { Bell, CheckCheck, Settings } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatRelative } from "@/domain/shared/dates";
+import { createClient } from "@/lib/supabase/client";
 import { listMyNotifications, markNotificationsRead, type NotificationItem } from "../actions";
 
-const KEY = "hub:notificacoes-geradas";
-const TEN_MIN = 10 * 60_000;
-
-function shouldRefresh() {
-  try {
-    const last = Number(sessionStorage.getItem(KEY) ?? 0);
-    if (Date.now() - last < TEN_MIN) return false;
-    sessionStorage.setItem(KEY, String(Date.now()));
-  } catch {
-    /* sem storage: gera mesmo assim */
-  }
-  return true;
-}
-
-/** Central de notificações: lista, marca como lida e leva ao item. */
+/** Central de notificações: lista, atualiza sozinha, marca como lida e leva ao item. */
 export function NotificationBell() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
   const [, startTransition] = useTransition();
   const unread = items.filter((i) => !i.read_at).length;
 
-  const load = useCallback((refresh: boolean) => {
+  const load = useCallback(() => {
     startTransition(async () => {
-      const res = await listMyNotifications({ refresh });
+      const res = await listMyNotifications({});
       if (res.ok) setItems(res.data as NotificationItem[]);
     });
   }, []);
 
+  // Carrega ao abrir, ao voltar para a aba e quando chega uma notificação nova (a RLS filtra por usuário).
   useEffect(() => {
-    load(shouldRefresh());
+    load();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const supabase = createClient();
+    const channel = supabase
+      .channel("notificacoes")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (change: { new: { title?: string; body?: string | null } }) => {
+        const n = change.new;
+        if (n.title) toast.info(n.title, { description: n.body ?? undefined });
+        load();
+      })
+      .subscribe();
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      void supabase.removeChannel(channel);
+    };
   }, [load]);
 
   function read(ids?: string[]) {
@@ -53,7 +59,7 @@ export function NotificationBell() {
       open={open}
       onOpenChange={(v) => {
         setOpen(v);
-        if (v) load(false);
+        if (v) load();
       }}
     >
       <PopoverTrigger asChild>
@@ -69,11 +75,18 @@ export function NotificationBell() {
       <PopoverContent align="end" className="grid w-[min(22rem,calc(100vw-2rem))] gap-2 p-0">
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
           <h2 className="text-sm font-semibold">Notificações</h2>
-          {unread > 0 && (
-            <Button variant="ghost" size="xs" onClick={() => read()}>
-              <CheckCheck aria-hidden="true" /> Marcar todas como lidas
+          <div className="flex items-center gap-1">
+            {unread > 0 && (
+              <Button variant="ghost" size="xs" onClick={() => read()}>
+                <CheckCheck aria-hidden="true" /> Marcar todas como lidas
+              </Button>
+            )}
+            <Button asChild variant="ghost" size="icon-sm">
+              <Link href="/configuracoes/notificacoes" aria-label="Configurar notificações" onClick={() => setOpen(false)}>
+                <Settings aria-hidden="true" />
+              </Link>
             </Button>
-          )}
+          </div>
         </div>
         {items.length === 0 ? (
           <p className="px-3 pb-3 text-sm text-muted-foreground">Nenhuma notificação por enquanto.</p>

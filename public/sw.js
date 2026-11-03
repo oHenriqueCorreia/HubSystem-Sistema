@@ -1,7 +1,7 @@
-// Service worker do HubSystem: permite instalar o app e mostra uma página
-// offline quando não há conexão. Dados do sistema NÃO são guardados em cache
+// Service worker do HubSystem: permite instalar o app, mostra uma página
+// offline quando não há conexão e exibe as notificações no aparelho. Dados do sistema NÃO são guardados em cache
 // (são privados e mudam o tempo todo); só a casca estática e a página offline.
-const CACHE = "hub-shell-v1";
+const CACHE = "hub-shell-v2";
 const OFFLINE_URL = "/offline";
 
 self.addEventListener("install", (event) => {
@@ -43,4 +43,36 @@ self.addEventListener("fetch", (event) => {
       ),
     );
   }
+});
+
+// Notificação recebida do servidor (lembretes de tarefas, agenda, contas…).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    /* conteúdo inesperado: mostra o aviso padrão */
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "HubSystem", {
+      body: data.body || undefined,
+      icon: "/brand/icon-192.png",
+      badge: "/brand/icon-192.png",
+      tag: data.tag,
+      data: { href: data.href || "/inicio" },
+    }),
+  );
+});
+
+// Toque na notificação: abre o item, reaproveitando a janela do app se houver.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const href = new URL(event.notification.data?.href || "/inicio", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      const open = list.find((c) => c.url.startsWith(self.location.origin));
+      if (open) return open.focus().then((c) => c.navigate(href));
+      return self.clients.openWindow(href);
+    }),
+  );
 });

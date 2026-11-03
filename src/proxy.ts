@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   "/termos",
   "/exclusao-de-dados",
   "/api/cron",
+  "/api/push/dispatch",
   "/api/google/webhook",
   "/api/whatsapp/webhook",
 ];

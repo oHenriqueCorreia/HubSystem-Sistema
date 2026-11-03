@@ -134,7 +134,6 @@ O Google Ads não informa saldo nem limite de faturamento pela API de relatório
 |---|---|---|
 | `/api/cron/google-sync` | 09:00 | Sincroniza agendas e renova canais push |
 | `/api/cron/ads-sync` | 10:00 | Atualiza contas, campanhas, métricas e alertas de anúncios |
-| `/api/cron/finance` | 10:30 (07:30 em Brasília) | Notifica as contas a pagar que vencem no dia (empresa e pessoal) |
 | `/api/cron/cadences` | 12:00 (09:00 em Brasília) | Executa etapas automáticas das cadências |
 
 Todas exigem `CRON_SECRET`. No plano Hobby da Vercel, crons rodam no máximo uma vez por dia; para processar cadências com mais frequência, use o botão **Executar automações agora** ou um plano Pro.

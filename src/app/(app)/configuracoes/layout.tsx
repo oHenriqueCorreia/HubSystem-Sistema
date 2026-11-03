@@ -4,6 +4,7 @@ import type { PermissionKey } from "@/domain/permissions";
 
 const ITEMS: { href: string; label: string; perm?: PermissionKey }[] = [
   { href: "/configuracoes/perfil", label: "Meu perfil" },
+  { href: "/configuracoes/notificacoes", label: "Notificações" },
   { href: "/configuracoes/geral", label: "Empresa", perm: "admin.settings" },
   { href: "/configuracoes/usuarios", label: "Usuários", perm: "admin.users" },
   { href: "/configuracoes/papeis", label: "Papéis e permissões", perm: "admin.roles" },
