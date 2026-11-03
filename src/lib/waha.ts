@@ -8,10 +8,13 @@ export type WahaConn = { url: string; key: string; session: string };
 
 const EVENTS = ["message.any", "message.ack", "session.status"];
 
+const tunnelHeaders = (url: string): Record<string, string> =>
+  new URL(url).hostname.endsWith(".ngrok-free.dev") ? { "ngrok-skip-browser-warning": "1" } : {};
+
 async function call<T>(conn: Pick<WahaConn, "url" | "key">, path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const res = await fetch(`${conn.url}${path}`, {
     ...init,
-    headers: { "X-Api-Key": conn.key, "Content-Type": "application/json", Accept: "application/json", ...(init?.headers ?? {}) },
+    headers: { "X-Api-Key": conn.key, "Content-Type": "application/json", Accept: "application/json", ...tunnelHeaders(conn.url), ...(init?.headers ?? {}) },
     cache: "no-store",
     redirect: "error", // a chave nunca acompanha um redirecionamento
     signal: AbortSignal.timeout(init?.timeoutMs ?? 20000),
@@ -101,7 +104,7 @@ export async function wahaSendSeen(conn: WahaConn, chatId: string) {
  */
 export async function wahaDownload(conn: Pick<WahaConn, "url" | "key">, mediaUrl: string, maxBytes = 25 * 1024 * 1024) {
   const path = new URL(mediaUrl, conn.url);
-  const res = await fetch(`${conn.url}${path.pathname}${path.search}`, { headers: { "X-Api-Key": conn.key }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(40000) });
+  const res = await fetch(`${conn.url}${path.pathname}${path.search}`, { headers: { "X-Api-Key": conn.key, ...tunnelHeaders(conn.url) }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(40000) });
   if (!res.ok) throw new Error("waha_media");
   const body = await res.arrayBuffer();
   if (body.byteLength > maxBytes) throw new Error("waha_media_grande");

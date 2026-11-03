@@ -19,6 +19,18 @@ services:
       - waha_sessions:/app/.sessions
       - waha_media:/app/.media
 
+  ngrok:
+    image: ngrok/ngrok@sha256:ff3b5c3674432d14a786349908b7bdf28ee56c25662637afcbe7180d471993ef
+    container_name: hub-ngrok
+    restart: unless-stopped
+    profiles:
+      - tunnel
+    depends_on:
+      - waha
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    command: ["http", "waha:3000", "--url", "${NGROK_URL:-}"]
+
 volumes:
   waha_sessions:
   waha_media:

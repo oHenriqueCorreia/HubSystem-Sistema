@@ -1,16 +1,15 @@
 # WAHA local do HubSystem
 
-O WhatsApp por QR Code precisa de um processo contínuo fora da Vercel. Esta configuração roda o WAHA no computador Windows, acessível somente em `127.0.0.1:3031`. O site deve alcançá-lo por um Cloudflare Tunnel com hostname HTTPS fixo.
+O WhatsApp por QR Code precisa de um processo contínuo fora da Vercel. Esta configuração roda o WAHA no computador Windows, acessível somente em `127.0.0.1:3031`. O site alcança o WAHA pelo endereço HTTPS fixo da conta ngrok. Um Cloudflare Tunnel também pode ser usado quando houver um domínio próprio na Cloudflare.
 
 ## Iniciar
 
 1. Instale e inicie o Docker Desktop.
-2. Crie `infra/waha/.env` com `WAHA_API_KEY` (chave aleatória) e `WAHA_API_KEY_HASH=sha512:<SHA-512 da chave>`. O arquivo é ignorado pelo Git.
-3. Nesta pasta, execute `docker compose up -d`.
-4. Configure no Cloudflare Tunnel um hostname público para `http://127.0.0.1:3031` e mantenha o conector ativo após reinicializações.
-5. Na Vercel Production, configure `WAHA_URL` com esse hostname HTTPS e `WAHA_API_KEY` com a chave original. Faça novo deploy.
+2. Crie `infra/waha/.env` com `WAHA_API_KEY` (chave aleatória), `WAHA_API_KEY_HASH=sha512:<SHA-512 da chave>`, `NGROK_AUTHTOKEN` e `NGROK_URL=https://<domínio da conta>.ngrok-free.dev`. O arquivo é ignorado pelo Git.
+3. Nesta pasta, execute `docker compose --profile tunnel up -d`. Os dois contêineres usam `restart: unless-stopped`.
+4. Na Vercel Production, configure `WAHA_URL` com `NGROK_URL` e `WAHA_API_KEY` com a chave original. Faça novo deploy.
 
-O banco mantém o endereço e a chave criptografada por número conectado. As credenciais e sessões do WhatsApp ficam no volume Docker `waha_waha_sessions`; inclua esse volume no plano de backup. O volume `waha_waha_media` armazena mídias temporárias. Não publique a porta 3031 diretamente na internet.
+O banco mantém o endereço e a chave criptografada por número conectado. As credenciais e sessões do WhatsApp ficam no volume Docker `waha_waha_sessions`; inclua esse volume no plano de backup. O volume `waha_waha_media` armazena mídias temporárias. Não publique a porta 3031 diretamente na internet. O plano grátis do ngrok tem limites de requisições e tráfego; acompanhe o consumo no painel para decidir quando migrar para uma hospedagem própria.
 
 ## Verificação
 
