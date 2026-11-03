@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Ban, Check, CheckCheck, Clock, FileText, LoaderCircle, Lock, Megaphone, Send, Star, TriangleAlert, UserPlus } from "lucide-react";
+import { ArrowLeft, Ban, Check, CheckCheck, Clock, FileText, LoaderCircle, Lock, Megaphone, Paperclip, Send, Star, TriangleAlert, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { formatDateTime } from "@/domain/shared/dates";
 import { formatPhone } from "@/domain/shared/phone";
+import { baseMime } from "@/domain/whatsapp/media";
+import { formatOutcome, OUTCOMES } from "@/domain/whatsapp/outcomes";
+import { fillQuickReply, matchQuickReplies, shortcutQuery, type QuickReply } from "@/domain/whatsapp/quick-replies";
+import { createClient } from "@/lib/supabase/client";
 import { TagPicker } from "@/features/tags/components/tag-picker";
 import type { Tag } from "@/features/crm/types";
 import {
@@ -22,6 +26,8 @@ import {
   assignConversation,
   createLeadFromConversation,
   markConversationRead,
+  prepareWhatsAppUpload,
+  sendWhatsAppMedia,
   sendWhatsAppMessage,
   sendWhatsAppTemplate,
   setConversationStatus,
@@ -29,6 +35,7 @@ import {
   toggleImportant,
 } from "../actions";
 import type { ConversationOrigin, Message } from "../queries";
+import { AttachButton, AudioRecorder, QuickReplyMenu } from "./composer-tools";
 
 type Owner = { id: string; full_name: string; email: string };
 type Template = { id: string; name: string; language: string; status: string; components: { type: string; text?: string }[] };
@@ -39,7 +46,7 @@ type Conversation = {
   status: string;
   assignee_id: string | null;
   last_inbound_at: string | null;
-  lead: { id: string; name: string; contact_opt_out_at: string | null } | null;
+  lead: { id: string; name: string; company_name?: string | null; contact_opt_out_at: string | null } | null;
   tagIds: string[];
   messages: Message[];
   origin: ConversationOrigin | null;
@@ -64,6 +71,10 @@ export function ConversationView({
   canReply,
   canManage,
   canCreateLead,
+  provider,
+  online,
+  quickReplies,
+  leadPanel,
 }: {
   conversation: Conversation;
   owners: Owner[];
@@ -74,6 +85,10 @@ export function ConversationView({
   canReply: boolean;
   canManage: boolean;
   canCreateLead: boolean;
+  provider: "cloud" | "waha";
+  online: boolean;
+  quickReplies: QuickReply[];
+  leadPanel?: React.ReactNode;
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -82,17 +97,28 @@ export function ConversationView({
   const [pending, startTransition] = useTransition();
   const bottom = useRef<HTMLDivElement>(null);
   const [now] = useState(() => Date.now());
-  const windowOpen = Boolean(conversation.last_inbound_at && now - new Date(conversation.last_inbound_at).getTime() < 24 * 3600_000);
+  // A janela de 24 horas e os modelos são regras da API oficial; o QR Code só precisa estar conectado.
+  const qr = provider === "waha";
+  const windowOpen = qr || Boolean(conversation.last_inbound_at && now - new Date(conversation.last_inbound_at).getTime() < 24 * 3600_000);
   const blocked = Boolean(conversation.lead?.contact_opt_out_at);
-  const approved = useMemo(() => templates.filter((t) => t.status === "APPROVED"), [templates]);
+  const offline = qr && !online;
+  const canSend = !blocked && windowOpen && !offline;
+  const approved = useMemo(() => (qr ? [] : templates.filter((t) => t.status === "APPROVED")), [qr, templates]);
+  const [file, setFile] = useState<File | null>(null);
+  const [activeReply, setActiveReply] = useState(0);
+  const [replyMenuClosed, setReplyMenuClosed] = useState(false);
+  const query = mode === "cliente" && !replyMenuClosed ? shortcutQuery(text) : null;
+  const matches = useMemo(() => (query === null ? [] : matchQuickReplies(quickReplies, query)), [query, quickReplies]);
+  const lastInbound = conversation.messages.filter((m) => m.direction === "entrada").at(-1)?.id;
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [conversation.messages.length]);
 
+  // Também marca como lida a mensagem que chega com a conversa aberta.
   useEffect(() => {
     void markConversationRead({ id: conversation.id });
-  }, [conversation.id]);
+  }, [conversation.id, lastInbound]);
 
   function run(fn: () => Promise<{ ok: boolean; message?: string }>, after?: () => void) {
     startTransition(async () => {
@@ -104,8 +130,31 @@ export function ConversationView({
     });
   }
 
+  function chooseReply(reply: QuickReply) {
+    setText(fillQuickReply(reply.body, { name: conversation.lead?.name ?? conversation.contact_name, company: conversation.lead?.company_name }));
+    setActiveReply(0);
+    setReplyMenuClosed(true);
+  }
+
+  /** O arquivo vai direto do navegador para o armazenamento; depois o servidor envia pelo WhatsApp. */
+  function sendFile(blob: Blob, name: string, mime: string, caption: string, after?: () => void) {
+    run(async () => {
+      const prepared = await prepareWhatsAppUpload({ conversationId: conversation.id, mime, size: blob.size });
+      if (!prepared.ok) return prepared;
+      const { error } = await createClient().storage.from("whatsapp-media").uploadToSignedUrl(prepared.data.path, prepared.data.token, blob, { contentType: baseMime(mime) });
+      if (error) return { ok: false, message: "Não foi possível enviar o arquivo. Confira a conexão e tente de novo." };
+      return sendWhatsAppMedia({ conversationId: conversation.id, clientRef: crypto.randomUUID(), path: prepared.data.path, mime, size: blob.size, name, caption });
+    }, after);
+  }
+
   function send() {
     const body = text.trim();
+    if (file && mode === "cliente") {
+      return sendFile(file, file.name, file.type, body, () => {
+        setFile(null);
+        setText("");
+      });
+    }
     if (!body) return;
     if (mode === "nota") return run(() => addInternalNote({ conversationId: conversation.id, body }), () => setText(""));
     // clientRef estável por envio: um duplo clique não manda duas mensagens.
@@ -150,16 +199,15 @@ export function ConversationView({
             </SelectContent>
           </Select>
         )}
-        {canReply && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pending}
-            onClick={() => run(() => setConversationStatus({ id: conversation.id, status: conversation.status === "aberta" ? "encerrada" : "aberta", outcome: "" }))}
-          >
-            {conversation.status === "aberta" ? "Encerrar" : "Reabrir"}
-          </Button>
-        )}
+        {leadPanel}
+        {canReply &&
+          (conversation.status === "aberta" ? (
+            <CloseDialog conversationId={conversation.id} />
+          ) : (
+            <Button variant="outline" size="sm" disabled={pending} onClick={() => run(() => setConversationStatus({ id: conversation.id, status: "aberta", outcome: "" }))}>
+              Reabrir
+            </Button>
+          ))}
         {!conversation.lead && canCreateLead && <CreateLeadDialog conversationId={conversation.id} defaultName={conversation.contact_name} pipelines={pipelines} />}
       </header>
       {conversation.origin && (
@@ -214,6 +262,8 @@ export function ConversationView({
                       <img src={`/api/whatsapp/media/${m.id}`} alt={m.body || "Imagem recebida"} className="max-h-64 rounded-lg" loading="lazy" />
                     ) : m.media_mime?.startsWith("audio/") ? (
                       <audio controls src={`/api/whatsapp/media/${m.id}`} className="max-w-full" />
+                    ) : m.media_mime?.startsWith("video/") ? (
+                      <video controls preload="metadata" src={`/api/whatsapp/media/${m.id}`} className="max-h-64 max-w-full rounded-lg" />
                     ) : (
                       <a href={`/api/whatsapp/media/${m.id}`} className="inline-flex items-center gap-1 underline">
                         <FileText className="size-4" aria-hidden="true" /> {m.media_name || "Abrir arquivo"}
@@ -233,7 +283,7 @@ export function ConversationView({
                     onClick={() => run(() => toggleImportant({ id: m.id, important: !m.important }))}
                     aria-pressed={m.important}
                     aria-label={m.important ? "Desmarcar como importante" : "Marcar como importante"}
-                    className={cn("rounded", m.important ? "opacity-100" : "opacity-0 group-hover:opacity-70 focus-visible:opacity-100")}
+                    className={cn("rounded", m.important ? "opacity-100" : "opacity-0 group-hover:opacity-70 focus-visible:opacity-100 max-md:opacity-50")}
                   >
                     <Star className={cn("size-3.5", m.important && "fill-current")} aria-hidden="true" />
                   </button>
@@ -247,7 +297,7 @@ export function ConversationView({
       </ol>
 
       {canReply && (
-        <footer className="grid gap-2 border-t p-3">
+        <footer className="grid gap-2 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {blocked && (
             <p role="alert" className="flex items-center gap-2 text-sm text-danger">
               <Ban className="size-4" aria-hidden="true" /> Este contato pediu para não receber mensagens. Envios bloqueados; notas internas continuam liberadas.
@@ -256,6 +306,7 @@ export function ConversationView({
           {!windowOpen && !blocked && mode === "cliente" && (
             <p className="text-sm text-warning">Mais de 24 horas desde a última mensagem do cliente: só é possível enviar um modelo aprovado.</p>
           )}
+          {offline && !blocked && mode === "cliente" && <p className="text-sm text-warning">O WhatsApp por QR Code está desconectado. Reconecte o número em Números conectados para enviar.</p>}
           <div className="flex items-center gap-1" role="tablist" aria-label="Tipo de mensagem">
             <Button type="button" role="tab" aria-selected={mode === "cliente"} size="xs" variant={mode === "cliente" ? "default" : "ghost"} onClick={() => setMode("cliente")}>
               Para o cliente
@@ -265,30 +316,127 @@ export function ConversationView({
             </Button>
             {approved.length > 0 && !blocked && <TemplateDialog conversationId={conversation.id} templates={approved} />}
           </div>
-          <div className="flex items-end gap-2">
+          {matches.length > 0 && <QuickReplyMenu id="respostas-rapidas" replies={matches} active={activeReply} onChoose={chooseReply} />}
+          {file && mode === "cliente" && (
+            <p className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1 text-sm">
+              <Paperclip className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">{file.name}</span>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Remover anexo" onClick={() => setFile(null)}>
+                <X aria-hidden="true" />
+              </Button>
+            </p>
+          )}
+          <div className="flex items-end gap-1 sm:gap-2">
+            {mode === "cliente" && (
+              <>
+                <AttachButton disabled={pending || !canSend} onPick={setFile} />
+                <AudioRecorder disabled={pending || !canSend} onRecorded={(blob, mime) => sendFile(blob, `audio.${baseMime(mime).split("/")[1]}`, mime, "")} />
+              </>
+            )}
             <Textarea
               rows={2}
               value={text}
               maxLength={4096}
-              onChange={(e) => setText(e.target.value)}
+              role={matches.length > 0 ? "combobox" : undefined}
+              aria-expanded={matches.length > 0 ? true : undefined}
+              aria-controls={matches.length > 0 ? "respostas-rapidas" : undefined}
+              aria-activedescendant={matches.length > 0 ? `respostas-rapidas-${activeReply}` : undefined}
+              onChange={(e) => {
+                setText(e.target.value);
+                setActiveReply(0);
+                setReplyMenuClosed(false);
+              }}
               onKeyDown={(e) => {
+                if (matches.length > 0) {
+                  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    const step = e.key === "ArrowDown" ? 1 : -1;
+                    return setActiveReply((i) => (i + step + matches.length) % matches.length);
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    return chooseReply(matches[Math.min(activeReply, matches.length - 1)]);
+                  }
+                  if (e.key === "Escape") return setReplyMenuClosed(true);
+                }
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   send();
                 }
               }}
-              placeholder={mode === "nota" ? "Visível só para a equipe…" : "Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"}
+              placeholder={mode === "nota" ? "Visível só para a equipe…" : file ? "Legenda do arquivo (opcional)…" : "Escreva uma mensagem ou / para respostas rápidas…"}
               aria-label={mode === "nota" ? "Observação interna" : "Mensagem para o cliente"}
-              disabled={mode === "cliente" && (blocked || !windowOpen)}
+              disabled={mode === "cliente" && !canSend}
               className={cn(mode === "nota" && "border-warning/60 bg-warning-soft/40")}
             />
-            <Button onClick={send} disabled={pending || !text.trim() || (mode === "cliente" && (blocked || !windowOpen))} aria-label="Enviar">
+            <Button onClick={send} disabled={pending || (!text.trim() && !(file && mode === "cliente")) || (mode === "cliente" && !canSend)} aria-label="Enviar">
               {pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
             </Button>
           </div>
         </footer>
       )}
     </section>
+  );
+}
+
+function CloseDialog({ conversationId }: { conversationId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<string>("");
+  const [note, setNote] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    startTransition(async () => {
+      const res = await setConversationStatus({ id: conversationId, status: "encerrada", outcome: formatOutcome(reason, note) });
+      if (!res.ok) return void toast.error(res.message);
+      toast.success(res.message);
+      setOpen(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !pending && setOpen(v)}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          Encerrar
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Encerrar atendimento</DialogTitle>
+          <DialogDescription>O motivo aparece nos indicadores do Atendimento e na linha do tempo do lead.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <FormField label="Como terminou" required>
+            <Select value={reason} onValueChange={setReason}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Escolha o motivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {OUTCOMES.map((o) => (
+                  <SelectItem key={o} value={o}>
+                    {o}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Observação" optional>
+            <Textarea rows={2} value={note} maxLength={400} onChange={(e) => setNote(e.target.value)} />
+          </FormField>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            Cancelar
+          </Button>
+          <Button onClick={submit} disabled={pending || !reason}>
+            {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Encerrar atendimento
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

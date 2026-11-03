@@ -74,7 +74,7 @@ export async function getConversation(id: string) {
   const [conv, msgs] = await Promise.all([
     supabase
       .from("conversations")
-      .select("id, number_id, contact_e164, contact_name, status, assignee_id, last_inbound_at, outcome, lead:leads(id, name, contact_opt_out_at, whatsapp_consent_at, owner_id), conversation_tags(tag_id)")
+      .select("id, number_id, contact_e164, contact_name, status, assignee_id, last_inbound_at, outcome, lead:leads(id, name, company_name, next_contact_at, contact_opt_out_at, whatsapp_consent_at, owner_id), conversation_tags(tag_id)")
       .eq("id", id)
       .maybeSingle(),
     // Últimas 200 mensagens (o suficiente para o atendimento; o histórico completo fica no banco).
@@ -85,7 +85,7 @@ export async function getConversation(id: string) {
   const lead = Array.isArray(conv.data.lead) ? conv.data.lead[0] : conv.data.lead;
   return {
     ...conv.data,
-    lead: (lead ?? null) as { id: string; name: string; contact_opt_out_at: string | null; whatsapp_consent_at: string | null; owner_id: string | null } | null,
+    lead: (lead ?? null) as { id: string; name: string; company_name: string | null; next_contact_at: string | null; contact_opt_out_at: string | null; whatsapp_consent_at: string | null; owner_id: string | null } | null,
     tagIds: ((conv.data.conversation_tags as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id),
     messages: ((msgs.data ?? []) as Message[]).reverse(),
     origin: await getConversationOrigin(id),
@@ -127,9 +127,22 @@ export async function getInboxSetup() {
     supabase.from("whatsapp_templates").select("id, name, language, category, status, components").order("name"),
   ]);
   return {
-    numbers: (numbers.data ?? []) as { id: string; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null }[],
+    numbers: (numbers.data ?? []) as { id: string; provider: "cloud" | "waha"; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null }[],
     templates: (templates.data ?? []) as { id: string; name: string; language: string; category: string | null; status: string; components: { type: string; text?: string }[] }[],
   };
+}
+
+export async function listQuickReplies() {
+  const supabase = await createClient();
+  const { data } = await supabase.from("quick_replies").select("id, shortcut, body").order("shortcut");
+  return (data ?? []) as { id: string; shortcut: string; body: string }[];
+}
+
+/** Negócios do lead com as etapas de cada funil, para mudar de etapa dentro da conversa. */
+export async function listLeadDeals(leadId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase.from("deals").select("id, stage_id, pipeline_id").eq("lead_id", leadId);
+  return (data ?? []) as { id: string; stage_id: string; pipeline_id: string }[];
 }
 
 /** Conversas de um lead (para o painel do lead). */

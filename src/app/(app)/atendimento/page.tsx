@@ -13,9 +13,14 @@ import { whatsappConfigured } from "@/lib/whatsapp";
 import { getCrmLookups } from "@/features/crm/queries";
 import { TagChip } from "@/features/crm/components/chips";
 import type { TagColor } from "@/features/crm/types";
-import { getConversation, getInboxSetup, listConversations, type InboxFilters } from "@/features/inbox/queries";
+import { getLeadWork, listCadences } from "@/features/tasks/queries";
+import { LeadWorkPanel } from "@/features/tasks/components/lead-work-panel";
+import { getConversation, getInboxSetup, listConversations, listLeadDeals, listQuickReplies, type InboxFilters } from "@/features/inbox/queries";
 import { ConversationView } from "@/features/inbox/components/conversation-view";
 import { WhatsAppSetup } from "@/features/inbox/components/whatsapp-setup";
+import { InboxRealtime } from "@/features/inbox/components/inbox-realtime";
+import { InboxNav } from "@/features/inbox/components/inbox-nav";
+import { LeadSidePanel } from "@/features/inbox/components/lead-side-panel";
 
 export const metadata: Metadata = { title: "Atendimento" };
 
@@ -40,12 +45,16 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
   };
   const page = Math.max(0, Number(str(sp.pagina) ?? 0) || 0);
   const selectedId = str(sp.conversa);
-  const [list, setup, lookups, selected] = await Promise.all([
+  const [list, setup, lookups, selected, quickReplies] = await Promise.all([
     listConversations(filters, user.id, page),
     getInboxSetup(),
     getCrmLookups(),
     selectedId && /^[0-9a-f-]{36}$/i.test(selectedId) ? getConversation(selectedId) : Promise.resolve(null),
+    listQuickReplies(),
   ]);
+  const selectedLead = selected?.lead ?? null;
+  const [leadDeals, leadWork, cadences] = selectedLead ? await Promise.all([listLeadDeals(selectedLead.id), getLeadWork(selectedLead.id), listCadences()]) : [[], null, []];
+  const channel = selected ? setup.numbers.find((n) => n.id === selected.number_id) : undefined;
   const names = Object.fromEntries(lookups.owners.map((o) => [o.id, o.full_name || o.email]));
   const href = (patch: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -56,18 +65,24 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ label: "Comercial" }, { label: "Atendimento" }]} title="Atendimento" description="Conversas do WhatsApp ligadas aos leads e ao funil." />
-      <div className="grid gap-4 px-4 pb-6 sm:px-6">
+      <InboxRealtime />
+      <div className={cn(selected && "max-md:hidden")}>
+        <PageHeader breadcrumbs={[{ label: "Comercial" }, { label: "Atendimento" }]} title="Atendimento" description="Conversas do WhatsApp ligadas aos leads e ao funil." />
+      </div>
+      <div className="grid gap-4 px-4 pb-6 max-md:px-0 max-md:pb-0 sm:px-6">
+        <div className={cn("max-md:px-4", selected && "max-md:hidden")}>
+          <InboxNav />
+        </div>
         {(!active || user.permissions["inbox.manage"]) && (
-          <details className="rounded-xl border bg-surface p-3" open={!active}>
+          <details className={cn("rounded-xl border bg-surface p-3 max-md:mx-4", selected && "max-md:hidden")} open={!active}>
             <summary className="cursor-pointer text-sm font-semibold">Números conectados</summary>
             <div className="mt-3">
-              <WhatsAppSetup numbers={setup.numbers} configured={whatsappConfigured()} canManage={Boolean(user.permissions["inbox.manage"])} templateCount={setup.templates.length} />
+              <WhatsAppSetup numbers={setup.numbers} configured={whatsappConfigured()} qrConfigured={Boolean(process.env.WAHA_URL && process.env.WAHA_API_KEY)} canManage={Boolean(user.permissions["inbox.manage"])} templateCount={setup.templates.length} />
             </div>
           </details>
         )}
 
-        <div className="grid h-[calc(100dvh-14rem)] min-h-[28rem] overflow-hidden rounded-xl border bg-surface md:grid-cols-[22rem_minmax(0,1fr)]">
+        <div className={cn("grid min-h-[28rem] overflow-hidden border-y bg-surface md:h-[calc(100dvh-14rem)] md:grid-cols-[22rem_minmax(0,1fr)] md:rounded-xl md:border-x", selected ? "h-[calc(100dvh-3.5rem)]" : "h-[calc(100dvh-14rem)]")}>
           <aside aria-label="Conversas" className={cn("flex min-h-0 flex-col border-r", selected && "hidden md:flex")}>
             <form action="/atendimento" className="relative border-b p-2">
               <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -154,6 +169,40 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
                 canReply={Boolean(user.permissions["inbox.reply"])}
                 canManage={Boolean(user.permissions["inbox.manage"])}
                 canCreateLead={Boolean(user.permissions["crm.leads.create"])}
+                provider={channel?.provider ?? "cloud"}
+                online={channel?.status === "ativo"}
+                quickReplies={quickReplies}
+                leadPanel={
+                  selectedLead && leadWork ? (
+                    <LeadSidePanel
+                      lead={{ id: selectedLead.id, name: selectedLead.name }}
+                      nextContactAt={selectedLead.next_contact_at}
+                      canMove={Boolean(user.permissions["crm.pipeline.move"])}
+                      canUpdate={Boolean(user.permissions["crm.leads.update"])}
+                      deals={leadDeals.map((d) => {
+                        const pipeline = lookups.pipelines.find((p) => p.id === d.pipeline_id);
+                        return { id: d.id, stage_id: d.stage_id, pipeline_name: pipeline?.name ?? "Funil", stages: (pipeline?.stages ?? []).map((s) => ({ id: s.id, name: s.name, kind: s.kind })) };
+                      })}
+                    >
+                      <LeadWorkPanel
+                        lead={{ id: selectedLead.id, name: selectedLead.name }}
+                        tasks={leadWork.tasks}
+                        events={leadWork.events}
+                        enrollments={leadWork.enrollments}
+                        cadences={cadences}
+                        owners={lookups.owners}
+                        meId={user.id}
+                        perms={{
+                          createTask: Boolean(user.permissions["tasks.create"]),
+                          assignTask: Boolean(user.permissions["tasks.create"] && user.permissions["tasks.create"] !== "own"),
+                          deleteTask: Boolean(user.permissions["tasks.delete"]),
+                          manageCalendar: Boolean(user.permissions["calendar.manage"]),
+                          assignCalendar: Boolean(user.permissions["calendar.manage"] && user.permissions["calendar.manage"] !== "own"),
+                        }}
+                      />
+                    </LeadSidePanel>
+                  ) : undefined
+                }
               />
             ) : (
               <div className="grid h-full place-items-center p-6">

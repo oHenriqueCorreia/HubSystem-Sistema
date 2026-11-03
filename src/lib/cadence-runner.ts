@@ -1,9 +1,10 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendTemplate, whatsappConfigured } from "@/lib/whatsapp";
+import { sendTemplate, sendText, whatsappConfigured } from "@/lib/whatsapp";
 import { inSendWindow } from "@/domain/crm/cadence";
 import { todayLocal } from "@/domain/shared/dates";
 import { brPhoneVariants } from "@/domain/shared/phone";
+import { fillQuickReply } from "@/domain/whatsapp/quick-replies";
 
 type Due = {
   task_id: string;
@@ -81,18 +82,19 @@ async function finish(d: Due, status: "enviado" | "executado" | "bloqueado" | "e
 
 async function sendWhatsApp(d: Due) {
   const admin = createAdminClient();
-  if (!whatsappConfigured()) throw Object.assign(new Error("config"), { reason: "WhatsApp não configurado no servidor" });
-  const { data: number } = await admin.from("whatsapp_numbers").select("id").eq("organization_id", d.organization_id).eq("status", "ativo").order("created_at").limit(1).maybeSingle();
+  const { data: number } = await admin.from("whatsapp_numbers").select("id, provider").eq("organization_id", d.organization_id).eq("status", "ativo").order("created_at").limit(1).maybeSingle();
   if (!number) throw Object.assign(new Error("numero"), { reason: "Nenhum número de WhatsApp conectado" });
-  const { data: tpl } = await admin
-    .from("whatsapp_templates")
-    .select("name, language, status, components")
-    .eq("organization_id", d.organization_id)
-    .eq("name", d.whatsapp_template)
-    .eq("language", d.template_language)
-    .maybeSingle();
-  if (!tpl || tpl.status !== "APPROVED") throw Object.assign(new Error("modelo"), { reason: "Modelo não encontrado ou não aprovado", blocked: true });
-  const body = ((tpl.components as { type: string; text?: string }[]).find((c) => c.type === "BODY")?.text ?? "") as string;
+  const qr = number.provider === "waha";
+  if (!qr && !whatsappConfigured()) throw Object.assign(new Error("config"), { reason: "WhatsApp não configurado no servidor" });
+  // QR Code não tem modelos da Meta: o passo aponta para o atalho de uma resposta rápida.
+  const { data: reply } = qr ? await admin.from("quick_replies").select("body").eq("organization_id", d.organization_id).eq("shortcut", d.whatsapp_template).maybeSingle() : { data: null };
+  if (qr && !reply) throw Object.assign(new Error("resposta"), { reason: `Crie uma resposta rápida com o atalho "${d.whatsapp_template}" para usar no QR Code`, blocked: true });
+  const { data: tpl } = qr
+    ? { data: null }
+    : await admin.from("whatsapp_templates").select("name, language, status, components").eq("organization_id", d.organization_id).eq("name", d.whatsapp_template).eq("language", d.template_language).maybeSingle();
+  if (!qr && (!tpl || tpl.status !== "APPROVED")) throw Object.assign(new Error("modelo"), { reason: "Modelo não encontrado ou não aprovado", blocked: true });
+  const body = tpl ? (((tpl.components as { type: string; text?: string }[]).find((c) => c.type === "BODY")?.text ?? "") as string) : "";
+  const text = reply ? fillQuickReply(reply.body as string, { name: d.lead_name, company: d.lead_company }) : "";
   const count = new Set(body.match(/\{\{\d+\}\}/g) ?? []).size;
   // Variáveis na ordem: {{1}} primeiro nome, {{2}} empresa.
   const values = [d.lead_name.split(" ")[0] || d.lead_name, d.lead_company];
@@ -113,15 +115,15 @@ async function sendWhatsApp(d: Due) {
   // client_ref = id da tarefa: mesmo que o processo caia e rode de novo, não duplica a mensagem.
   const { data: dup } = await admin.from("messages").select("id").eq("client_ref", d.task_id).maybeSingle();
   if (dup) return;
-  const wamid = await sendTemplate(number.id, phone, tpl.name, tpl.language, params);
+  const wamid = tpl ? await sendTemplate(number.id, phone, tpl.name, tpl.language, params) : await sendText(number.id, phone, text);
   await admin.from("messages").insert({
     organization_id: d.organization_id,
     conversation_id: conversationId,
     direction: "saida",
     wamid,
     client_ref: d.task_id,
-    type: "template",
-    body: body.replace(/\{\{(\d+)\}\}/g, (_, n: string) => params[Number(n) - 1] ?? "") || tpl.name,
+    type: tpl ? "template" : "text",
+    body: tpl ? body.replace(/\{\{(\d+)\}\}/g, (_, n: string) => params[Number(n) - 1] ?? "") || tpl.name : text,
     status: "enviada",
   });
   await admin.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conversationId);

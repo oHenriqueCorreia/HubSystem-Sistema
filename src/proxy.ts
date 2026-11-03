@@ -16,6 +16,9 @@ const PUBLIC_PATHS = [
   "/api/push/dispatch",
   "/api/google/webhook",
   "/api/whatsapp/webhook",
+  "/api/whatsapp/waha",
+  "/api/inbox/jobs",
+  "/api/hooks/in",
 ];
 
 function isPublic(pathname: string) {

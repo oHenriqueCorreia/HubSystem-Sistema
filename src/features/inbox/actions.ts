@@ -5,14 +5,18 @@ import { z } from "zod";
 import { defineAction, must } from "@/lib/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { encrypt } from "@/lib/crypto";
+import { decrypt, encrypt } from "@/lib/crypto";
 import { fail, ok } from "@/domain/shared/result";
 import { brPhoneVariants } from "@/domain/shared/phone";
 import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
-import { fetchTemplates, markRead, numberInfo, sendTemplate, sendText, whatsappConfigured } from "@/lib/whatsapp";
+import { baseMime, checkOutgoingMedia, isOutgoingPath, outgoingPath } from "@/domain/whatsapp/media";
+import { wahaDeleteSession } from "@/lib/waha";
+import { fetchTemplates, markRead, numberInfo, numberProvider, sendMedia, sendTemplate, sendText, whatsappConfigured } from "@/lib/whatsapp";
 
 const NOT_CONFIGURED = "O WhatsApp ainda não foi configurado no servidor (META_APP_SECRET e WHATSAPP_VERIFY_TOKEN).";
 const WINDOW_MS = 24 * 3600_000;
+const QR_OFFLINE = "O WhatsApp por QR Code está desconectado. Reconecte o número para enviar.";
+const OUTSIDE_WINDOW = "Passaram mais de 24 horas desde a última mensagem do cliente. Envie um modelo aprovado para retomar a conversa.";
 
 const done = (conversationId?: string) => {
   revalidatePath("/atendimento");
@@ -68,6 +72,9 @@ export const connectWhatsAppNumber = defineAction(
 
 export const disconnectWhatsAppNumber = defineAction({ schema: z.object({ id: z.uuid() }), permission: "inbox.manage" }, async ({ id }, { user }) => {
   const admin = createAdminClient();
+  const { data: number } = await admin.from("whatsapp_numbers").select("provider, waha_url, waha_session, token_enc").eq("id", id).eq("organization_id", user.organizationId).maybeSingle();
+  // QR Code: encerra a sessão no servidor e desliga o aparelho.
+  if (number?.provider === "waha") await wahaDeleteSession({ url: number.waha_url as string, key: decrypt(number.token_enc), session: number.waha_session as string }).catch(() => null);
   // As conversas ficam (histórico); o token é apagado.
   must(await admin.from("whatsapp_numbers").update({ status: "desconectado", token_enc: encrypt("revogado") }).eq("id", id).eq("organization_id", user.organizationId));
   revalidatePath("/atendimento");
@@ -77,8 +84,9 @@ export const disconnectWhatsAppNumber = defineAction({ schema: z.object({ id: z.
 
 export const syncWhatsAppTemplates = defineAction({ schema: z.object({ numberId: z.uuid() }), permission: "inbox.manage" }, async ({ numberId }, { user }) => {
   const admin = createAdminClient();
-  const { data: n } = await admin.from("whatsapp_numbers").select("organization_id").eq("id", numberId).maybeSingle();
+  const { data: n } = await admin.from("whatsapp_numbers").select("organization_id, provider").eq("id", numberId).maybeSingle();
   if (!n || n.organization_id !== user.organizationId) return fail("not_found", "Número não encontrado.");
+  if (n.provider === "waha") return fail("business_rule", "Modelos existem só na API oficial.");
   try {
     const { wabaId, templates } = await fetchTemplates(numberId);
     for (const t of templates) {
@@ -106,9 +114,11 @@ async function loadConversation(id: string) {
   return { conv, optOut: Boolean(lead?.contact_opt_out_at) };
 }
 
-async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | null, type: "text" | "template", body: string, authorId: string, error?: string) {
+type OutgoingFile = { media_id: string; media_mime: string; media_name: string };
+
+async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | null, type: string, body: string, authorId: string, error?: string, file?: OutgoingFile) {
   const admin = createAdminClient();
-  await admin.from("messages").insert({
+  const { error: insertError } = await admin.from("messages").insert({
     organization_id: conv.organization_id,
     conversation_id: conv.id,
     direction: "saida",
@@ -119,7 +129,10 @@ async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | 
     status: error ? "erro" : "enviada",
     error: error ?? null,
     author_id: authorId,
+    ...file,
   });
+  // No QR Code o eco do envio pode chegar antes: a mensagem já existe, só falta dizer quem enviou.
+  if (insertError?.code === "23505" && wamid) await admin.from("messages").update({ client_ref: clientRef, author_id: authorId, ...file }).eq("wamid", wamid);
   if (!error) {
     const now = new Date().toISOString();
     await admin
@@ -131,7 +144,7 @@ async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | 
         organization_id: conv.organization_id,
         lead_id: conv.lead_id,
         type: "whatsapp",
-        content: `Mensagem enviada: ${body.slice(0, 300)}`,
+        content: `Mensagem enviada: ${(body || file?.media_name || "arquivo").slice(0, 300)}`,
         metadata: { conversation_id: conv.id, origem: "manual" },
         created_by: authorId,
       });
@@ -139,19 +152,25 @@ async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | 
   }
 }
 
+/** Regras de cada canal. A janela de 24 horas é da API oficial; o QR Code só precisa estar conectado. */
+async function channelBlock(conv: ConvRow) {
+  const channel = await numberProvider(conv.number_id);
+  if (channel.provider === "waha") return channel.status === "ativo" ? null : QR_OFFLINE;
+  if (!whatsappConfigured()) return NOT_CONFIGURED;
+  if (!conv.last_inbound_at || Date.now() - new Date(conv.last_inbound_at).getTime() > WINDOW_MS) return OUTSIDE_WINDOW;
+  return null;
+}
+
 const sendSchema = z.object({ conversationId: z.uuid(), clientRef: z.uuid(), body: z.string().trim().min(1, "Escreva a mensagem.").max(4096) });
 
 export const sendWhatsAppMessage = defineAction({ schema: sendSchema, permission: "inbox.reply" }, async (input, { user }) => {
-  if (!whatsappConfigured()) return fail("business_rule", NOT_CONFIGURED);
   if (!(await withinRateLimit(`wa-send:${user.id}`, 60, 60))) return fail("business_rule", RATE_LIMIT_MESSAGE);
   const loaded = await loadConversation(input.conversationId);
   if (!loaded) return fail("not_found", "Conversa não encontrada.");
   const { conv, optOut } = loaded;
   if (optOut) return fail("business_rule", "Este contato pediu para não receber mensagens. O envio está bloqueado.");
-  // Fora da janela de 24 h desde a última mensagem do cliente, só modelos aprovados.
-  if (!conv.last_inbound_at || Date.now() - new Date(conv.last_inbound_at).getTime() > WINDOW_MS) {
-    return fail("business_rule", "Passaram mais de 24 horas desde a última mensagem do cliente. Envie um modelo aprovado para retomar a conversa.");
-  }
+  const blocked = await channelBlock(conv);
+  if (blocked) return fail("business_rule", blocked);
   const admin = createAdminClient();
   const { data: dup } = await admin.from("messages").select("id").eq("client_ref", input.clientRef).maybeSingle();
   if (dup) return ok(null); // clique repetido: já enviado
@@ -167,6 +186,68 @@ export const sendWhatsAppMessage = defineAction({ schema: sendSchema, permission
   done(conv.id);
   return ok(null);
 });
+
+/** Reserva o envio direto do navegador para o armazenamento: arquivos grandes não passam pelo servidor. */
+export const prepareWhatsAppUpload = defineAction(
+  { schema: z.object({ conversationId: z.uuid(), mime: z.string().max(120), size: z.number().int().nonnegative() }), permission: "inbox.reply" },
+  async (input, { user }) => {
+    const loaded = await loadConversation(input.conversationId);
+    if (!loaded) return fail("not_found", "Conversa não encontrada.");
+    const { provider } = await numberProvider(loaded.conv.number_id);
+    const check = checkOutgoingMedia({ mime: input.mime, size: input.size, provider });
+    if (!check.ok) return fail("validation", check.message);
+    const path = outgoingPath(user.organizationId, crypto.randomUUID());
+    const { data, error } = await createAdminClient().storage.from("whatsapp-media").createSignedUploadUrl(path);
+    if (error || !data) return fail("network", "Não foi possível preparar o envio do arquivo.");
+    return ok({ path, token: data.token });
+  },
+);
+
+export const sendWhatsAppMedia = defineAction(
+  {
+    schema: z.object({
+      conversationId: z.uuid(),
+      clientRef: z.uuid(),
+      path: z.string().max(200),
+      mime: z.string().max(120),
+      size: z.number().int().nonnegative(),
+      name: z.string().trim().min(1).max(200),
+      caption: z.string().trim().max(1024).default(""),
+    }),
+    permission: "inbox.reply",
+  },
+  async (input, { user }) => {
+    if (!(await withinRateLimit(`wa-send:${user.id}`, 60, 60))) return fail("business_rule", RATE_LIMIT_MESSAGE);
+    if (!isOutgoingPath(input.path, user.organizationId)) return fail("forbidden", "Arquivo inválido.");
+    const loaded = await loadConversation(input.conversationId);
+    if (!loaded) return fail("not_found", "Conversa não encontrada.");
+    const { conv, optOut } = loaded;
+    if (optOut) return fail("business_rule", "Este contato pediu para não receber mensagens. O envio está bloqueado.");
+    const blocked = await channelBlock(conv);
+    if (blocked) return fail("business_rule", blocked);
+    const { provider } = await numberProvider(conv.number_id);
+    const check = checkOutgoingMedia({ mime: input.mime, size: input.size, provider });
+    if (!check.ok) return fail("validation", check.message);
+    const admin = createAdminClient();
+    const { data: dup } = await admin.from("messages").select("id").eq("client_ref", input.clientRef).maybeSingle();
+    if (dup) return ok(null);
+    const mime = baseMime(input.mime);
+    const file = { media_id: `storage:${input.path}`, media_mime: mime, media_name: input.name };
+    // Link temporário: o WhatsApp baixa o arquivo sem que o armazenamento fique público.
+    const { data: signed } = await admin.storage.from("whatsapp-media").createSignedUrl(input.path, 3600);
+    if (!signed) return fail("network", "O arquivo não foi encontrado. Tente anexar de novo.");
+    try {
+      const wamid = await sendMedia(conv.number_id, conv.contact_e164, { url: signed.signedUrl, mime, name: input.name, caption: input.caption || null, kind: check.kind });
+      await recordOutgoing(conv, input.clientRef, wamid, check.kind, input.caption, user.id, undefined, file);
+    } catch (e) {
+      await recordOutgoing(conv, input.clientRef, null, check.kind, input.caption, user.id, (e as { detail?: string }).detail?.slice(0, 300) ?? "Falha no envio", file);
+      done(conv.id);
+      return fail("network", "O WhatsApp recusou o arquivo. A mensagem ficou marcada com erro.");
+    }
+    done(conv.id);
+    return ok(null);
+  },
+);
 
 export const sendWhatsAppTemplate = defineAction(
   {
@@ -224,10 +305,13 @@ export const toggleImportant = defineAction({ schema: z.object({ id: z.uuid(), i
 
 export const markConversationRead = defineAction({ schema: z.object({ id: z.uuid() }), permission: "inbox.read" }, async ({ id }) => {
   const supabase = await createClient();
-  const res = must(await supabase.from("conversations").update({ unread_count: 0 }).eq("id", id).select("number_id")) as { number_id: string }[];
-  if (res.length && whatsappConfigured()) {
-    const { data: last } = await supabase.from("messages").select("wamid").eq("conversation_id", id).eq("direction", "entrada").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (last?.wamid) await markRead(res[0].number_id, last.wamid);
+  const res = must(await supabase.from("conversations").update({ unread_count: 0 }).eq("id", id).select("number_id, contact_e164")) as { number_id: string; contact_e164: string }[];
+  if (res.length) {
+    const channel = await numberProvider(res[0].number_id);
+    if (channel.provider === "waha" ? channel.status === "ativo" : whatsappConfigured()) {
+      const { data: last } = await supabase.from("messages").select("wamid").eq("conversation_id", id).eq("direction", "entrada").order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (last?.wamid) await markRead(res[0].number_id, last.wamid, res[0].contact_e164);
+    }
   }
   return ok(null);
 });

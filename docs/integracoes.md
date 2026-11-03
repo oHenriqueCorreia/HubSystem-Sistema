@@ -93,7 +93,7 @@ Quando alguém clica num anúncio "Clique para WhatsApp" da Meta e chama um núm
 2. ao criar o lead pela conversa, preenche a origem como “Anúncio Meta (WhatsApp)”;
 3. em **Anúncios**, mostra conversas, leads, vendas (negócios ganhos no funil depois do contato), valor vendido, custo por conversa, custo por venda e **ROAS real** (valor vendido ÷ investimento), por campanha, conjunto e anúncio. O CSV de campanhas traz as mesmas colunas.
 
-Atribuição pelo primeiro contato: a conversa pertence ao primeiro anúncio que a trouxe. Requisitos: o número de WhatsApp conectado pela Cloud API (seção abaixo) e a conta de anúncio sincronizada (para ligar o ID do anúncio à campanha). O valor de cada venda é o valor do negócio no funil.
+Atribuição pelo primeiro contato: a conversa pertence ao primeiro anúncio que a trouxe. Requisitos: o número conectado no Atendimento e a conta de anúncio sincronizada (para ligar o ID do anúncio à campanha). A Cloud API recebe a origem diretamente da Meta; no QR Code, o dado depende do evento enviado pelo WAHA. O valor de cada venda é o valor do negócio no funil.
 
 ### WhatsApp (Cloud API oficial)
 1. Adicione o produto **WhatsApp** ao app e vincule a conta do WhatsApp Business (WABA) e o número.
@@ -105,10 +105,18 @@ Atribuição pelo primeiro contato: a conversa pertence ao primeiro anúncio que
 4. No Hub System, **Comercial → Atendimento → Números conectados → Conectar número**: informe o ID do número, o ID da WABA e o token. O sistema valida na Meta antes de salvar e guarda o token cifrado.
 5. Clique em **Sincronizar modelos** para trazer os modelos aprovados.
 
-**Sobre QR Code.** A Cloud API não usa QR Code. O único caminho oficial com QR é o *Embedded Signup* no modo **Coexistência** (o número do app WhatsApp Business é migrado lendo um QR no próprio app). Ele exige que o app seja aprovado como **Tech Provider** da Meta. O sistema não automatiza o WhatsApp Web nem usa bibliotecas não oficiais, que violam os termos e podem banir o número.
+### WhatsApp por QR Code (servidor WAHA)
+
+1. Instale o [WAHA](https://waha.devlike.pro/docs/overview/quick-start/) em um servidor seu, com HTTPS público e chave de API. Configure persistência da sessão no servidor para não perder a conexão quando o processo reiniciar.
+2. Configure `WAHA_URL` e `WAHA_API_KEY` nas variáveis de Production da Vercel e faça um novo deploy. No Hub System, abra **Comercial → Atendimento → Números conectados → Conectar por QR Code** e escaneie o código com o WhatsApp do aparelho. O Hub configura o webhook assinado automaticamente. Sem essas variáveis, o gestor pode informar o endereço e a chave diretamente na tela.
+3. Se a conexão cair, use **Reconectar** na mesma sessão. As conversas anteriores permanecem no atendimento. Para parar de usar o número, escolha **Desconectar**.
+
+O QR Code usa a conexão não oficial do WAHA. A Meta pode limitar ou bloquear o número; use com cuidado, especialmente em campanhas. A API oficial acima segue disponível em paralelo. No QR Code, o envio livre depende de a sessão estar conectada; a janela de 24 horas e os modelos aprovados são regras da Cloud API.
+
+**Atendimento ampliado:** as abas Radar, Indicadores, Automações, Campanhas e Ajustes usam as migrations `20261103110000` e `20261103120000`. Respostas rápidas, anexos e áudio ficam na conversa. Campanhas e cobrança automática exigem autorização de WhatsApp registrada no lead, respeitam o pedido de saída e só enviam de segunda a sábado, das 8h às 20h. Cobrança e retorno de conversões para a Meta começam desligados. O banco chama `/api/inbox/jobs` quando há trabalho pendente; ele usa o mesmo relógio de um minuto das notificações.
 
 **Regras de envio aplicadas pelo sistema:**
-- Mensagem livre só até 24 horas após a última mensagem do cliente; depois, só modelos aprovados.
+- Na Cloud API, mensagem livre só até 24 horas após a última mensagem do cliente; depois, só modelos aprovados.
 - Quem pede para parar (“parar”, “sair”, “não quero mais receber mensagens”…) tem os envios bloqueados.
 - Quando o lead responde, a cadência ativa é pausada.
 - Toda mensagem é única por `wamid`; envios do sistema têm `client_ref` único (cliques ou reprocessamentos repetidos não duplicam).

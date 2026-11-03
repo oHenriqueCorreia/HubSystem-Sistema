@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decrypt } from "@/lib/crypto";
+import { wahaChatId, wahaDownload, wahaSendMedia, wahaSendSeen, wahaSendText, type OutgoingMedia, type WahaConn } from "@/lib/waha";
 export { isOptOut } from "@/domain/crm/opt-out";
 
 // WhatsApp Business Platform · Cloud API (oficial da Meta).
@@ -27,11 +28,11 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
       ...init,
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init?.headers ?? {}) },
       cache: "no-store",
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(10000),
     });
     const data = (await res.json().catch(() => ({}))) as T & WaError;
     // 130429 = limite de taxa; 131056 = limite por par remetente/destinatário.
-    if (data.error && [4, 80007, 130429].includes(data.error.code) && attempt < 2) {
+    if (data.error && [4, 80007, 130429].includes(data.error.code) && attempt < 1) {
       await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
       continue;
     }
@@ -45,18 +46,42 @@ export async function numberInfo(phoneNumberId: string, token: string) {
 }
 
 async function numberToken(numberId: string) {
-  const { data } = await createAdminClient().from("whatsapp_numbers").select("phone_number_id, waba_id, token_enc").eq("id", numberId).single();
+  const { data } = await createAdminClient().from("whatsapp_numbers").select("provider, phone_number_id, waba_id, token_enc, waha_url, waha_session").eq("id", numberId).single();
   if (!data) throw new Error("numero");
-  return { phoneNumberId: data.phone_number_id as string, wabaId: data.waba_id as string, token: decrypt(data.token_enc) };
+  const token = decrypt(data.token_enc);
+  // Número por QR Code: o envio vai pelo servidor WAHA em vez da API da Meta.
+  const waha: WahaConn | null = data.provider === "waha" ? { url: data.waha_url as string, key: token, session: data.waha_session as string } : null;
+  return { phoneNumberId: data.phone_number_id as string, wabaId: data.waba_id as string, token, waha };
+}
+
+/** Canal de um número: "waha" não tem janela de 24 horas nem modelos da Meta. */
+export async function numberProvider(numberId: string) {
+  const { data } = await createAdminClient().from("whatsapp_numbers").select("provider, status").eq("id", numberId).single();
+  return { provider: (data?.provider ?? "cloud") as "cloud" | "waha", status: (data?.status ?? "desconectado") as string };
 }
 
 const to = (e164: string) => e164.replace(/\D/g, "");
 
 export async function sendText(numberId: string, toE164: string, body: string) {
   const n = await numberToken(numberId);
+  if (n.waha) return wahaSendText(n.waha, await wahaChatId(n.waha, toE164), body);
   const r = await request<{ messages: { id: string }[] }>(n.token, `/${n.phoneNumberId}/messages`, {
     method: "POST",
     body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: to(toE164), type: "text", text: { body, preview_url: true } }),
+  });
+  return r.messages[0].id;
+}
+
+/** Foto, vídeo, áudio ou documento, a partir de um link temporário do arquivo. */
+export async function sendMedia(numberId: string, toE164: string, media: OutgoingMedia) {
+  const n = await numberToken(numberId);
+  if (n.waha) return wahaSendMedia(n.waha, await wahaChatId(n.waha, toE164), media);
+  const content: Record<string, unknown> = { link: media.url };
+  if (media.caption && media.kind !== "audio") content.caption = media.caption;
+  if (media.kind === "document") content.filename = media.name;
+  const r = await request<{ messages: { id: string }[] }>(n.token, `/${n.phoneNumberId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: to(toE164), type: media.kind, [media.kind]: content }),
   });
   return r.messages[0].id;
 }
@@ -72,8 +97,13 @@ export async function sendTemplate(numberId: string, toE164: string, name: strin
 }
 
 /** Marca como lida no WhatsApp do cliente (os dois tiques azuis). */
-export async function markRead(numberId: string, wamid: string) {
+export async function markRead(numberId: string, wamid: string, toE164?: string) {
   const n = await numberToken(numberId);
+  if (n.waha) {
+    // Confirmação de leitura é cortesia: se falhar, a conversa segue normal.
+    if (toE164) await wahaChatId(n.waha, toE164).then((chatId) => wahaSendSeen(n.waha!, chatId)).catch(() => null);
+    return;
+  }
   await request(n.token, `/${n.phoneNumberId}/messages`, { method: "POST", body: JSON.stringify({ messaging_product: "whatsapp", status: "read", message_id: wamid }) }).catch(() => null);
 }
 
@@ -92,6 +122,7 @@ export async function fetchTemplates(numberId: string) {
 /** Baixa uma mídia recebida (a URL da Meta expira em minutos e exige o token). */
 export async function downloadMedia(numberId: string, mediaId: string) {
   const n = await numberToken(numberId);
+  if (n.waha) return { body: await wahaDownload(n.waha, mediaId), mime: "application/octet-stream" };
   const meta = await request<{ url: string; mime_type: string; file_size?: number }>(n.token, `/${mediaId}`);
   if ((meta.file_size ?? 0) > 16 * 1024 * 1024) throw new Error("grande");
   const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${n.token}` }, cache: "no-store", signal: AbortSignal.timeout(30000) });

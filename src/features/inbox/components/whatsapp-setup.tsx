@@ -12,39 +12,42 @@ import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { FormAlert, FormField } from "@/components/app/form-field";
 import { PasswordInput } from "@/components/app/password-input";
 import { connectWhatsAppNumber, disconnectWhatsAppNumber, syncWhatsAppTemplates } from "../actions";
+import { QrConnectDialog } from "./qr-connect";
 
-type WaNumber = { id: string; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null };
+type WaNumber = { id: string; provider: "cloud" | "waha"; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null };
 
-export function WhatsAppSetup({ numbers, configured, canManage, templateCount }: { numbers: WaNumber[]; configured: boolean; canManage: boolean; templateCount: number }) {
+const STATUS_LABEL: Record<string, string> = { ativo: "Conectado", erro: "Com erro", aguardando_qr: "Aguardando QR Code", desconectado: "Desconectado" };
+
+export function WhatsAppSetup({ numbers, configured, qrConfigured, canManage, templateCount }: { numbers: WaNumber[]; configured: boolean; qrConfigured: boolean; canManage: boolean; templateCount: number }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  if (!configured) {
-    return (
-      <p className="max-w-prose text-sm text-muted-foreground">
-        O WhatsApp ainda não foi ativado no servidor. O responsável técnico precisa cadastrar META_APP_SECRET e WHATSAPP_VERIFY_TOKEN e registrar o webhook no app da Meta
-        (veja a documentação do projeto).
-      </p>
-    );
-  }
-
   return (
     <div className="grid gap-3">
-      {numbers.map((n) => (
-        <div key={n.id} className="flex flex-wrap items-center gap-3 rounded-lg border bg-surface p-3 text-sm">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              {n.verified_name || "Número"} · {n.display_phone}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {n.quality ? `Qualidade: ${n.quality === "GREEN" ? "alta" : n.quality === "YELLOW" ? "média" : n.quality === "RED" ? "baixa" : n.quality} · ` : ""}
-              {templateCount} modelo(s) sincronizado(s)
-            </p>
-            {n.last_error && <p className="text-xs text-danger">{n.last_error}</p>}
-          </div>
-          <Badge variant={n.status === "ativo" ? "default" : "outline"}>{n.status === "ativo" ? "Conectado" : n.status === "erro" ? "Com erro" : "Desconectado"}</Badge>
-          {canManage && n.status === "ativo" && (
-            <>
+      {numbers.map((n) => {
+        const qr = n.provider === "waha";
+        return (
+          <div key={n.id} className="flex flex-wrap items-center gap-3 rounded-lg border bg-surface p-3 text-sm">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">
+                {n.verified_name || (qr ? "WhatsApp por QR Code" : "Número")}
+                {n.display_phone && ` · ${n.display_phone}`}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {qr ? (
+                  "Conexão por QR Code"
+                ) : (
+                  <>
+                    {n.quality ? `Qualidade: ${n.quality === "GREEN" ? "alta" : n.quality === "YELLOW" ? "média" : n.quality === "RED" ? "baixa" : n.quality} · ` : ""}
+                    {templateCount} modelo(s) sincronizado(s)
+                  </>
+                )}
+              </p>
+              {n.last_error && <p className="text-xs text-danger">{n.last_error}</p>}
+            </div>
+            <Badge variant={n.status === "ativo" ? "default" : "outline"}>{STATUS_LABEL[n.status] ?? n.status}</Badge>
+            {canManage && qr && n.status !== "ativo" && <QrConnectDialog numberId={n.id} needsServer={n.status === "desconectado" && !qrConfigured} newSession={n.status === "desconectado"} label="Reconectar" variant="outline" />}
+            {canManage && !qr && n.status === "ativo" && (
               <Button
                 variant="outline"
                 size="sm"
@@ -60,6 +63,8 @@ export function WhatsAppSetup({ numbers, configured, canManage, templateCount }:
               >
                 {pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />} Sincronizar modelos
               </Button>
+            )}
+            {canManage && n.status !== "desconectado" && (qr || n.status === "ativo") && (
               <ConfirmDialog
                 tone="danger"
                 trigger={
@@ -68,7 +73,11 @@ export function WhatsAppSetup({ numbers, configured, canManage, templateCount }:
                   </Button>
                 }
                 title="Desconectar este número?"
-                description="O token é apagado e o sistema para de enviar e receber por este número. O histórico de conversas continua disponível."
+                description={
+                  qr
+                    ? "O aparelho sai da lista de conectados e o sistema para de enviar e receber por este número. O histórico de conversas continua disponível."
+                    : "O token é apagado e o sistema para de enviar e receber por este número. O histórico de conversas continua disponível."
+                }
                 confirmLabel="Desconectar"
                 onConfirm={async () => {
                   const res = await disconnectWhatsAppNumber({ id: n.id });
@@ -77,11 +86,17 @@ export function WhatsAppSetup({ numbers, configured, canManage, templateCount }:
                   router.refresh();
                 }}
               />
-            </>
-          )}
+            )}
+          </div>
+        );
+      })}
+      {canManage && (
+        <div className="flex flex-wrap items-center gap-2">
+          <QrConnectDialog needsServer={!qrConfigured} label="Conectar por QR Code" />
+          {configured && <ConnectDialog />}
         </div>
-      ))}
-      {canManage && <ConnectDialog />}
+      )}
+      {!canManage && numbers.length === 0 && <p className="max-w-prose text-sm text-muted-foreground">Nenhum número conectado. Peça a um gestor para conectar o WhatsApp.</p>}
     </div>
   );
 }
@@ -111,7 +126,7 @@ function ConnectDialog() {
   return (
     <Dialog open={open} onOpenChange={(v) => !pending && setOpen(v)}>
       <DialogTrigger asChild>
-        <Button className="justify-self-start">
+        <Button variant="outline" className="justify-self-start">
           <Plug aria-hidden="true" /> Conectar número (API oficial)
         </Button>
       </DialogTrigger>
