@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useOptimistic, useTransition } from "react";
+import { memo, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlarmClock, CalendarClock, Columns3, Flag, ListChecks, MessageCircle, Phone } from "lucide-react";
 import { toast } from "sonner";
@@ -22,7 +22,8 @@ const PRIORITY_STYLE: Record<Task["priority"], string> = {
   urgente: "text-danger",
 };
 
-export function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Task; ownerName?: string; onOpen?: (t: Task) => void; now: number; as?: "li" | "div" }) {
+// Sem memo, cada pequeno movimento do arraste redesenharia todos os cartões do quadro.
+export const TaskItem = memo(function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Task; ownerName?: string; onOpen?: (t: Task) => void; now: number; as?: "li" | "div" }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [optimisticDone, setOptimisticDone] = useOptimistic(task.status === "concluida");
@@ -141,4 +142,4 @@ export function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Ta
       )}
     </Component>
   );
-}
+});

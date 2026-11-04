@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -39,7 +39,7 @@ import { formatPhone } from "@/domain/shared/phone";
 import { formatRelative } from "@/domain/shared/dates";
 import { leadMapsUrl } from "@/domain/crm/maps";
 import { cn } from "cn";
-import { pointerFirst } from "@/lib/dnd";
+import { DRAG_MOVE, DROP_ANIMATION, pointerFirst } from "@/lib/dnd";
 import { moveDeal } from "../actions";
 import { isStale, positionBetween, type BoardCard, type CrmLookups, type Pipeline, type Stage } from "../types";
 import { NextContactBadge, STAGE_DOT, TagChip } from "./chips";
@@ -67,13 +67,15 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
   const [lost, setLost] = useState<{ card: BoardCard; stageId: string; position: number } | null>(null);
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
-  const [, startTransition] = useTransition();
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [saving, startTransition] = useTransition();
 
   // Mantém o quadro em sincronia quando o servidor manda dados novos (filtros, refresh).
   // "Agora" fixo por montagem: mantém o render puro (dias parados, SLA).
   const [now] = useState(() => Date.now());
   const [source, setSource] = useState(cards);
-  if (source !== cards) {
+  // Dados novos do servidor esperam: no meio de um arraste, de um salvamento ou do motivo de perda, fariam os cartões pularem.
+  if (!activeId && !saving && !lost && source !== cards) {
     setSource(cards);
     setColumns(group(cards, pipeline.stages));
   }
@@ -85,7 +87,7 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
   const sensors = useSensors(
     // Mouse e toque separados: assim o dedo que só quer rolar a tela não pega o cartão.
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -100,6 +102,7 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
       if (!res.ok) {
         setColumns(before);
         toast.error(res.message);
+        router.refresh();
         return;
       }
       const from = stageById.get(card.stage_id)?.name;
@@ -121,7 +124,6 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
           },
         });
       }
-      router.refresh();
     });
   }
 
@@ -146,9 +148,17 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
     persist(card, stageId, position, before);
   }
 
+  // Referência fixa para o menu dos cartões: sem ela, todo cartão seria redesenhado a cada mudança no quadro.
+  const moveToRef = useRef(moveTo);
+  useEffect(() => {
+    moveToRef.current = moveTo;
+  });
+  const onMove = useCallback((card: BoardCard, stageId: string) => moveToRef.current(card, stageId), []);
+
   function onDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id));
     setSnapshot(columns);
+    setReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
 
   function onDragOver(e: DragOverEvent) {
@@ -190,12 +200,15 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
       list.splice(overIndex, 0, moved);
     }
     const index = list.findIndex((c) => c.id === active.id);
+    if (stageId === original.stage_id && index === before[stageId].findIndex((c) => c.id === active.id)) {
+      setColumns(before);
+      return;
+    }
     const position = positionBetween(list[index - 1]?.position ?? null, list[index + 1]?.position ?? null);
     list = list.map((c) => (c.id === active.id ? { ...c, position } : c));
     const next = { ...columns, [stageId]: list };
     setColumns(next);
 
-    if (stageId === original.stage_id && position === original.position) return;
     if (stageId !== original.stage_id && stageById.get(stageId)?.kind === "lost") {
       setReason("");
       setNote("");
@@ -214,6 +227,7 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
   };
 
   const active = activeId ? cardById.get(activeId) : null;
+  const activeStage = activeId ? findStage(activeId) : null;
 
   return (
     <>
@@ -242,7 +256,7 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
             const limit = limits[stage.id] ?? PAGE;
             const total = list.reduce((s, c) => s + (c.amount_cents ?? 0), 0);
             return (
-              <Column key={stage.id} stage={stage} count={list.length} total={total}>
+              <Column key={stage.id} stage={stage} count={list.length} total={total} highlighted={activeStage === stage.id}>
                 <SortableContext items={list.slice(0, limit).map((c) => c.id)} strategy={verticalListSortingStrategy}>
                   {list.slice(0, limit).map((card) => (
                     <SortableCard
@@ -252,7 +266,7 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
                       stages={pipeline.stages}
                       ownerName={card.owner_id ? ownerById.get(card.owner_id) : undefined}
                       canMove={canMove}
-                      onMove={moveTo}
+                      onMove={onMove}
                       now={now}
                     />
                   ))}
@@ -266,7 +280,14 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
             );
           })}
         </div>
-        <DragOverlay>{active ? <CardView card={active} stage={stageById.get(active.stage_id)} now={now} dragging /> : null}</DragOverlay>
+        <DragOverlay dropAnimation={reducedMotion ? null : DROP_ANIMATION}>
+          {active ? (
+            // A medida vem do primeiro elemento: inclinado, ele confundiria as setas do teclado (a mesma etapa pareceria estar ao lado).
+            <div inert>
+              <CardView card={active} stage={stageById.get(active.stage_id)} now={now} dragging />
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       <Dialog
@@ -335,13 +356,13 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
   );
 }
 
-function Column({ stage, count, total, children }: { stage: Stage; count: number; total: number; children: React.ReactNode }) {
-  const { setNodeRef, isOver } = useDroppable({ id: stage.id });
+function Column({ stage, count, total, highlighted, children }: { stage: Stage; count: number; total: number; highlighted: boolean; children: React.ReactNode }) {
+  const { setNodeRef } = useDroppable({ id: stage.id });
   return (
     <section
       role="listitem"
       aria-label={`${stage.name}, ${count} negócio(s)`}
-      className={cn("flex max-h-[calc(100dvh-15rem)] w-[min(18rem,85vw)] shrink-0 snap-start flex-col rounded-xl bg-muted/60", isOver && "ring-2 ring-ring")}
+      className={cn("flex max-h-[calc(100dvh-15rem)] w-[min(18rem,85vw)] shrink-0 snap-start flex-col rounded-xl bg-muted/60", highlighted && "ring-2 ring-ring")}
     >
       <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
         <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
@@ -378,29 +399,28 @@ function SortableCard({
   onMove: (card: BoardCard, stageId: string) => void;
   now: number;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id, disabled: !canMove });
-  return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-40")}>
-      <CardView
-        card={card}
-        stage={stage}
-        ownerName={ownerName}
-        now={now}
-        handle={
-          canMove ? (
-            <button
-              type="button"
-              className="-ml-1 cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing pointer-coarse:p-2.5"
-              aria-label={`Arrastar ${card.lead.name}`}
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="size-4" aria-hidden="true" />
-            </button>
-          ) : null
-        }
-        menu={
-          canMove ? (
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id, disabled: !canMove, transition: DRAG_MOVE });
+  const leadName = card.lead.name;
+  // Alça e menu fixos: assim o cartão não é redesenhado a cada pequeno movimento do arraste.
+  const handle = useMemo(
+    () =>
+      canMove ? (
+        <button
+          type="button"
+          className="-ml-1 cursor-grab touch-none rounded p-1 text-muted-foreground select-none [-webkit-touch-callout:none] hover:bg-muted active:cursor-grabbing pointer-coarse:p-2.5"
+          aria-label={`Arrastar ${leadName}`}
+          onContextMenu={(e) => e.preventDefault()}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" aria-hidden="true" />
+        </button>
+      ) : null,
+    [canMove, leadName, attributes, listeners],
+  );
+  const menu = useMemo(
+    () =>
+      canMove ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-xs" aria-label={`Mover ${card.lead.name} para outra etapa`}>
@@ -426,14 +446,17 @@ function SortableCard({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : null
-        }
-      />
+      ) : null,
+    [canMove, card, stages, onMove],
+  );
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-30")}>
+      <CardView card={card} stage={stage} ownerName={ownerName} now={now} handle={handle} menu={menu} />
     </div>
   );
 }
 
-function CardView({
+const CardView = memo(function CardView({
   card,
   stage,
   ownerName,
@@ -500,4 +523,4 @@ function CardView({
       )}
     </article>
   );
-}
+});

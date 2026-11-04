@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { memo, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
@@ -11,8 +12,10 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
 import { Archive, ArrowLeft, ArrowRight, LoaderCircle, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
@@ -36,7 +39,7 @@ import { STAGE_DOT, TAG_COLOR_LABEL } from "@/features/crm/components/chips";
 import type { TagColor } from "@/features/crm/types";
 import { TAG_COLORS } from "@/features/tags/schemas";
 import { cn } from "cn";
-import { pointerFirst } from "@/lib/dnd";
+import { DRAG_MOVE, DROP_ANIMATION, pointerFirst } from "@/lib/dnd";
 import { dayKey } from "@/domain/calendar";
 import { todayLocal } from "@/domain/shared/dates";
 import { positionBetween } from "@/features/crm/types";
@@ -159,7 +162,7 @@ function TaskBoard({
   boardId?: string;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [saving, startTransition] = useTransition();
   const initial = () => {
     const firstOfKind = new Map<string, string>();
     for (const c of columns) if (!firstOfKind.has(c.kind)) firstOfKind.set(c.kind, c.id);
@@ -172,17 +175,20 @@ function TaskBoard({
     return out;
   };
   const [cols, setCols] = useState(initial);
+  const [active, setActive] = useState<Task | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const snapshot = useRef<Record<string, Task[]> | null>(null);
   const [source, setSource] = useState({ tasks, columns });
-  if (source.tasks !== tasks || source.columns !== columns) {
+  // Dados novos do servidor esperam: no meio de um arraste ou de um salvamento, fariam os cartões pularem.
+  if (!active && !saving && (source.tasks !== tasks || source.columns !== columns)) {
     setSource({ tasks, columns });
     setCols(initial());
   }
 
-  const [dragging, setDragging] = useState(false);
   const sensors = useSensors(
     // Mouse e toque separados: assim o dedo que só quer rolar a tela não pega a tarefa.
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -191,79 +197,129 @@ function TaskBoard({
     return Object.keys(cols).find((c) => cols[c].some((t) => t.id === id));
   }
 
-  function onDragEnd(e: DragEndEvent) {
-    const { active, over } = e;
+  function onDragStart(e: DragStartEvent) {
+    const from = columnOf(String(e.active.id));
+    setActive((from && cols[from].find((t) => t.id === e.active.id)) || null);
+    setReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    snapshot.current = cols;
+  }
+
+  // A lista de destino abre espaço enquanto o cartão passa por ela. A situação da tarefa só muda ao soltar.
+  function onDragOver({ active: dragged, over }: DragOverEvent) {
     if (!over) return;
-    const from = columnOf(String(active.id));
+    const from = columnOf(String(dragged.id));
     const to = columnOf(String(over.id));
-    if (!from || !to) return;
-    const before = cols;
-    const card = cols[from].find((t) => t.id === active.id)!;
-    const dest = cols[to].filter((t) => t.id !== card.id);
-    const overIndex = dest.findIndex((t) => t.id === over.id);
-    const index = overIndex >= 0 ? overIndex : dest.length;
-    const position = positionBetween(dest[index - 1]?.position ?? null, dest[index]?.position ?? null);
+    if (!from || !to || from === to) return;
+    setCols((prev) => {
+      const card = prev[from].find((t) => t.id === dragged.id);
+      if (!card) return prev;
+      const overIndex = prev[to].findIndex((t) => t.id === over.id);
+      const dest = [...prev[to]];
+      dest.splice(overIndex >= 0 ? overIndex : dest.length, 0, card);
+      return { ...prev, [from]: prev[from].filter((t) => t.id !== dragged.id), [to]: dest };
+    });
+  }
+
+  function onDragCancel() {
+    setActive(null);
+    if (snapshot.current) setCols(snapshot.current);
+    snapshot.current = null;
+  }
+
+  function onDragEnd({ active: dragged, over }: DragEndEvent) {
+    const before = snapshot.current ?? cols;
+    setActive(null);
+    snapshot.current = null;
+    const to = columnOf(String(dragged.id));
+    const from = Object.keys(before).find((c) => before[c].some((t) => t.id === dragged.id));
+    if (!over || !to || !from) {
+      setCols(before);
+      return;
+    }
+    const oldIndex = cols[to].findIndex((t) => t.id === dragged.id);
+    const overIndex = cols[to].findIndex((t) => t.id === over.id);
+    const list = overIndex >= 0 ? arrayMove(cols[to], oldIndex, overIndex) : [...cols[to]];
+    const index = list.findIndex((t) => t.id === dragged.id);
+    if (from === to && index === before[from].findIndex((t) => t.id === dragged.id)) {
+      setCols(before);
+      return;
+    }
+    const position = positionBetween(list[index - 1]?.position ?? null, list[index + 1]?.position ?? null);
     const target = columns.find((c) => c.id === to)!;
-    dest.splice(index, 0, { ...card, column_id: to, status: target.kind, position });
-    setCols({ ...cols, [from]: cols[from].filter((t) => t.id !== card.id), [to]: dest });
+    list[index] = { ...list[index], column_id: to, status: target.kind, position };
+    setCols({ ...cols, [to]: list });
     startTransition(async () => {
-      const res = await moveTask({ id: card.id, columnId: to, position });
+      const res = await moveTask({ id: String(dragged.id), columnId: to, position });
       if (!res.ok) {
         setCols(before);
         toast.error(res.message);
-      } else {
-        if (from !== to) toast.success(`Tarefa movida para ${target.name}.`);
         router.refresh();
+      } else if (from !== to) {
+        toast.success(`Tarefa movida para ${target.name}.`);
       }
     });
   }
+
+  const activeColumn = active ? columnOf(active.id) : null;
 
   return (
     <DndContext
       sensors={sensors}
       autoScroll={AUTO_SCROLL}
       collisionDetection={pointerFirst}
-      onDragStart={() => setDragging(true)}
-      onDragCancel={() => setDragging(false)}
-      onDragEnd={(e) => {
-        setDragging(false);
-        onDragEnd(e);
-      }}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragCancel={onDragCancel}
+      onDragEnd={onDragEnd}
       accessibility={{ screenReaderInstructions: { draggable: "Pressione espaço para pegar, setas para mover entre listas e espaço para soltar." } }}
     >
-      <div className={cn("-mx-4 flex scroll-pl-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 sm:-mx-6 sm:px-6", !dragging && "snap-x snap-mandatory sm:snap-none")}>
+      <div className={cn("-mx-4 flex scroll-pl-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 sm:-mx-6 sm:px-6", active ? "cursor-grabbing" : "snap-x snap-mandatory sm:snap-none")}>
         {columns.map((c, i) => (
-          <BoardColumn key={c.id} column={c} count={cols[c.id]?.length ?? 0} columns={columns} index={i} canConfigure={canConfigure}>
+          <BoardColumn key={c.id} column={c} count={cols[c.id]?.length ?? 0} columns={columns} index={i} canConfigure={canConfigure} highlighted={activeColumn === c.id}>
             <SortableContext items={(cols[c.id] ?? []).map((t) => t.id)} strategy={verticalListSortingStrategy}>
               {(cols[c.id] ?? []).map((t) => (
                 <SortableTask key={t.id} task={t} now={now} onOpen={onOpen} />
               ))}
             </SortableContext>
-            {canCreate && c.kind !== "cancelada" && (
-              <li className="list-none">
-                <TaskFormDialog
-                  owners={owners}
-                  canAssign={canAssign}
-                  canConfigure={canConfigure}
-                  defaults={{ status: c.kind, columnId: c.id, boardId: c.board_id }}
-                  trigger={
-                    <button
-                      type="button"
-                      className="flex min-h-10 w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:bg-accent hover:text-accent-foreground"
-                    >
-                      <Plus className="size-4" aria-hidden="true" /> Adicionar tarefa
-                    </button>
-                  }
-                />
-              </li>
-            )}
+            {canCreate && c.kind !== "cancelada" && <AddTask column={c} owners={owners} canAssign={canAssign} canConfigure={canConfigure} />}
           </BoardColumn>
         ))}
         {canConfigure && boardId && <ColumnFormDialog boardId={boardId} />}
       </div>
+      <DragOverlay dropAnimation={reducedMotion ? null : DROP_ANIMATION}>
+        {active && (
+          // A medida vem do primeiro elemento: inclinado, ele confundiria as setas do teclado (a mesma lista pareceria estar ao lado).
+          <div inert>
+            <div className="rotate-1 cursor-grabbing rounded-xl shadow-xl">
+              <TaskItem task={active} now={now} as="div" />
+            </div>
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
+
+const AddTask = memo(function AddTask({ column, owners, canAssign, canConfigure }: { column: TaskColumn; owners: Owner[]; canAssign: boolean; canConfigure: boolean }) {
+  return (
+    <li className="list-none">
+      <TaskFormDialog
+        owners={owners}
+        canAssign={canAssign}
+        canConfigure={canConfigure}
+        defaults={{ status: column.kind, columnId: column.id, boardId: column.board_id }}
+        trigger={
+          <button
+            type="button"
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:bg-accent hover:text-accent-foreground"
+          >
+            <Plus className="size-4" aria-hidden="true" /> Adicionar tarefa
+          </button>
+        }
+      />
+    </li>
+  );
+});
 
 const KIND_OPTIONS: TaskStatus[] = ["a_fazer", "em_andamento", "concluida", "cancelada"];
 
@@ -273,6 +329,7 @@ function BoardColumn({
   columns,
   index,
   canConfigure,
+  highlighted,
   children,
 }: {
   column: TaskColumn;
@@ -280,13 +337,14 @@ function BoardColumn({
   columns: TaskColumn[];
   index: number;
   canConfigure: boolean;
+  highlighted: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const { setNodeRef } = useDroppable({ id: column.id });
 
   function move(dir: -1 | 1) {
     const neighbor = columns[index + dir];
@@ -312,7 +370,7 @@ function BoardColumn({
   return (
     <section
       aria-label={`${column.name}, ${count} tarefa(s)`}
-      className={cn("flex max-h-[calc(100dvh-14rem)] w-[min(20rem,85vw)] shrink-0 snap-start flex-col rounded-2xl border bg-muted/40", isOver && "ring-2 ring-ring")}
+      className={cn("flex max-h-[calc(100dvh-14rem)] w-[min(20rem,85vw)] shrink-0 snap-start flex-col rounded-2xl border bg-muted/40", highlighted && "ring-2 ring-ring")}
     >
       <header className="flex items-center gap-2 px-4 pt-3 pb-2">
         <span className={cn("size-2.5 shrink-0 rounded-full", STAGE_DOT[column.color as TagColor] ?? STAGE_DOT.slate)} aria-hidden="true" />
@@ -513,9 +571,19 @@ function DeleteColumnDialog({ column, count, columns, onClose }: { column: TaskC
 const AUTO_SCROLL = { acceleration: 4, interval: 12, threshold: { x: 0.15, y: 0.15 } };
 
 function SortableTask({ task, now, onOpen }: { task: Task; now: number; onOpen: (t: Task) => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, transition: DRAG_MOVE });
   return (
-    <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn("list-none", isDragging && "opacity-40")} {...attributes} {...listeners}>
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("list-none pointer-coarse:select-none [-webkit-touch-callout:none]", isDragging && "opacity-30")}
+      // Segurar o dedo pega o cartão: o menu do aparelho interromperia o arraste.
+      onContextMenu={(e) => {
+        if (window.matchMedia("(pointer: coarse)").matches) e.preventDefault();
+      }}
+      {...attributes}
+      {...listeners}
+    >
       <TaskItem task={task} now={now} onOpen={onOpen} as="div" />
     </li>
   );
