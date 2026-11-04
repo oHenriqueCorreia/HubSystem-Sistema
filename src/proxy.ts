@@ -20,6 +20,8 @@ const PUBLIC_PATHS = [
   "/api/inbox/jobs",
   "/aprovar",
   "/api/hooks/in",
+  // Comprovação de propriedade do site no Google Search Console.
+  "/googlecef85fdae30884e1.html",
 ];
 
 function isPublic(pathname: string) {
