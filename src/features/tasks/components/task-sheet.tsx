@@ -18,6 +18,7 @@ import { addChecklistItem, addComment, deleteChecklistItem, deleteTask, restoreT
 import { CHANNEL_LABEL, checklistProgress, PRIORITY_LABEL, STATUS_LABEL, type ChecklistItem, type Task, type TaskComment } from "../types";
 import { TaskFormDialog } from "./task-form-dialog";
 import { TaskHistory } from "./task-history";
+import { TaskDeliveries } from "./task-deliveries";
 import { TagChip } from "@/features/crm/components/chips";
 import type { TagColor } from "@/features/crm/types";
 import { getTaskDetails } from "../actions-read";
@@ -249,6 +250,8 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
             <p className="whitespace-pre-wrap">{task.suggested_message}</p>
           </div>
         )}
+
+        <TaskDeliveries task={task} owners={owners} />
 
         <section aria-labelledby="checklist-title" className="grid gap-2">
           <div className="flex items-center justify-between">

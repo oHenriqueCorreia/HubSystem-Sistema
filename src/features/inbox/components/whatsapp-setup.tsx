@@ -14,6 +14,7 @@ import { PasswordInput } from "@/components/app/password-input";
 import { connectWhatsAppNumber, disconnectWhatsAppNumber, syncWhatsAppTemplates } from "../actions";
 import { HistoryDialog } from "./history-import";
 import { QrConnectDialog } from "./qr-connect";
+import { IntegrationGuide } from "@/features/integrations/components/integration-guide";
 
 type WaNumber = { id: string; provider: "cloud" | "waha"; display_phone: string; verified_name: string; status: string; quality: string | null; last_error: string | null };
 
@@ -25,6 +26,7 @@ export function WhatsAppSetup({ numbers, configured, qrConfigured, canManage, te
 
   return (
     <div className="grid gap-3">
+      <IntegrationGuide id="whatsapp" />
       {numbers.map((n) => {
         const qr = n.provider === "waha";
         return (

@@ -17,6 +17,7 @@ import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { disconnectAds, setAccountClient, setAdAccountSelected, setAdAlerts, syncAdsNow } from "../actions";
 import type { AdAccount, AdClient, AdConnection } from "../queries";
+import { IntegrationGuide } from "@/features/integrations/components/integration-guide";
 
 const NAME = { meta_ads: "Meta Ads (Facebook e Instagram)", google_ads: "Google Ads" } as const;
 const START = { meta_ads: "/api/ads/meta/start", google_ads: "/api/ads/google/start" } as const;
@@ -42,12 +43,9 @@ export function ProviderCard({
         <h2 className="font-semibold">{NAME[provider]}</h2>
         {connection && <Badge variant={connection.status === "ativa" ? "default" : "destructive"}>{STATUS[connection.status] ?? connection.status}</Badge>}
       </div>
+      <IntegrationGuide id={provider} />
       {!configured ? (
-        <p className="text-muted-foreground">
-          {provider === "meta_ads"
-            ? "Integração ainda não ativada no servidor: faltam META_APP_ID e META_APP_SECRET (app da Meta for Developers com o produto Marketing API)."
-            : "Integração ainda não ativada no servidor: falta GOOGLE_ADS_DEVELOPER_TOKEN (Central de API do Google Ads) e as credenciais OAuth do Google."}
-        </p>
+        <p className="text-muted-foreground">Esta integração ainda não foi ativada neste sistema. Fale com o suporte pelo passo a passo.</p>
       ) : !connection ? (
         canManage ? (
           <>

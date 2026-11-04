@@ -568,3 +568,19 @@ html {
     padding-bottom: 0;
   }
 }
+
+/* Data e hora: o campo fica com o ícone do sistema e o trecho em edição nas cores do tema. */
+@media (pointer: fine) {
+  input[data-picker]::-webkit-calendar-picker-indicator {
+    display: none;
+  }
+}
+input[data-picker]::-webkit-datetime-edit-hour-field:focus,
+input[data-picker]::-webkit-datetime-edit-minute-field:focus,
+input[data-picker]::-webkit-datetime-edit-day-field:focus,
+input[data-picker]::-webkit-datetime-edit-month-field:focus,
+input[data-picker]::-webkit-datetime-edit-year-field:focus {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 3px;
+}

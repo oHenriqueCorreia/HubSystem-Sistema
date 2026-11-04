@@ -29,6 +29,7 @@ export default async function TarefasPage({ searchParams }: PageProps<"/tarefas"
     prioridade: str(sp.prioridade),
     periodo: str(sp.periodo) as Filters["periodo"],
     tag: str(sp.etiqueta),
+    aprovacao: (["aguardando", "aprovado", "recusado"] as const).find((a) => a === str(sp.aprovacao)),
   };
   const linkId = str(sp.tarefa);
   const [boards, linked, clients] = await Promise.all([listTaskBoards(), linkId && /^[0-9a-f-]{36}$/i.test(linkId) ? getTask(linkId) : Promise.resolve(null), listClientOptions()]);
@@ -43,7 +44,7 @@ export default async function TarefasPage({ searchParams }: PageProps<"/tarefas"
     getCrmLookups(),
   ]);
   const canAssign = scope === "team" || scope === "all";
-  const hasFilters = Boolean(filters.q || filters.responsavel || filters.prioridade || filters.periodo || filters.tag || sp.status || pickedBoard);
+  const hasFilters = Boolean(filters.q || filters.responsavel || filters.prioridade || filters.periodo || filters.tag || filters.aprovacao || sp.status || pickedBoard);
   const canConfigure = Boolean(user.permissions["tasks.board.configure"]);
 
   const newTask = user.permissions["tasks.create"] ? (

@@ -14,6 +14,7 @@ const TASK_COLUMNS = `
   lead:leads(id, name, whatsapp_e164),
   client:clients(id, legal_name, lead:leads(name)),
   content:content_items(id, status),
+  deliveries:task_deliveries(id, status, maker_role),
   list:task_columns(id, name, board:task_boards(id, name)),
   checklist:task_checklist_items(id, title, position, done_at),
   task_tags(tag:tags(id, name, color)),
@@ -41,6 +42,7 @@ function toTask(r: Row): Task {
     lead: (lead as Task["lead"]) ?? null,
     client: clientOption(client),
     content: ((Array.isArray(r.content) ? r.content[0] : r.content) as Task["content"]) ?? null,
+    deliveries: (r.deliveries as Task["deliveries"]) ?? [],
     list,
     checklist: ((r.checklist as Task["checklist"]) ?? []).sort((a, b) => a.position - b.position),
     tags,
@@ -81,6 +83,7 @@ export type TaskFilters = {
   q?: string;
   lead?: string;
   periodo?: "atrasadas" | "hoje" | "semana" | "sem_prazo";
+  aprovacao?: "aguardando" | "aprovado" | "recusado";
   /** Listas do quadro escolhido. */
   columnIds?: string[];
 };
@@ -88,7 +91,7 @@ export type TaskFilters = {
 export async function listTasks(filters: TaskFilters, limit = 500): Promise<Task[]> {
   const supabase = await createClient();
   // Filtro por etiqueta: junção interna só quando pedido.
-  const columns = filters.tag ? `${TASK_COLUMNS}, tag_filter:task_tags!inner(tag_id)` : TASK_COLUMNS;
+  const columns = `${TASK_COLUMNS}${filters.tag ? ", tag_filter:task_tags!inner(tag_id)" : ""}${filters.aprovacao ? ", delivery_filter:task_deliveries!inner(status)" : ""}`;
   let q = supabase.from("tasks").select(columns).is("deleted_at", null);
 
   const status = filters.status ?? "abertas";
@@ -102,6 +105,7 @@ export async function listTasks(filters: TaskFilters, limit = 500): Promise<Task
   if (filters.lead) q = q.eq("lead_id", filters.lead);
   if (filters.columnIds) q = q.in("column_id", filters.columnIds);
   if (filters.tag) q = q.eq("tag_filter.tag_id", filters.tag);
+  if (filters.aprovacao) q = q.eq("delivery_filter.status", filters.aprovacao);
   if (filters.q) q = q.ilike("title", `%${filters.q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
 
   const now = new Date();

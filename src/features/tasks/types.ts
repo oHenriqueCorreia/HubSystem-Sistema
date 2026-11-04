@@ -1,4 +1,5 @@
 import type { ContentStatus } from "@/domain/content";
+import type { DeliveryStatus } from "@/domain/deliveries";
 
 export type TaskPriority = "baixa" | "media" | "alta" | "urgente";
 export type TaskStatus = "a_fazer" | "em_andamento" | "concluida" | "cancelada";
@@ -36,6 +37,8 @@ export type Task = {
   list: { id: string; name: string; board: { id: string; name: string } | null } | null;
   client: { id: string; legal_name: string } | null;
   content: { id: string; status: ContentStatus } | null;
+  /** Entregas enviadas ao cliente: a situação aparece na lista e no quadro. */
+  deliveries: { id: string; status: DeliveryStatus; maker_role: string | null }[];
   lead: { id: string; name: string; whatsapp_e164: string | null } | null;
   checklist: ChecklistItem[];
   tags: { id: string; name: string; color: string }[];

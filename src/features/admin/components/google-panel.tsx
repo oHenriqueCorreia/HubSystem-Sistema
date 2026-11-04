@@ -37,8 +37,7 @@ export function GooglePanel({
   if (!configured) {
     return (
       <p className="max-w-prose text-sm text-muted-foreground">
-        A integração ainda não foi ativada no servidor. O responsável técnico precisa cadastrar as credenciais OAuth do Google (GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET), a chave
-        TOKEN_ENCRYPTION_KEY e a SUPABASE_SECRET_KEY nas variáveis de ambiente.
+        Esta integração ainda não foi ativada neste sistema. Fale com o suporte pelo passo a passo acima.
       </p>
     );
   }

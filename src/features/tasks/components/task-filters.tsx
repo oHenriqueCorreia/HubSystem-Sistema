@@ -133,6 +133,17 @@ export function TaskFilters({
           <SelectItem value="baixa">Baixa</SelectItem>
         </SelectContent>
       </Select>
+      <Select value={params.get("aprovacao") ?? ALL} onValueChange={(v) => update("aprovacao", v)}>
+        <SelectTrigger className="w-44" aria-label="Aprovação do cliente">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Qualquer aprovação</SelectItem>
+          <SelectItem value="aguardando">Aguardando o cliente</SelectItem>
+          <SelectItem value="recusado">Recusadas</SelectItem>
+          <SelectItem value="aprovado">Aprovadas</SelectItem>
+        </SelectContent>
+      </Select>
       {tags.length > 0 && (
         <Select value={params.get("etiqueta") ?? ALL} onValueChange={(v) => update("etiqueta", v)}>
           <SelectTrigger className="w-44" aria-label="Etiqueta">

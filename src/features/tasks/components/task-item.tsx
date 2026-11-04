@@ -11,6 +11,8 @@ import { formatDate, formatDateTime } from "@/domain/shared/dates";
 import { whatsappLink, fillTemplate } from "@/domain/shared/phone";
 import { setTaskStatus } from "../actions";
 import { ContentStatusBadge } from "@/features/content/components/content-status";
+import { deliverySummary } from "@/domain/deliveries";
+import { DeliveryBadge } from "./task-deliveries";
 import { checklistProgress, isOverdue, PRIORITY_LABEL, type Task } from "../types";
 
 const PRIORITY_STYLE: Record<Task["priority"], string> = {
@@ -26,6 +28,8 @@ export function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Ta
   const [optimisticDone, setOptimisticDone] = useOptimistic(task.status === "concluida");
   const overdue = !optimisticDone && isOverdue(task, new Date(now));
   const progress = checklistProgress(task.checklist);
+  const approval = deliverySummary(task.deliveries ?? []);
+  const roles = [...new Set((task.deliveries ?? []).flatMap((d) => (d.maker_role ? [d.maker_role] : [])))];
 
   function toggle(done: boolean) {
     startTransition(async () => {
@@ -103,6 +107,8 @@ export function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Ta
               <ContentStatusBadge status={task.content.status} />
             </Link>
           )}
+          {approval && <DeliveryBadge status={approval.status} label={approval.label} />}
+          {roles.length > 0 && <span className="truncate">{roles.join(", ")}</span>}
           {task.client && <span className="truncate">{task.client.legal_name}</span>}
           {task.list && (
             <span className="inline-flex min-w-0 items-center gap-1" title="Quadro e lista">

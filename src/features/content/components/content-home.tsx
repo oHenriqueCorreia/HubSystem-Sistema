@@ -23,6 +23,7 @@ import { formatDate, formatDateTime } from "@/domain/shared/dates";
 import { getWorkspaceOptions } from "@/features/tasks/actions";
 import type { TaskBoard, TaskColumn } from "@/features/tasks/types";
 import { createContentTask, disconnectSocial, setSocialSelected } from "../actions";
+import { IntegrationGuide } from "@/features/integrations/components/integration-guide";
 import type { ContentCard, ScheduleRow, SocialAccount } from "../queries";
 import { ContentStatusBadge } from "./content-status";
 import { AccountAvatar } from "./studio";
@@ -331,8 +332,9 @@ export function SocialSetup({ accounts, connection, configured, canManage, notic
           </h2>
           {connection && <Badge variant={healthy ? "default" : "destructive"}>{CONNECTION_LABEL[connection.status] ?? connection.status}</Badge>}
         </div>
+        <IntegrationGuide id="meta_social" />
         {!configured ? (
-          <p className="max-w-prose text-muted-foreground">A integração ainda não foi ativada no servidor: faltam META_APP_ID e META_APP_SECRET.</p>
+          <p className="max-w-prose text-muted-foreground">Esta integração ainda não foi ativada neste sistema. Fale com o suporte pelo passo a passo.</p>
         ) : connection ? (
           <div className="grid gap-1 text-muted-foreground">
             <p>Conectada por {connection.external_user}.</p>
