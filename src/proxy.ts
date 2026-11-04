@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Rotas acessíveis sem sessão.
 const PUBLIC_PATHS = [
+  "/",
   "/login",
   "/recuperar-senha",
   "/convite",
@@ -73,11 +74,11 @@ export async function proxy(request: NextRequest) {
   if (!signedIn && !isPublic(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname + search)}`;
+    url.search = `?next=${encodeURIComponent(pathname + search)}`;
     return copyCookies(response, NextResponse.redirect(url));
   }
 
-  if (signedIn && pathname === "/login") {
+  if (signedIn && (pathname === "/login" || pathname === "/")) {
     const url = request.nextUrl.clone();
     url.pathname = "/inicio";
     url.search = "";

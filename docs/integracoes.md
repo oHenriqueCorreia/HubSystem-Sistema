@@ -123,8 +123,8 @@ O QR Code usa a conexão não oficial do WAHA. A Meta pode limitar ou bloquear o
 
 ## 6. Google Ads
 
-1. Na conta gerente (MCC): Ferramentas → **Central de API** → solicite o **token de desenvolvedor** (`GOOGLE_ADS_DEVELOPER_TOKEN`). Com acesso de teste, só contas de teste funcionam; para contas reais é preciso o acesso **Básico**.
-2. Google Cloud: ative a **Google Ads API** no mesmo projeto do OAuth e adicione o escopo `https://www.googleapis.com/auth/adwords`.
+1. Google Cloud: ative a **Google Ads API** no mesmo projeto do OAuth e adicione o escopo `https://www.googleapis.com/auth/adwords`. Não há mais token de desenvolvedor: o acesso vem desse projeto.
+2. Na página de visão geral da Google Ads API, peça o nível de acesso. O de teste só alcança contas de teste; para contas reais é preciso o **Explorer** (até 2.880 operações por dia) ou o **Básico** (até 15.000, exige a verificação da marca).
 3. URI de redirecionamento: `https://SEU-DOMINIO/api/ads/google/callback`.
 4. Se as contas são acessadas por um MCC, informe `GOOGLE_ADS_LOGIN_CUSTOMER_ID`.
 

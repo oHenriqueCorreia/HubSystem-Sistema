@@ -3,11 +3,11 @@ import { publicEnv } from "@/lib/env";
 
 // Google Ads API oficial (REST). Somente leitura.
 export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
-const version = () => process.env.GOOGLE_ADS_API_VERSION || "v21";
+const version = () => process.env.GOOGLE_ADS_API_VERSION || "v26";
 const API = () => `https://googleads.googleapis.com/${version()}`;
 
-export const googleAdsConfigured = () =>
-  Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.TOKEN_ENCRYPTION_KEY && process.env.SUPABASE_SECRET_KEY);
+// O acesso à API vem do projeto do Google Cloud dono do cliente OAuth: o Google aposentou o developer token em 09/2026.
+export const googleAdsConfigured = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.TOKEN_ENCRYPTION_KEY && process.env.SUPABASE_SECRET_KEY);
 const googleAdsRedirectUri = () => `${publicEnv.NEXT_PUBLIC_SITE_URL}/api/ads/google/callback`;
 
 export function googleAdsAuthUrl(state: string) {
@@ -46,7 +46,6 @@ export const googleAdsRefresh = (refreshToken: string) => token({ grant_type: "r
 function headers(accessToken: string, loginCustomerId?: string) {
   const h: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
-    "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
     "Content-Type": "application/json",
   };
   const login = (loginCustomerId ?? process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? "").replace(/\D/g, "");

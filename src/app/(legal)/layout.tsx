@@ -12,7 +12,7 @@ export default function LegalLayout({ children }: LayoutProps<"/">) {
       </a>
       <header className="border-b bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-8 gap-y-3 px-4 py-3 sm:px-6">
-          <Link href="/login" aria-label="Hub System: ir para o login" className="rounded-md">
+          <Link href="/" aria-label="Hub System: ir para a página inicial" className="rounded-md">
             <Brand className="h-9 w-32" />
           </Link>
           <LegalNav />

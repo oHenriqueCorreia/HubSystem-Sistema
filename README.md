@@ -39,7 +39,7 @@ Todas estão comentadas em [.env.example](.env.example). Resumo:
 | `TOKEN_ENCRYPTION_KEY` | Cifra tokens do Google, Meta e WhatsApp (não trocar depois de em uso) |
 | `CRON_SECRET` | Protege `/api/cron/*` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Agenda e Google Ads |
-| `GOOGLE_ADS_DEVELOPER_TOKEN` (+ `GOOGLE_ADS_LOGIN_CUSTOMER_ID`) | Google Ads |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Google Ads, opcional: conta gerente (MCC) |
 | `META_APP_ID` / `META_APP_SECRET` | Meta Ads e assinatura do webhook do WhatsApp |
 | `WHATSAPP_VERIFY_TOKEN` | Verificação do webhook do WhatsApp |
 | `SUPABASE_DB_URL` | Só para `npm run db:*` (URL do Session pooler com senha) |
