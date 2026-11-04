@@ -52,10 +52,6 @@
   --color-info-soft: var(--info-soft);
   --color-ctx-company: var(--ctx-company);
   --color-ctx-personal: var(--ctx-personal);
-  --color-clock: var(--clock);
-  --color-clock-edge: var(--clock-edge);
-  --color-clock-lit: var(--clock-lit);
-  --color-clock-ghost: var(--clock-ghost);
   /* Hierarquia por raio: controles 6px, painéis 10px */
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -102,12 +98,6 @@
   --ctx-company: #0969da;
   --ctx-personal: #426ba3;
 
-  /* Mostrador digital do relógio: igual nos dois temas. */
-  --clock: #0b2245;
-  --clock-edge: #1d3f73;
-  --clock-lit: #7fdcff;
-  --clock-ghost: #7fdcff14;
-  --clock-glow: #38b6ff99;
 
   /* Séries em tons de azul da identidade visual, com contraste entre categorias. */
   --chat-wallpaper: #efeae2;

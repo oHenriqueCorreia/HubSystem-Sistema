@@ -24,7 +24,7 @@ import { PRIORITY_LABEL, type TaskPriority } from "@/features/tasks/types";
 import { getHomeOverview, HOME_WIDGETS, homePrefs, type HomeOverview, type HomeWidget } from "@/features/home/queries";
 import { getWeather } from "@/features/home/weather";
 import { messageForSlot, verseForSlot, VERSE_TRANSLATION } from "@/features/home/verse";
-import { rotationSlot, ROTATION_HOURS } from "@/domain/home";
+import { rotationSlot } from "@/domain/home";
 import { VerseRefresher } from "@/features/home/components/verse-refresher";
 import { LiveClock } from "@/features/home/components/live-clock";
 import { WeatherCard } from "@/features/home/components/weather-card";
@@ -90,7 +90,6 @@ function VerseSection({ slot }: { slot: number }) {
       <p className="flex items-start gap-2 border-t pt-3 text-sm text-muted-foreground">
         <Sparkles className="mt-0.5 size-4 shrink-0 text-signal" aria-hidden="true" /> {messageForSlot(slot)}
       </p>
-      <p className="text-xs text-muted-foreground">Uma nova passagem a cada {ROTATION_HOURS} horas.</p>
     </div>
   );
 }
