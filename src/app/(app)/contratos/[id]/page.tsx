@@ -67,10 +67,12 @@ export default async function ContratoPage({ params }: PageProps<"/contratos/[id
           <Item label="Situação">
             <Badge variant={contract.status === "ativo" ? "default" : "secondary"}>{CONTRACT_STATUS_LABEL[contract.status]}</Badge>
           </Item>
-          <Item label="Valor">
-            <span className="tabular text-lg font-semibold">{formatBRL(contract.amount_cents)}</span>
-            {monthlyValue(contract) > 0 && contract.recurrence !== "mensal" && <span className="block text-xs text-muted-foreground">{formatBRL(monthlyValue(contract))}/mês</span>}
-          </Item>
+          {contract.amount_cents !== null && (
+            <Item label="Valor">
+              <span className="tabular text-lg font-semibold">{formatBRL(contract.amount_cents)}</span>
+              {monthlyValue(contract) > 0 && contract.recurrence !== "mensal" && <span className="block text-xs text-muted-foreground">{formatBRL(monthlyValue(contract))}/mês</span>}
+            </Item>
+          )}
           <Item label="Recorrência">
             {RECURRENCE_LABEL[contract.recurrence]}
             {contract.due_day ? ` · vence dia ${contract.due_day}` : ""}

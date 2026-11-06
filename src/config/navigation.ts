@@ -1,4 +1,4 @@
-import type { PermissionKey } from "@/domain/permissions";
+import { canAny, type PermissionKey, type PermissionMap } from "@/domain/permissions";
 
 export type NavIcon =
   | "home"
@@ -74,4 +74,25 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export const SETTINGS_ITEM: NavItem = { href: "/configuracoes", label: "Configurações", icon: "settings" };
+/** Menu que a pessoa vê (o mesmo cálculo do layout e da pré-visualização "Ver como"). */
+export function visibleNavGroups(permissions: PermissionMap, platformOwner: boolean): NavGroup[] {
+  return NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => (!i.anyOf || canAny(permissions, i.anyOf)) && (!i.platformOwner || platformOwner)),
+  })).filter((g) => g.items.length > 0);
+}
+
+export const SETTINGS_ITEM: NavItem ={ href: "/configuracoes", label: "Configurações", icon: "settings" };
+
+/** Páginas de Configurações; sem perm = todo usuário (perfil, notificações, integrações pessoais). */
+export const SETTINGS_PAGES: { href: string; label: string; perm?: PermissionKey }[] = [
+  { href: "/configuracoes/perfil", label: "Meu perfil" },
+  { href: "/configuracoes/notificacoes", label: "Notificações" },
+  { href: "/configuracoes/geral", label: "Empresa", perm: "admin.settings" },
+  { href: "/configuracoes/usuarios", label: "Usuários", perm: "admin.users" },
+  { href: "/configuracoes/papeis", label: "Papéis e permissões", perm: "admin.roles" },
+  { href: "/configuracoes/squads", label: "Squads", perm: "admin.users" },
+  { href: "/configuracoes/etiquetas", label: "Etiquetas", perm: "tags.manage" },
+  { href: "/configuracoes/integracoes", label: "Integrações" },
+  { href: "/configuracoes/auditoria", label: "Auditoria", perm: "admin.audit" },
+];

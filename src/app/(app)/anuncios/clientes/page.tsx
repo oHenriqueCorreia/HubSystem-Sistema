@@ -11,6 +11,7 @@ import { filtersQuery, parseAdsFilters } from "@/features/ads/filters";
 import { formatMoney, formatPct } from "@/features/ads/format";
 import { ProviderTag } from "@/features/ads/components/report";
 import { ClientActions, NewClientDialog } from "@/features/ads/components/clients-manager";
+import { listClientOptions } from "@/features/squads/queries";
 
 export const metadata: Metadata = { title: "Clientes · Anúncios" };
 
@@ -19,6 +20,10 @@ export default async function ClientesAnunciosPage({ searchParams }: PageProps<"
   const canManage = Boolean(user.permissions["ads.manage"]);
   const filters = parseAdsFilters(await searchParams);
   const { accounts, clients } = await getAdsSetup();
+  // Clientes do sistema que a pessoa enxerga, para ligar a cada cliente de anúncios.
+  const systemClients = canManage && user.permissions["clients.read"] ? await listClientOptions() : [];
+  const systemName = new Map(systemClients.map((c) => [c.id, c.name]));
+  const taken = clients.map((c) => c.client_id).filter((id): id is string => Boolean(id));
   const summaries = await getClientsSummary(accounts, clients, filters);
   const loose = accounts.filter((a) => a.is_selected && !a.ad_client_id);
   const base = filtersQuery({ ...filters, clientId: undefined, accountId: undefined });
@@ -29,7 +34,7 @@ export default async function ClientesAnunciosPage({ searchParams }: PageProps<"
         <Suspense>
           <DashboardFilters preset={filters.preset} from={filters.from} to={filters.to} />
         </Suspense>
-        {canManage && <NewClientDialog accounts={accounts} />}
+        {canManage && <NewClientDialog accounts={accounts} systemClients={systemClients} taken={taken} />}
       </div>
 
       {!clients.length ? (
@@ -37,7 +42,7 @@ export default async function ClientesAnunciosPage({ searchParams }: PageProps<"
           icon={Users}
           title="Nenhum cliente cadastrado"
           description="Crie um cliente para cada empresa que você atende e escolha as contas de anúncio dela. Cada cliente ganha um painel com investimento, resultados e campanhas."
-          action={canManage ? <NewClientDialog accounts={accounts} /> : undefined}
+          action={canManage ? <NewClientDialog accounts={accounts} systemClients={systemClients} taken={taken} /> : undefined}
         />
       ) : (
         <ul className="grid gap-4 lg:grid-cols-2">
@@ -52,8 +57,16 @@ export default async function ClientesAnunciosPage({ searchParams }: PageProps<"
                     <p className="text-xs text-muted-foreground">
                       {own.length} {own.length === 1 ? "conta" : "contas"}, {activeCampaigns} {activeCampaigns === 1 ? "campanha ativa" : "campanhas ativas"}
                     </p>
+                    {client.client_id && (
+                      <p className="text-xs">
+                        Cliente no sistema:{" "}
+                        <Link href={`/clientes/${client.client_id}`} className="font-medium text-primary hover:underline">
+                          {systemName.get(client.client_id) ?? "abrir"}
+                        </Link>
+                      </p>
+                    )}
                   </div>
-                  {canManage && <ClientActions client={client} />}
+                  {canManage && <ClientActions client={client} systemClients={systemClients} taken={taken} />}
                 </div>
 
                 {own.length === 0 ? (

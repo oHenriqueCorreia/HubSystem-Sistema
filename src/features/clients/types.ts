@@ -8,15 +8,17 @@ export type ClientRow = {
   id: string;
   lead_id: string;
   legal_name: string | null;
+  // Dados de cobrança: null também quando a pessoa não tem clients.billing (billing_hidden).
   document: string | null;
   billing_email: string | null;
   billing_phone_e164: string | null;
+  billing_hidden: boolean;
   owner_id: string | null;
   status: "ativo" | "inativo";
   notes: string | null;
   converted_at: string;
   lead: { id: string; name: string; city: string | null; state: string | null; phone_e164: string | null; whatsapp_e164: string | null; email: string | null };
-  contracts: { id: string; amount_cents: number; recurrence: Recurrence; status: ContractStatus }[];
+  contracts: { id: string; amount_cents: number | null; recurrence: Recurrence; status: ContractStatus }[];
 };
 
 export type Contract = {
@@ -27,7 +29,8 @@ export type Contract = {
   owner_id: string | null;
   title: string;
   description: string | null;
-  amount_cents: number;
+  /** null quando a pessoa não tem contracts.values. */
+  amount_cents: number | null;
   payment_method: PaymentMethod;
   recurrence: Recurrence;
   start_date: string;
@@ -67,8 +70,8 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
 };
 
 /** Receita recorrente mensal equivalente de um contrato ativo (centavos). */
-export function monthlyValue(c: { amount_cents: number; recurrence: Recurrence; status: ContractStatus }): number {
-  if (c.status !== "ativo") return 0;
+export function monthlyValue(c: { amount_cents: number | null; recurrence: Recurrence; status: ContractStatus }): number {
+  if (c.status !== "ativo" || c.amount_cents === null) return 0;
   const div = { unica: 0, mensal: 1, trimestral: 3, semestral: 6, anual: 12 }[c.recurrence];
   return div ? Math.round(c.amount_cents / div) : 0;
 }

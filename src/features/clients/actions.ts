@@ -77,16 +77,22 @@ export const convertLead = defineAction({ schema: convertSchema, permission: "cl
   return ok(result, "Lead convertido em cliente.");
 });
 
-export const updateClient = defineAction({ schema: clientUpdateSchema, permission: "clients.update" }, async (input) => {
+export const updateClient = defineAction({ schema: clientUpdateSchema, permission: "clients.update" }, async (input, { user }) => {
   const supabase = await createClient();
+  // Sem clients.billing a pessoa não viu os dados de cobrança: eles ficam como estão.
+  const billing = user.permissions["clients.billing"]
+    ? {
+        document: input.document.replace(/\D/g, "") || null,
+        billing_email: input.billingEmail.toLowerCase() || null,
+        billing_phone_e164: normalizePhone(input.billingPhone)?.e164 ?? null,
+      }
+    : {};
   const res = must(
     await supabase
       .from("clients")
       .update({
         legal_name: input.legalName || null,
-        document: input.document.replace(/\D/g, "") || null,
-        billing_email: input.billingEmail.toLowerCase() || null,
-        billing_phone_e164: normalizePhone(input.billingPhone)?.e164 ?? null,
+        ...billing,
         status: input.status,
         notes: input.notes || null,
       })
@@ -180,9 +186,12 @@ export const createContractWithClient = defineAction({ schema: newContractSchema
   return ok({ id: k.id, clientId }, `Contrato criado.${financeNote}`);
 });
 
-export const updateContract = defineAction({ schema: contractFormSchema.and(z.object({ id: z.uuid() })), permission: "contracts.update" }, async (input) => {
+export const updateContract = defineAction({ schema: contractFormSchema.and(z.object({ id: z.uuid() })), permission: "contracts.update" }, async (input, { user }) => {
   const supabase = await createClient();
-  const res = must(await supabase.from("contracts").update(contractRow(input)).eq("id", input.id).select("id, client_id")) as { client_id: string }[];
+  // Sem contracts.values a pessoa não viu o valor: ele fica como está (o banco também barra a mudança).
+  const { amount_cents, ...rest } = contractRow(input);
+  const row = user.permissions["contracts.values"] ? { ...rest, amount_cents } : rest;
+  const res = must(await supabase.from("contracts").update(row).eq("id", input.id).select("id, client_id")) as { client_id: string }[];
   if (!res.length) return fail("forbidden", "Você não pode editar este contrato.");
   await syncFinance(supabase, input.id);
   revalidateClients(res[0].client_id);

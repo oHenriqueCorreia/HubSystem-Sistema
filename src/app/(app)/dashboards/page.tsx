@@ -24,6 +24,8 @@ import { MonthlyChart } from "@/features/finance/components/monthly-chart";
 export const metadata: Metadata = { title: "Visão geral" };
 
 type CommercialOverview = {
+  /** Sem contracts.values o banco não soma valores de contrato. */
+  values_hidden: boolean;
   total_leads: number;
   new_leads: number;
   by_stage: { name: string; count: number; amount: number }[];
@@ -111,7 +113,7 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
           <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {commercial && <Kpi label="Leads no sistema" value={commercial.total_leads} hint={`${commercial.new_leads} novo(s) no período`} />}
             {commercial && <Kpi label="Negócios fechados" value={commercial.won} />}
-            {commercial && <Kpi label="Receita comercial" value={commercial.revenue} money hint="Contratos iniciados no período" />}
+            {commercial && !commercial.values_hidden && <Kpi label="Receita comercial" value={commercial.revenue} money hint="Contratos iniciados no período" />}
             {financial && <Kpi label={`Saldo ${financeScope === "pessoal" ? "pessoal" : "da empresa"}`} value={financial.balance} money />}
             {financial && <Kpi label="Receitas recebidas" value={financial.income_paid} money />}
             {financial && <Kpi label="Despesas pagas" value={financial.expense_paid} money />}
@@ -135,7 +137,7 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
         {commercial && (
           <section aria-labelledby="grafico-comercial" className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="grafico-comercial" className="text-base font-semibold">Comercial em movimento</h2><Link href="/dashboards/comercial" className="text-sm font-medium text-primary hover:underline">Abrir análise comercial</Link></div>
-            <div className="grid gap-4 lg:grid-cols-2"><DonutRank title="Leads por etapa" description="Negócios em cada etapa do funil." rows={commercial.by_stage} labelHeader="Etapa" centerLabel="Negócios" /><SalesByMonth rows={commercial.by_month.map((row) => ({ mes: MONTH_LABEL(row.month), vendas: row.amount }))} /></div>
+            <div className="grid gap-4 lg:grid-cols-2"><DonutRank title="Leads por etapa" description="Negócios em cada etapa do funil." rows={commercial.by_stage} labelHeader="Etapa" centerLabel="Negócios" />{!commercial.values_hidden && <SalesByMonth rows={commercial.by_month.map((row) => ({ mes: MONTH_LABEL(row.month), vendas: row.amount }))} />}</div>
           </section>
         )}
         {financial && (

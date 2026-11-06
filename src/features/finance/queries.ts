@@ -149,7 +149,7 @@ export async function listContractsForFinance() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("contracts")
-    .select("id, title, amount_cents, recurrence, status, client:clients(id, lead:leads(name))")
+    .select("id, title, recurrence, status, client:clients(id, lead:leads(name))")
     .is("deleted_at", null)
     .eq("status", "ativo")
     .order("title")

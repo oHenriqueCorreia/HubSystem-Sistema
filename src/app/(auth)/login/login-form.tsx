@@ -46,9 +46,9 @@ export function LoginForm({ next, reason, google = false }: { next?: string; rea
 
   const form = useForm<Values>({
     resolver: zodResolver(signInSchema),
-    defaultValues: { email: "", password: "", next, remember: true },
+    defaultValues: { email: "", password: "", next, remember: false },
   });
-  const remember = useWatch({ control: form.control, name: "remember" }) ?? true;
+  const remember = useWatch({ control: form.control, name: "remember" }) ?? false;
 
   // Preenche o e-mail usado da última vez neste aparelho.
   useEffect(() => {
@@ -71,7 +71,7 @@ export function LoginForm({ next, reason, google = false }: { next?: string; rea
 
   const onSubmit = form.handleSubmit((values) => {
     setServerError(null);
-    rememberEmail(values.email, values.remember ?? true);
+    rememberEmail(values.email, values.remember ?? false);
     startTransition(async () => {
       const res = await signIn(values);
       // Em caso de sucesso a action redireciona e não retorna.

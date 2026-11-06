@@ -105,6 +105,11 @@ export const setRolePermission = defineAction({ schema: rolePermissionSchema, pe
 
 export const createRole = defineAction({ schema: createRoleSchema, permission: "admin.roles" }, async (input) => {
   const supabase = await createClient();
+  if (input.template) {
+    const id = must(await supabase.rpc("admin_create_role_from_template", { p_template: input.template, p_name: input.name, p_description: input.description || null }));
+    revalidatePath("/configuracoes/papeis");
+    return ok({ id }, "Papel criado a partir do modelo.");
+  }
   const id = must(
     await supabase.rpc("admin_create_role", {
       p_name: input.name,

@@ -43,7 +43,7 @@ export default async function ContratosPage({ searchParams }: PageProps<"/contra
       <PageHeader
         breadcrumbs={[{ label: "Comercial" }, { label: "Contratos" }]}
         title="Contratos"
-        description={`${contracts.length} contrato(s) · recorrente ativo ${formatBRL(mrr)}/mês.`}
+        description={user.permissions["contracts.values"] ? `${contracts.length} contrato(s) · recorrente ativo ${formatBRL(mrr)}/mês.` : `${contracts.length} contrato(s).`}
         actions={
           canCreate ? (
             <NewContractDialog

@@ -175,7 +175,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
     // 2) Campanhas e métricas das contas selecionadas.
     let selectedQ = admin
       .from("ad_accounts")
-      .select("id, external_id, name, currency, balance_cents, alert_balance_below_cents, alert_daily_spend_above_cents")
+      .select("id, external_id, name, currency, balance_cents, alert_balance_below_cents, alert_daily_spend_above_cents, ad_client:ad_clients(client_id)")
       .eq("organization_id", organizationId)
       .eq("provider", provider)
       .eq("is_selected", true);
@@ -241,7 +241,10 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
         console.error("[ads-sync] anúncios", provider, (e as { code?: unknown; status?: unknown }).code ?? (e as { status?: unknown }).status ?? "erro", (e as { detail?: string }).detail ?? "");
       }
 
-      // 3) Alertas (um por conta por dia, sem repetição).
+      // 3) Alertas (um por conta por dia, sem repetição), só para quem enxerga a conta:
+      // escopo "todos" ou quem trabalha no cliente ligado a ela.
+      const adClient = (Array.isArray(acc.ad_client) ? acc.ad_client[0] : acc.ad_client) as { client_id: string | null } | null;
+      const scope = { p_client: adClient?.client_id ?? undefined, p_record: true };
       const todaySpend = rows.filter((r) => r.day === until).reduce((s, r) => s + r.spend_cents, 0);
       if (acc.alert_daily_spend_above_cents != null && todaySpend > acc.alert_daily_spend_above_cents) {
         await admin.rpc("notify_users", {
@@ -252,6 +255,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
           p_body: `${formatBRL(todaySpend)} gastos hoje (limite ${formatBRL(acc.alert_daily_spend_above_cents)}).`,
           p_href: "/anuncios/contas",
           p_key: `ads_spend:${acc.id}:${until}`,
+          ...scope,
         });
       }
       const { data: fresh } = await admin.from("ad_accounts").select("balance_cents").eq("id", acc.id).single();
@@ -264,6 +268,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
           p_body: `Saldo informado: ${formatBRL(fresh.balance_cents)} (alerta abaixo de ${formatBRL(acc.alert_balance_below_cents)}).`,
           p_href: "/anuncios/contas",
           p_key: `ads_balance:${acc.id}:${until}`,
+          ...scope,
         });
       }
     }

@@ -18,6 +18,8 @@ import { MONTH_LABEL } from "@/features/finance/server";
 export const metadata: Metadata = { title: "Dashboard comercial" };
 
 type Data = {
+  /** Sem contracts.values o banco não soma valores de contrato. */
+  values_hidden: boolean;
   total_leads: number;
   new_leads: number;
   by_stage: { id: string; name: string; kind: string; count: number; amount: number }[];
@@ -62,6 +64,7 @@ export default async function ComercialPage({ searchParams }: PageProps<"/dashbo
   const ticket = d.contracts ? Math.round(d.revenue / d.contracts) : 0;
   const ticketPrev = p.contracts ? Math.round(p.revenue / p.contracts) : 0;
   const forecastTotal = d.forecast.reduce((s, f) => s + f.amount, 0) + d.mrr * 3;
+  const values = !d.values_hidden;
 
   return (
     <>
@@ -104,27 +107,31 @@ export default async function ComercialPage({ searchParams }: PageProps<"/dashbo
           <Kpi label="Contratos fechados" value={d.won} previous={p.won} />
           <Kpi label="Negócios perdidos" value={d.lost} previous={p.lost} invert />
           <Kpi label="Taxa de conversão" value={conv} previous={convPrev} suffix="%" hint="Ganhos ÷ (ganhos + perdidos)" />
-          <Kpi label="Receita gerada" value={d.revenue} previous={p.revenue} money hint={`${d.contracts} contrato(s)`} />
-          <Kpi label="Ticket médio" value={ticket} previous={ticketPrev} money />
+          {values && <Kpi label="Receita gerada" value={d.revenue} previous={p.revenue} money hint={`${d.contracts} contrato(s)`} />}
+          {values && <Kpi label="Ticket médio" value={ticket} previous={ticketPrev} money />}
         </dl>
 
         <dl className="grid gap-3 sm:grid-cols-3">
-          <Kpi label="Recorrente ativo (MRR)" value={d.mrr} money />
+          {values && <Kpi label="Recorrente ativo (MRR)" value={d.mrr} money />}
           <Kpi label="Em negociação no funil" value={d.pipeline_open_amount} money hint="Soma dos valores dos negócios abertos" />
-          <Kpi label="Previsão de receita (90 dias)" value={forecastTotal} money hint="Negócios com previsão de fechamento + 3 meses de recorrente" />
+          {values && <Kpi label="Previsão de receita (90 dias)" value={forecastTotal} money hint="Negócios com previsão de fechamento + 3 meses de recorrente" />}
         </dl>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <StageFunnel stages={d.by_stage} />
           <DonutRank title="Leads por responsável" centerLabel="Leads" rows={d.by_owner.map((o) => ({ name: o.name, count: o.count }))} labelHeader="Responsável" />
-          <SalesByMonth rows={d.by_month.map((m) => ({ mes: MONTH_LABEL(m.month), vendas: m.amount }))} />
-          <DonutRank title="Vendas por serviço" centerLabel="Vendas" description="Contratos iniciados no período." rows={d.by_service} money labelHeader="Serviço" />
+          {values && <SalesByMonth rows={d.by_month.map((m) => ({ mes: MONTH_LABEL(m.month), vendas: m.amount }))} />}
+          {values && <DonutRank title="Vendas por serviço" centerLabel="Vendas" description="Contratos iniciados no período." rows={d.by_service} money labelHeader="Serviço" />}
           <DonutRank title="Motivos de perda" centerLabel="Perdas" rows={d.lost_reasons} labelHeader="Motivo" />
           {d.forecast.length > 0 && (
             <RankBars title="Previsão de fechamento" description="Valor dos negócios abertos por mês previsto." rows={d.forecast.map((f) => ({ name: MONTH_LABEL(f.month), amount: f.amount }))} money labelHeader="Mês" />
           )}
         </div>
-        <p className="text-xs text-muted-foreground">Valores em reais. Receita gerada considera contratos com início no período ({formatBRL(d.revenue)}).</p>
+        <p className="text-xs text-muted-foreground">
+          {values
+            ? `Valores em reais. Receita gerada considera contratos com início no período (${formatBRL(d.revenue)}).`
+            : "Valores de contratos ficam ocultos para o seu papel. Peça ao administrador a permissão “Ver e definir valores de contratos”."}
+        </p>
       </PageBody>
     </>
   );

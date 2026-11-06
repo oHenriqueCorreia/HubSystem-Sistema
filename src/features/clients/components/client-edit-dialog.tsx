@@ -62,15 +62,20 @@ export function ClientEditDialog({ client }: { client: ClientRow }) {
           <FormField label="Razão social / nome completo" optional>
             <Input value={v.legalName} onChange={(e) => setV({ ...v, legalName: e.target.value })} />
           </FormField>
-          <FormField label="CPF ou CNPJ" error={errors.document} optional>
-            <Input inputMode="numeric" value={v.document} onChange={(e) => setV({ ...v, document: e.target.value })} />
-          </FormField>
-          <FormField label="E-mail de cobrança" error={errors.billingEmail} optional>
-            <Input type="email" spellCheck={false} value={v.billingEmail} onChange={(e) => setV({ ...v, billingEmail: e.target.value })} />
-          </FormField>
-          <FormField label="Telefone de cobrança" error={errors.billingPhone} optional>
-            <Input type="tel" value={v.billingPhone} onChange={(e) => setV({ ...v, billingPhone: e.target.value })} />
-          </FormField>
+          {/* Sem clients.billing os dados não chegam aqui; os campos somem e o servidor não os grava. */}
+          {!client.billing_hidden && (
+            <>
+              <FormField label="CPF ou CNPJ" error={errors.document} optional>
+                <Input inputMode="numeric" value={v.document} onChange={(e) => setV({ ...v, document: e.target.value })} />
+              </FormField>
+              <FormField label="E-mail de cobrança" error={errors.billingEmail} optional>
+                <Input type="email" spellCheck={false} value={v.billingEmail} onChange={(e) => setV({ ...v, billingEmail: e.target.value })} />
+              </FormField>
+              <FormField label="Telefone de cobrança" error={errors.billingPhone} optional>
+                <Input type="tel" value={v.billingPhone} onChange={(e) => setV({ ...v, billingPhone: e.target.value })} />
+              </FormField>
+            </>
+          )}
           <FormField label="Situação">
             <Select value={v.status} onValueChange={(s) => setV({ ...v, status: s as "ativo" | "inativo" })}>
               <SelectTrigger className="w-full">

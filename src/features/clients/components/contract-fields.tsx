@@ -35,6 +35,7 @@ export function ContractFields({
   errors,
   owners,
   showStatus = true,
+  hideAmount = false,
 }: {
   value: ContractFormValues;
   onChange: (v: ContractFormValues) => void;
@@ -42,6 +43,8 @@ export function ContractFields({
   errors: Record<string, string>;
   owners?: { id: string; full_name: string; email: string }[];
   showStatus?: boolean;
+  /** Pessoa sem contracts.values: não vê nem altera o valor. */
+  hideAmount?: boolean;
 }) {
   const set = <K extends keyof ContractFormValues>(k: K, v: ContractFormValues[K]) => onChange({ ...value, [k]: v });
 
@@ -79,9 +82,11 @@ export function ContractFields({
       <FormField label="Título do contrato" error={errors.title} required className="sm:col-span-2">
         <Input value={value.title} onChange={(e) => set("title", e.target.value)} placeholder="Ex.: Site institucional — Vidraçaria Sol…" />
       </FormField>
+      {!hideAmount && (
       <FormField label="Valor" error={errors.amountCents} required>
         <MoneyInput value={value.amountCents} onChange={(c) => set("amountCents", c as number)} />
       </FormField>
+      )}
       <FormField label="Recorrência">
         <Select value={value.recurrence} onValueChange={(v) => set("recurrence", v as ContractFormValues["recurrence"])}>
           <SelectTrigger className="w-full">

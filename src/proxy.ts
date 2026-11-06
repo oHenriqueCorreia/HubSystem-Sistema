@@ -72,6 +72,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!signedIn && !isPublic(pathname)) {
+    // API não redireciona para a tela de login: responde 401 para quem chamou.
+    if (pathname.startsWith("/api/")) {
+      return copyCookies(response, NextResponse.json({ error: "unauthenticated" }, { status: 401 }));
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = `?next=${encodeURIComponent(pathname + search)}`;

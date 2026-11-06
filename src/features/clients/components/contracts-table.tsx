@@ -14,6 +14,8 @@ const STATUS_VARIANT: Record<Contract["status"], "default" | "secondary" | "outl
 };
 
 export function ContractsTable({ contracts, showClient = true }: { contracts: Contract[]; showClient?: boolean }) {
+  // Sem contracts.values os valores chegam nulos: a coluna some em vez de mostrar vazio.
+  const showAmount = contracts.some((k) => k.amount_cents !== null);
   return (
     <div className="overflow-x-auto rounded-xl border bg-surface">
       <Table>
@@ -22,7 +24,7 @@ export function ContractsTable({ contracts, showClient = true }: { contracts: Co
             <TableHead>Contrato</TableHead>
             {showClient && <TableHead>Cliente</TableHead>}
             <TableHead>Situação</TableHead>
-            <TableHead className="text-right">Valor</TableHead>
+            {showAmount && <TableHead className="text-right">Valor</TableHead>}
             <TableHead>Recorrência</TableHead>
             <TableHead>Vigência</TableHead>
           </TableRow>
@@ -50,7 +52,7 @@ export function ContractsTable({ contracts, showClient = true }: { contracts: Co
               <TableCell>
                 <Badge variant={STATUS_VARIANT[k.status]}>{CONTRACT_STATUS_LABEL[k.status]}</Badge>
               </TableCell>
-              <TableCell className="text-right whitespace-nowrap">{formatBRL(k.amount_cents)}</TableCell>
+              {showAmount && <TableCell className="text-right whitespace-nowrap">{formatBRL(k.amount_cents)}</TableCell>}
               <TableCell className="whitespace-nowrap">
                 {RECURRENCE_LABEL[k.recurrence]}
                 {k.due_day ? ` · dia ${k.due_day}` : ""}

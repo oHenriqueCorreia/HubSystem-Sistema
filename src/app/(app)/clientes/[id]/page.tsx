@@ -17,6 +17,8 @@ import { ContractDialog } from "@/features/clients/components/contract-dialog";
 import { ContractsTable } from "@/features/clients/components/contracts-table";
 import { ClientEditDialog } from "@/features/clients/components/client-edit-dialog";
 import { Attachments } from "@/features/clients/components/attachments";
+import { getClientTeam, listPeople } from "@/features/squads/queries";
+import { ClientTeam } from "@/features/squads/components/client-team";
 
 export const metadata: Metadata = { title: "Cliente" };
 
@@ -27,16 +29,22 @@ export default async function ClientePage({ params }: PageProps<"/clientes/[id]"
   const client = await getClient(id);
   if (!client) notFound();
 
-  const [contracts, services, activities, attachments, lookups] = await Promise.all([
+  // A lista de pessoas só vai para o navegador de quem pode associar.
+  const canManageTeam = Boolean(user.permissions["admin.users"]);
+  const [contracts, services, activities, attachments, lookups, team, people] = await Promise.all([
     user.permissions["contracts.read"] ? listContracts({ cliente: id }) : Promise.resolve([]),
     listServices(),
     getLeadActivities(client.lead_id, 30).catch(() => []),
     listAttachments("client", id),
     getCrmLookups(),
+    getClientTeam(id),
+    canManageTeam ? listPeople() : Promise.resolve(null),
   ]);
   const names = new Map(lookups.owners.map((o) => [o.id, o.full_name || o.email]));
   const mrr = contracts.reduce((s, k) => s + monthlyValue(k), 0);
-  const total = contracts.filter((k) => k.status !== "cancelado").reduce((s, k) => s + k.amount_cents, 0);
+  const total = contracts.filter((k) => k.status !== "cancelado").reduce((s, k) => s + (k.amount_cents ?? 0), 0);
+  // Cartões de valores só com contratos visíveis e contracts.values (sem isso, "R$ 0,00" enganaria).
+  const showValues = Boolean(user.permissions["contracts.read"] && user.permissions["contracts.values"]);
 
   return (
     <>
@@ -69,6 +77,7 @@ export default async function ClientePage({ params }: PageProps<"/clientes/[id]"
       <PageBody>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="grid content-start gap-6">
+            {showValues && (
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div className="rounded-lg border bg-surface p-3">
                 <dt className="text-xs text-muted-foreground">Recorrente por mês</dt>
@@ -83,13 +92,16 @@ export default async function ClientePage({ params }: PageProps<"/clientes/[id]"
                 <dd className="tabular text-xl font-semibold">{formatBRL(total)}</dd>
               </div>
             </dl>
+            )}
 
+            {user.permissions["contracts.read"] && (
             <section aria-labelledby="contratos" className="grid gap-2">
               <h2 id="contratos" className="text-sm font-semibold">
                 Contratos
               </h2>
               {contracts.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum contrato. Use “Novo contrato” para registrar o serviço contratado.</p> : <ContractsTable contracts={contracts} showClient={false} />}
             </section>
+            )}
 
             <Attachments entityType="client" entityId={id} initial={attachments} />
 
@@ -112,7 +124,8 @@ export default async function ClientePage({ params }: PageProps<"/clientes/[id]"
             </section>
           </div>
 
-          <aside className="grid content-start gap-4 text-sm" aria-label="Dados de cobrança">
+          <aside className="grid content-start gap-4 text-sm" aria-label="Dados do cliente">
+            {!client.billing_hidden && (
             <section className="grid gap-1">
               <h2 className="text-sm font-semibold">Cobrança</h2>
               <p>{client.legal_name || "Razão social não informada"}</p>
@@ -120,10 +133,12 @@ export default async function ClientePage({ params }: PageProps<"/clientes/[id]"
               <p>{client.billing_email || client.lead?.email || "Sem e-mail"}</p>
               <p>{formatPhone(client.billing_phone_e164 ?? client.lead?.phone_e164) || "Sem telefone"}</p>
             </section>
+            )}
             <section className="grid gap-1">
               <h2 className="text-sm font-semibold">Responsável</h2>
               <p>{client.owner_id ? (names.get(client.owner_id) ?? "—") : "—"}</p>
             </section>
+            <ClientTeam clientId={id} team={team} people={people} />
             {client.notes && (
               <section className="grid gap-1">
                 <h2 className="text-sm font-semibold">Observações</h2>

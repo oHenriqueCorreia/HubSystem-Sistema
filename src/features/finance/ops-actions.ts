@@ -137,7 +137,7 @@ async function chargeContext(id: string, user: CurrentUser) {
   const supabase = await createClient();
   const { data: t } = await supabase
     .from("financial_transactions")
-    .select("id, scope, kind, status, description, amount_cents, due_date, counterparty, charge_reason, charge_note, client:clients(legal_name, billing_phone_e164, lead:leads(id, name, whatsapp_e164, phone_e164))")
+    .select("id, scope, kind, status, description, amount_cents, due_date, counterparty, charge_reason, charge_note, client:clients(id, legal_name, lead:leads(id, name, whatsapp_e164, phone_e164))")
     .eq("id", id)
     .maybeSingle();
   if (!t) return null;
@@ -145,9 +145,11 @@ async function chargeContext(id: string, user: CurrentUser) {
   let q = supabase.from("payment_profiles").select("pix_key, pix_key_type, holder_name, bank_name, instructions").eq("scope", t.scope);
   if (t.scope === "pessoal") q = q.eq("owner_user_id", user.id);
   const { data: profile } = await q.maybeSingle();
-  const client = (Array.isArray(t.client) ? t.client[0] : t.client) as { legal_name: string | null; billing_phone_e164: string | null; lead: unknown } | null;
+  const client = (Array.isArray(t.client) ? t.client[0] : t.client) as { id: string; legal_name: string | null; lead: unknown } | null;
   const lead = (client ? (Array.isArray(client.lead) ? client.lead[0] : client.lead) : null) as { id: string; name: string; whatsapp_e164: string | null; phone_e164: string | null } | null;
-  return { t, profile: profile as PaymentProfile | null, name: client?.legal_name || lead?.name || (t.counterparty as string | null) || "", phone: client?.billing_phone_e164 ?? lead?.whatsapp_e164 ?? lead?.phone_e164 ?? "", leadId: lead?.id ?? null };
+  // Telefone de cobrança só com clients.billing (a função devolve vazio sem a permissão).
+  const billing = client ? ((await supabase.rpc("client_billing", { p_ids: [client.id] })).data as { billing_phone_e164: string | null }[] | null)?.[0] : null;
+  return { t, profile: profile as PaymentProfile | null, name: client?.legal_name || lead?.name || (t.counterparty as string | null) || "", phone: billing?.billing_phone_e164 ?? lead?.whatsapp_e164 ?? lead?.phone_e164 ?? "", leadId: lead?.id ?? null };
 }
 
 export const prepareCharge = defineAction({ schema: z.object({ id: z.uuid() }) }, async ({ id }, { user }) => {

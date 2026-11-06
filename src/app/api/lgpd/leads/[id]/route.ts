@@ -16,10 +16,31 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/lgpd/lea
     supabase.from("activities").select("type, content, occurred_at").eq("lead_id", id).order("occurred_at"),
     supabase.from("tasks").select("title, description, status, due_at, completed_at").eq("lead_id", id),
     supabase.from("calendar_events").select("title, starts_at, ends_at, location").eq("lead_id", id),
-    supabase.from("clients").select("legal_name, document, billing_email, billing_phone_e164, converted_at, contracts(title, amount_cents, recurrence, start_date, end_date, status)").eq("lead_id", id).maybeSingle(),
+    // Documento, cobrança e valores não são legíveis na tabela: entram abaixo pelas funções autorizadas.
+    supabase.from("clients").select("id, legal_name, converted_at, contracts(id, title, recurrence, start_date, end_date, status)").eq("lead_id", id).maybeSingle(),
     supabase.from("attachments").select("file_name, mime_type, size_bytes, created_at").eq("entity_type", "lead").eq("entity_id", id).is("deleted_at", null),
   ]);
   if (!lead.data) return NextResponse.json({ error: "Lead não encontrado." }, { status: 404 });
+
+  type ExportClient = { id: string; contracts: { id: string }[] } & Record<string, unknown>;
+  const c = client.data as ExportClient | null;
+  const [billing, values] = c
+    ? await Promise.all([
+        supabase.rpc("client_billing", { p_ids: [c.id] }),
+        supabase.rpc("contract_values", { p_ids: (c.contracts ?? []).map((k) => k.id) }),
+      ])
+    : [null, null];
+  const amount = new Map(((values?.data ?? []) as { id: string; amount_cents: number }[]).map((v) => [v.id, v.amount_cents]));
+  const b = ((billing?.data ?? []) as { document: string | null; billing_email: string | null; billing_phone_e164: string | null }[])[0];
+  const cliente = c
+    ? {
+        ...c,
+        document: b?.document ?? null,
+        billing_email: b?.billing_email ?? null,
+        billing_phone_e164: b?.billing_phone_e164 ?? null,
+        contracts: (c.contracts ?? []).map((k) => ({ ...k, amount_cents: amount.get(k.id) ?? null })),
+      }
+    : null;
 
   const logged = await supabase.rpc("lgpd_log_export", { p_lead: id });
   if (logged.error) return NextResponse.json({ error: "Não foi possível registrar a exportação." }, { status: 500 });
@@ -31,7 +52,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/lgpd/lea
     interacoes: activities.data ?? [],
     tarefas: tasks.data ?? [],
     eventos: events.data ?? [],
-    cliente: client.data ?? null,
+    cliente,
     anexos: attachments.data ?? [],
   };
   return new NextResponse(JSON.stringify(body, null, 2), {

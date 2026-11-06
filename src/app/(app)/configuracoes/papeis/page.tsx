@@ -3,21 +3,21 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/auth/dal";
 import { PageBody, PageHeader } from "@/components/app/page-header";
 import { Badge } from "@/components/ui/badge";
-import { listRoles } from "@/features/admin/queries";
+import { listRoles, listRoleTemplates } from "@/features/admin/queries";
 import { CreateRoleDialog } from "@/features/admin/components/forms";
 
 export const metadata: Metadata = { title: "Papéis e permissões" };
 
 export default async function PapeisPage() {
   await requirePermission("admin.roles");
-  const roles = await listRoles();
+  const [roles, templates] = await Promise.all([listRoles(), listRoleTemplates()]);
   return (
     <>
       <PageHeader
         breadcrumbs={[{ label: "Configurações" }, { label: "Papéis e permissões" }]}
         title="Papéis e permissões"
         description="Cada usuário tem um papel. Ajuste o que cada papel pode ver e fazer."
-        actions={<CreateRoleDialog roles={roles} />}
+        actions={<CreateRoleDialog roles={roles} templates={templates} />}
       />
       <PageBody>
         <ul className="divide-y rounded-xl border bg-surface">

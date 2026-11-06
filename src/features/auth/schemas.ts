@@ -20,7 +20,7 @@ export const signInSchema = z.object({
   password: z.string().min(1, "Informe a senha."),
   next: z.string().optional(),
   // Manter conectado neste aparelho (padrão: sim).
-  remember: z.boolean().default(true),
+  remember: z.boolean().default(false),
 });
 
 export const resetRequestSchema = z.object({ email: emailSchema });

@@ -19,12 +19,13 @@ export type AdAccount = {
   ad_client_id: string | null;
 };
 
-export type AdClient = { id: string; name: string };
+/** client_id: cliente do sistema ligado a este grupo de contas (define quem enxerga pelo escopo). */
+export type AdClient = { id: string; name: string; client_id: string | null };
 
 /** Clientes de anúncios (agrupam contas). Antes da migration, devolve lista vazia. */
 async function getAdClients() {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("ad_clients").select("id, name").order("name");
+  const { data, error } = await supabase.from("ad_clients").select("id, name, client_id").order("name");
   if (error) {
     console.error("[ads] clientes", error.code);
     return [] as AdClient[];

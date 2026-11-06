@@ -20,7 +20,10 @@ function str(v: string | string[] | undefined) {
 }
 
 export default async function ClientesPage({ searchParams }: PageProps<"/clientes">) {
-  await requirePermission("clients.read");
+  const user = await requirePermission("clients.read");
+  // Valores e documentos só para quem tem a permissão do campo (o banco também não os entrega).
+  const canValues = Boolean(user.permissions["contracts.values"]);
+  const canBilling = Boolean(user.permissions["clients.billing"]);
   const sp = await searchParams;
   const q = str(sp.q)?.slice(0, 100);
   const clients = await listClients({ q, status: str(sp.status) ?? "ativo" });
@@ -31,11 +34,11 @@ export default async function ClientesPage({ searchParams }: PageProps<"/cliente
       <PageHeader
         breadcrumbs={[{ label: "Comercial" }, { label: "Clientes" }]}
         title="Clientes"
-        description={`${clients.length} cliente(s) · receita recorrente mensal ${formatBRL(mrr)}`}
+        description={canValues ? `${clients.length} cliente(s) · receita recorrente mensal ${formatBRL(mrr)}` : `${clients.length} cliente(s)`}
       />
       <PageBody className="grid gap-4">
         <form className="flex flex-wrap gap-2" role="search" aria-label="Buscar clientes">
-          <Input name="q" type="search" defaultValue={q} placeholder="Buscar por nome, razão social ou documento" aria-label="Buscar clientes" className="w-full sm:w-80" />
+          <Input name="q" type="search" defaultValue={q} placeholder={canBilling ? "Buscar por nome, razão social ou documento…" : "Buscar por nome ou razão social…"} aria-label="Buscar clientes" className="w-full sm:w-80" />
           <select name="status" defaultValue={str(sp.status) ?? "ativo"} aria-label="Situação" className="h-9 rounded-md border bg-background px-2 text-sm">
             <option value="ativo">Ativos</option>
             <option value="inativo">Inativos</option>
@@ -68,7 +71,7 @@ export default async function ClientesPage({ searchParams }: PageProps<"/cliente
                     <TableHead>Cliente</TableHead>
                     <TableHead>Contato</TableHead>
                     <TableHead className="text-right">Contratos ativos</TableHead>
-                    <TableHead className="text-right">Recorrente/mês</TableHead>
+                    {canValues && <TableHead className="text-right">Recorrente/mês</TableHead>}
                     <TableHead>Cliente desde</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -83,7 +86,7 @@ export default async function ClientesPage({ searchParams }: PageProps<"/cliente
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{formatPhone(c.billing_phone_e164 ?? c.lead?.phone_e164) || c.billing_email || "—"}</TableCell>
                       <TableCell className="text-right">{c.contracts.filter((k) => k.status === "ativo").length}</TableCell>
-                      <TableCell className="text-right">{formatBRL(c.contracts.reduce((x, k) => x + monthlyValue(k), 0))}</TableCell>
+                      {canValues && <TableCell className="text-right">{formatBRL(c.contracts.reduce((x, k) => x + monthlyValue(k), 0))}</TableCell>}
                       <TableCell>{formatDate(c.converted_at)}</TableCell>
                     </TableRow>
                   ))}
@@ -97,7 +100,8 @@ export default async function ClientesPage({ searchParams }: PageProps<"/cliente
                     {c.lead?.name}
                   </Link>
                   <p className="text-xs text-muted-foreground">
-                    {c.contracts.filter((k) => k.status === "ativo").length} contrato(s) ativo(s) · {formatBRL(c.contracts.reduce((x, k) => x + monthlyValue(k), 0))}/mês
+                    {c.contracts.filter((k) => k.status === "ativo").length} contrato(s) ativo(s)
+                    {canValues && ` · ${formatBRL(c.contracts.reduce((x, k) => x + monthlyValue(k), 0))}/mês`}
                   </p>
                 </li>
               ))}

@@ -51,6 +51,8 @@ export const createRoleSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome do papel.").max(60),
   description: z.string().trim().max(200).default(""),
   copyFrom: uuid.nullable().default(null),
+  // Modelo de papel (role_templates.key); tem prioridade sobre copyFrom.
+  template: z.string().regex(/^[a-z_]{2,40}$/, "Modelo inválido.").nullable().default(null),
 });
 
 export const orgSettingsSchema = z.object({

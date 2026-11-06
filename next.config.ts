@@ -12,6 +12,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // O log de Server Functions (só em desenvolvimento) imprime os argumentos, inclusive a senha do login.
+  logging: { serverFunctions: false },
   // Importação envia lotes de até 1.000 linhas por chamada.
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
   turbopack: {

@@ -65,23 +65,27 @@ export const setAccountClient = defineAction({ schema: z.object({ id: z.uuid(), 
 
 const clientName = z.string().trim().min(1, "Informe o nome do cliente.").max(120);
 
-export const createAdClient = defineAction({ schema: z.object({ name: clientName, accountIds: z.array(z.uuid()).max(100).default([]) }), permission: "ads.manage" }, async (input) => {
+// systemClientId liga o grupo de contas ao cliente do sistema: quem trabalha nele vê os anúncios (escopo menor que "todos").
+const systemClientId = z.uuid().nullable().default(null);
+
+export const createAdClient = defineAction({ schema: z.object({ name: clientName, accountIds: z.array(z.uuid()).max(100).default([]), systemClientId }), permission: "ads.manage" }, async (input) => {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("ad_clients").insert({ name: input.name }).select("id").single();
-  if (error?.code === "23505") return fail("conflict", "Já existe um cliente com esse nome.");
+  const { data, error } = await supabase.from("ad_clients").insert({ name: input.name, client_id: input.systemClientId }).select("id").single();
+  if (error?.code === "23505") return fail("conflict", error.message.includes("client_uq") ? "Esse cliente do sistema já está ligado a outro cliente de anúncios." : "Já existe um cliente com esse nome.");
   if (error) throw error;
   if (input.accountIds.length) must(await supabase.from("ad_accounts").update({ ad_client_id: data.id }).in("id", input.accountIds));
   revalidatePath("/anuncios", "layout");
   return ok({ id: data.id as string }, "Cliente criado.");
 });
 
-export const renameAdClient = defineAction({ schema: z.object({ id: z.uuid(), name: clientName }), permission: "ads.manage" }, async (input) => {
+export const renameAdClient = defineAction({ schema: z.object({ id: z.uuid(), name: clientName, systemClientId }), permission: "ads.manage" }, async (input) => {
   const supabase = await createClient();
-  const { error } = await supabase.from("ad_clients").update({ name: input.name }).eq("id", input.id);
-  if (error?.code === "23505") return fail("conflict", "Já existe um cliente com esse nome.");
+  const { data, error } = await supabase.from("ad_clients").update({ name: input.name, client_id: input.systemClientId }).eq("id", input.id).select("id");
+  if (error?.code === "23505") return fail("conflict", error.message.includes("client_uq") ? "Esse cliente do sistema já está ligado a outro cliente de anúncios." : "Já existe um cliente com esse nome.");
   if (error) throw error;
+  if (!data?.length) return fail("forbidden", "Você não pode alterar este cliente.");
   revalidatePath("/anuncios", "layout");
-  return ok(null, "Nome atualizado.");
+  return ok(null, "Cliente atualizado.");
 });
 
 export const deleteAdClient = defineAction({ schema: z.object({ id: z.uuid() }), permission: "ads.manage" }, async (input) => {

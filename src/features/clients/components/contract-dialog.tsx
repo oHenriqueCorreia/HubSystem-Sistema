@@ -36,7 +36,8 @@ export function ContractDialog({
           title: contract.title,
           serviceId: contract.service_id,
           description: contract.description ?? "",
-          amountCents: contract.amount_cents,
+          // Sem contracts.values o valor não chega; o campo some e o servidor não o grava.
+          amountCents: contract.amount_cents ?? 0,
           paymentMethod: contract.payment_method,
           recurrence: contract.recurrence,
           startDate: contract.start_date,
@@ -76,7 +77,7 @@ export function ContractDialog({
         </DialogHeader>
         <div className="grid gap-4">
           <FormAlert>{error}</FormAlert>
-          <ContractFields value={value} onChange={setValue} services={services} errors={errors} owners={contract ? owners : undefined} />
+          <ContractFields value={value} onChange={setValue} services={services} errors={errors} owners={contract ? owners : undefined} hideAmount={Boolean(contract && contract.amount_cents === null)} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>

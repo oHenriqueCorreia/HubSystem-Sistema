@@ -78,6 +78,11 @@ npm run build
 ## Segurança (resumo)
 
 - Autorização = permissão `módulo.recurso.ação` com escopo próprio/equipe/todos, checada na Server Action **e** garantida pela **RLS** em todas as tabelas.
+- Clientes associados: quem trabalha num cliente (direto, em **Equipe do cliente**, ou por um **squad** em Configurações → Squads) vê também as tarefas, a agenda, as conversas, os contratos e o lead desse cliente, sempre dentro das permissões do próprio papel.
+- Sem autoelevação: quem não é Administrador não altera o próprio acesso, não mexe em administradores e só concede o que ele mesmo tem.
+- Campos sensíveis com permissão própria: valores de contrato e preços (`contracts.values`) e CPF/CNPJ e contatos de cobrança (`clients.billing`). Essas colunas não são legíveis pela API; saem só pelas funções `contract_values`, `service_prices` e `client_billing`. Coluna nova em `contracts`, `clients` ou `services` precisa de `grant select (coluna)`.
+- Conteúdo e Anúncios seguem o escopo e os clientes associados (o cliente de anúncios se liga ao cliente do sistema). Avisos sobre um registro só vão para quem enxerga o registro.
+- Configurações → Papéis: modelos por função, comparação de papéis e histórico; em Usuários, permissão efetiva com a origem, "Ver como" (só leitura) e histórico de acesso.
 - Chave secreta e tokens do Google só no servidor; tokens cifrados (AES-256-GCM) numa tabela sem acesso pela API.
 - Anexos em bucket privado, com tipo e tamanho validados no servidor e no bucket; download por URL assinada de 60 segundos.
 - Auditoria imutável de permissões, exclusões, troca de responsável, valores financeiros, contratos, conversões e consultas do admin ao financeiro pessoal.

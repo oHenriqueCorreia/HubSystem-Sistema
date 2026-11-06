@@ -4,13 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SCOPE_LABEL, type PermissionKey, type PermissionScope } from "@/domain/permissions";
+import { SCOPE_LABEL, effectivePermission, hasScope, type PermissionKey, type PermissionScope } from "@/domain/permissions";
 import { setPermissionOverride, setRolePermission } from "../actions";
 import type { PermissionDef } from "../queries";
 
 const NONE = "nenhum";
-// Permissões em que o escopo (próprios/equipe/todos) faz sentido.
-const SCOPED = /^(crm\.leads\.|crm\.pipeline\.move|clients\.|contracts\.|tasks\.|calendar\.|dashboards\.commercial)/;
+const ORIGIN_LABEL = { papel: "pelo papel", excecao: "por exceção", bloqueio: "bloqueado por exceção" } as const;
 
 /** Matriz de um papel: para cada permissão, nenhum / próprios / equipe / todos. */
 export function RolePermissionMatrix({
@@ -63,7 +62,7 @@ export function RolePermissionMatrix({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>Sem acesso</SelectItem>
-                    {SCOPED.test(p.key) ? (
+                    {hasScope(p.key) ? (
                       (["own", "team", "all"] as const).map((s) => (
                         <SelectItem key={s} value={s}>
                           {SCOPE_LABEL[s]}
@@ -133,13 +132,19 @@ export function UserOverrideMatrix({
               const o = state[p.key];
               const value = o ? (o.effect === "deny" ? "deny" : `grant:${o.scope}`) : "role";
               const fromRole = roleScopes[p.key];
+              const eff = effectivePermission(fromRole, o);
+              const effLabel = eff.scope ? (hasScope(p.key) ? SCOPE_LABEL[eff.scope] : "Permitido") : "Sem acesso";
               return (
                 <li key={p.key} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
                   <div className="grid">
                     <label htmlFor={`uo-${p.key}`} className="text-sm">
                       {p.label}
                     </label>
-                    <span className="text-xs text-muted-foreground">Pelo papel: {fromRole ? (SCOPED.test(p.key) ? SCOPE_LABEL[fromRole] : "Permitido") : "Sem acesso"}</span>
+                    <span className="text-xs text-muted-foreground">
+                      Pelo papel: {fromRole ? (hasScope(p.key) ? SCOPE_LABEL[fromRole] : "Permitido") : "Sem acesso"} · Efetivo:{" "}
+                      <strong className="font-medium text-foreground">{effLabel}</strong>
+                      {eff.origin && eff.origin !== "papel" ? ` (${ORIGIN_LABEL[eff.origin]})` : ""}
+                    </span>
                   </div>
                   <Select value={value} onValueChange={(v) => change(p.key, v)} disabled={pending}>
                     <SelectTrigger id={`uo-${p.key}`} className="w-44">
@@ -148,7 +153,7 @@ export function UserOverrideMatrix({
                     <SelectContent>
                       <SelectItem value="role">Seguir o papel</SelectItem>
                       <SelectItem value="deny">Bloquear</SelectItem>
-                      {SCOPED.test(p.key) ? (
+                      {hasScope(p.key) ? (
                         (["own", "team", "all"] as const).map((s) => (
                           <SelectItem key={s} value={`grant:${s}`}>
                             Liberar: {SCOPE_LABEL[s].toLowerCase()}

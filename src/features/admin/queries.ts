@@ -38,6 +38,16 @@ export async function listRoles(): Promise<(RoleRow & { users: number })[]> {
   });
 }
 
+export type RoleTemplate = { key: string; name: string; description: string };
+
+/** Modelos de papel por função (catálogo global, ver migration role_templates). */
+export async function listRoleTemplates(): Promise<RoleTemplate[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("role_templates").select("key, name, description").order("position");
+  if (error) throw error;
+  return (data ?? []) as RoleTemplate[];
+}
+
 export async function getRole(id: string) {
   const supabase = await createClient();
   const [role, perms] = await Promise.all([

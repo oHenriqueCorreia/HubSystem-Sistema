@@ -2,6 +2,9 @@ import type { ActionErrorCode } from "@/domain/shared/result";
 
 type PgLikeError = { code?: string; message?: string; hint?: string; details?: string } | null | undefined;
 
+// Hints de supabase/migrations/20261105090000_access_escalation_guard.sql.
+const ACCESS_GUARD_HINTS = new Set(["self_access", "admin_target", "admin_role", "delegate_beyond_own"]);
+
 /**
  * Traduz erros do PostgREST/Postgres em mensagens para a pessoa usuária.
  * Mensagens de regra de negócio (P0001) já vêm em português do banco.
@@ -11,6 +14,8 @@ export function mapDbError(error: PgLikeError): { code: ActionErrorCode; message
 
   switch (error.code) {
     case "42501":
+      // A trava de acesso explica o motivo em português; a RLS não.
+      if (error.hint && ACCESS_GUARD_HINTS.has(error.hint) && error.message) return { code: "forbidden", message: error.message };
       return { code: "forbidden", message: "Você não tem permissão para esta ação." };
     case "P0001":
       return { code: "business_rule", message: error.message ?? "Operação não permitida." };
