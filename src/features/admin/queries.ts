@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { PermissionScope } from "@/domain/permissions";
 
@@ -157,11 +158,12 @@ export type InvitationListRow = {
 };
 
 /** A conta atual pode convidar para "ambiente próprio" (empresa nova)? Na dúvida, não. */
-export async function canCreateWorkspaces(): Promise<boolean> {
+/** Memoizado por requisição: o layout e páginas como o Prospectador perguntam na mesma renderização. */
+export const canCreateWorkspaces = cache(async (): Promise<boolean> => {
   const supabase = await createClient();
   const { data } = await supabase.rpc("can_create_workspaces");
   return data === true;
-}
+});
 
 /** Convites da organização. "Expirado" é derivado do prazo, nunca gravado. */
 export async function listInvitations(): Promise<InvitationListRow[]> {

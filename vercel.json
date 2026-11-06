@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "node scripts/vercel-build.mjs",
+  "regions": [
+    "gru1"
+  ],
   "crons": [
     {
       "path": "/api/cron/google-sync",

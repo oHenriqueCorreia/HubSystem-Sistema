@@ -6,11 +6,11 @@ import { SETTINGS_ITEM, visibleNavGroups } from "@/config/navigation";
 import { canCreateWorkspaces } from "@/features/admin/queries";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
-  const user = await getCurrentUser();
+  // As duas consultas são independentes: em paralelo, uma ida ao banco a menos por página.
+  const [user, owner] = await Promise.all([getCurrentUser(), canCreateWorkspaces()]);
   // Sessão válida mas perfil desativado/inexistente: encerra a sessão.
   if (!user) redirect("/auth/sair?motivo=desativado");
 
-  const owner = await canCreateWorkspaces();
   const groups = visibleNavGroups(user.permissions, owner);
 
   const cookieStore = await cookies();
