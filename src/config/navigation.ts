@@ -95,4 +95,5 @@ export const SETTINGS_PAGES: { href: string; label: string; perm?: PermissionKey
   { href: "/configuracoes/etiquetas", label: "Etiquetas", perm: "tags.manage" },
   { href: "/configuracoes/integracoes", label: "Integrações" },
   { href: "/configuracoes/auditoria", label: "Auditoria", perm: "admin.audit" },
+  { href: "/configuracoes/manutencao", label: "Manutenção", perm: "admin.settings" },
 ];

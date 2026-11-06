@@ -33,6 +33,7 @@ import { cn } from "cn";
 import { checkExistingLeads, getImportMapping, importLeads, saveImportMapping, undoImport } from "../actions";
 import type { ProspectorImports } from "../queries";
 import { ProspectorPanel } from "./prospector-panel";
+import { decodeTextFile } from "@/domain/shared/encoding";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_ROWS = 10_000;
@@ -48,12 +49,9 @@ type Analysis = {
 };
 type FileResult = { file: string; importId: string; inserted: number; updated: number; skipped: number; invalid: number; errors: { linha: number; erro: string }[] };
 
-/** Decodifica como UTF-8; se aparecerem caracteres inválidos, tenta Windows-1252 (Excel antigo). */
+/** UTF-8 ou Windows-1252 (Excel antigo); acentuação já corrompida na origem é reparada. */
 async function readText(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const utf8 = new TextDecoder("utf-8").decode(buf);
-  if (!utf8.includes("�")) return utf8.replace(/^﻿/, "");
-  return new TextDecoder("windows-1252").decode(buf);
+  return decodeTextFile(await file.arrayBuffer());
 }
 
 async function parseFile(file: File): Promise<ParsedFile> {

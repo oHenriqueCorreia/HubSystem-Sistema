@@ -20,6 +20,7 @@ import { lineHashes, parseOfx, parsePdfText, parseTable, type StatementLine } fr
 import { saveCategory } from "../actions";
 import { analyzeStatement, commitStatement, saveCategoryRule } from "../ops-actions";
 import { SCOPE_LABEL, type Account, type Category, type FinanceScope } from "../types";
+import { decodeTextFile } from "@/domain/shared/encoding";
 
 type Lookups = Partial<Record<FinanceScope, { accounts: Account[]; categories: Category[] }>>;
 type Candidate = { id: string; scope: FinanceScope; description: string; amount_cents: number; due_date: string; status: string };
@@ -47,14 +48,7 @@ const PAGE = 50;
 const NONE = "__nenhuma__";
 const NEW_CATEGORY = "__nova__";
 
-const decodeText = async (file: File) => {
-  const buffer = await file.arrayBuffer();
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
-  } catch {
-    return new TextDecoder("windows-1252").decode(buffer);
-  }
-};
+const decodeText = async (file: File) => decodeTextFile(await file.arrayBuffer());
 
 export function StatementImporter({ scope, lookups }: { scope: FinanceScope; lookups: Lookups }) {
   const router = useRouter();
