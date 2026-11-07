@@ -58,3 +58,10 @@ __pycache__/
 
 .vercel
 .env*
+
+# arquivos locais que não fazem parte do sistema
+/brag-output/
+/.claude/launch.json
+# scripts SQL avulsos (rodados à mão no SQL Editor)
+/supabase/limpar-acessos.sql
+/supabase/aplicar-pendentes.sql
