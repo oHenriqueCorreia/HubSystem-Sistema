@@ -304,3 +304,117 @@ export async function metaDuplicate(token: string, level: "campaign" | "adset", 
   });
   return level === "campaign" ? (r.copied_campaign_id ?? null) : (r.copied_adset_id ?? null);
 }
+
+// ----------------------------------------------------------------------------
+// Criação de campanha completa: campanha → conjunto → criativo → anúncio.
+
+export type MetaObjective = "trafego" | "alcance" | "whatsapp";
+
+export type NewMetaCampaign = {
+  accountId: string; // act_...
+  objective: MetaObjective;
+  name: string;
+  dailyBudgetCents: number;
+  active: boolean;
+  geo: { countries: string[]; cities: { key: string; radiusKm: number }[]; regions: string[] };
+  ageMin: number;
+  ageMax: number;
+  genders: ("homens" | "mulheres")[];
+  pageId: string;
+  image: { bytes: string } | null; // base64
+  message: string;
+  headline: string;
+  link: string | null;
+  cta: string;
+};
+
+const OBJECTIVE = {
+  trafego: { objective: "OUTCOME_TRAFFIC", optimization: "LINK_CLICKS", destination: "WEBSITE" },
+  alcance: { objective: "OUTCOME_AWARENESS", optimization: "REACH", destination: null },
+  whatsapp: { objective: "OUTCOME_ENGAGEMENT", optimization: "CONVERSATIONS", destination: "WHATSAPP" },
+} as const;
+
+/** Páginas do Facebook que a pessoa administra (o anúncio sai em nome de uma delas). */
+export async function metaPages(token: string) {
+  const rows = await all<{ id: string; name: string }>(graph(`/me/accounts?fields=id,name&limit=100&access_token=${encodeURIComponent(token)}`), 300);
+  return rows.map((p) => ({ id: p.id, name: p.name }));
+}
+
+/** Cidades e estados para o público (busca da própria Meta). */
+export async function metaSearchLocations(token: string, q: string) {
+  const url = graph(`/search?${new URLSearchParams({ type: "adgeolocation", q, location_types: JSON.stringify(["city", "region"]), country_code: "BR", limit: "10", access_token: token })}`);
+  const r = await get<{ data: { key: string; name: string; type: string; region?: string }[] }>(url);
+  return r.data.map((l) => ({ key: l.key, type: l.type as "city" | "region", label: l.type === "city" && l.region ? `${l.name}, ${l.region}` : l.name }));
+}
+
+/**
+ * Cria tudo; validateOnly confere com a Meta sem criar nada.
+ * Se uma etapa falhar depois da campanha criada, a campanha é apagada (não fica lixo na conta).
+ */
+export async function metaCreateCampaign(token: string, c: NewMetaCampaign, validateOnly = false) {
+  const o = OBJECTIVE[c.objective];
+  const status = c.active ? "ACTIVE" : "PAUSED";
+  const extra: Record<string, string> = validateOnly ? { execution_options: JSON.stringify(["validate_only"]) } : {};
+
+  let imageHash: string | null = null;
+  if (c.image) {
+    const up = await post<{ images: Record<string, { hash: string }> }>(`/${c.accountId}/adimages`, token, { bytes: c.image.bytes });
+    imageHash = Object.values(up.images)[0]?.hash ?? null;
+  }
+
+  const campaign = await post<{ id?: string; success?: boolean }>(`/${c.accountId}/campaigns`, token, {
+    name: c.name,
+    objective: o.objective,
+    status,
+    special_ad_categories: "[]",
+    daily_budget: String(c.dailyBudgetCents),
+    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+    ...extra,
+  });
+  if (validateOnly) {
+    return { campaignId: null, validated: true };
+  }
+  const campaignId = campaign.id!;
+  try {
+    const targeting: Record<string, unknown> = {
+      geo_locations: {
+        ...(c.geo.countries.length ? { countries: c.geo.countries } : {}),
+        ...(c.geo.regions.length ? { regions: c.geo.regions.map((key) => ({ key })) } : {}),
+        ...(c.geo.cities.length ? { cities: c.geo.cities.map((x) => ({ key: x.key, radius: x.radiusKm, distance_unit: "kilometer" })) } : {}),
+      },
+      age_min: c.ageMin,
+      age_max: c.ageMax,
+      targeting_automation: { advantage_audience: 0 },
+    };
+    if (c.genders.length === 1) targeting.genders = [c.genders[0] === "homens" ? 1 : 2];
+    const adset = await post<{ id: string }>(`/${c.accountId}/adsets`, token, {
+      name: `${c.name} · Público`,
+      campaign_id: campaignId,
+      status,
+      billing_event: "IMPRESSIONS",
+      optimization_goal: o.optimization,
+      ...(o.destination ? { destination_type: o.destination } : {}),
+      ...(c.objective === "whatsapp" ? { promoted_object: JSON.stringify({ page_id: c.pageId }) } : {}),
+      targeting: JSON.stringify(targeting),
+    });
+    const link = c.objective === "whatsapp" ? "https://api.whatsapp.com/send" : (c.link ?? "");
+    const creative = await post<{ id: string }>(`/${c.accountId}/adcreatives`, token, {
+      name: `${c.name} · Criativo`,
+      object_story_spec: JSON.stringify({
+        page_id: c.pageId,
+        link_data: {
+          link,
+          message: c.message,
+          name: c.headline,
+          ...(imageHash ? { image_hash: imageHash } : {}),
+          call_to_action: c.objective === "whatsapp" ? { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } } : { type: c.cta, value: { link } },
+        },
+      }),
+    });
+    const ad = await post<{ id: string }>(`/${c.accountId}/ads`, token, { name: `${c.name} · Anúncio`, adset_id: adset.id, creative: JSON.stringify({ creative_id: creative.id }), status });
+    return { campaignId, adsetId: adset.id, adId: ad.id, validated: false };
+  } catch (e) {
+    await post(`/${campaignId}`, token, { status: "DELETED" }).catch(() => null);
+    throw e;
+  }
+}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Download } from "lucide-react";
+import Link from "next/link";
+import { Download, Plus } from "lucide-react";
 import { requirePermission } from "@/lib/auth/dal";
 import { Button } from "@/components/ui/button";
 import { getAdsSetup, getCampaignsReport } from "@/features/ads/queries";
@@ -31,6 +32,14 @@ export default async function CampanhasPage({ searchParams }: PageProps<"/anunci
           <h2 id="campanhas" className="text-sm font-semibold">
             {campaigns.length.toLocaleString("pt-BR")} {campaigns.length === 1 ? "campanha" : "campanhas"}
           </h2>
+          <div className="flex flex-wrap gap-2">
+          {canManage && (
+            <Button asChild size="sm">
+              <Link href="/anuncios/campanhas/nova">
+                <Plus aria-hidden="true" /> Nova campanha
+              </Link>
+            </Button>
+          )}
           {campaigns.length > 0 && (
             <Button asChild variant="outline" size="sm">
               <a href={`/api/ads/export?${exportQuery}`}>
@@ -38,6 +47,7 @@ export default async function CampanhasPage({ searchParams }: PageProps<"/anunci
               </a>
             </Button>
           )}
+          </div>
         </div>
         <MetricsTable
           label="Campanhas"
