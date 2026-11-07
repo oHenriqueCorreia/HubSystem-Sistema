@@ -98,6 +98,7 @@ export default async function AnunciosPage({ searchParams }: PageProps<"/anuncio
               empty="Nenhuma campanha com estes filtros. Sincronize em Contas para atualizar."
               rows={campaigns.slice(0, 5).map((c) => ({
                 key: c.id,
+                edit: user.permissions["ads.manage"] ? { level: "campaign" as const, id: c.id, name: c.name, provider: c.provider, currency } : undefined,
                 status: c.status,
                 metrics: c.metrics,
                 crm: c.crm,

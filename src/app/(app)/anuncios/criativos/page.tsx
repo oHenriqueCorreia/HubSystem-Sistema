@@ -58,6 +58,7 @@ export default async function CriativosPage({ searchParams }: PageProps<"/anunci
             empty="Nenhum anúncio com estes filtros. Sincronize em Contas para atualizar."
             rows={ads.map((a) => ({
               key: a.id,
+              edit: user.permissions["ads.manage"] ? { level: "ad" as const, id: a.id, name: a.name, provider: a.provider, currency } : undefined,
               status: a.status,
               metrics: a.metrics,
               crm: a.crm,

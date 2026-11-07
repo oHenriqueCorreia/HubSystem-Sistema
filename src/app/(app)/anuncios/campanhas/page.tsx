@@ -15,6 +15,7 @@ export default async function CampanhasPage({ searchParams }: PageProps<"/anunci
   const { accounts, clients } = await getAdsSetup();
   if (!accounts.some((a) => a.is_selected)) return <NoAccounts canManage={Boolean(user.permissions["ads.manage"])} />;
 
+  const canManage = Boolean(user.permissions["ads.manage"]);
   const campaigns = await getCampaignsReport(accounts, filters);
   const { currency, mixed } = reportCurrency(accounts, filters);
   const query = filtersQuery(filters);
@@ -45,6 +46,7 @@ export default async function CampanhasPage({ searchParams }: PageProps<"/anunci
           empty="Nenhuma campanha com estes filtros. Sincronize em Contas para atualizar."
           rows={campaigns.map((c) => ({
             key: c.id,
+            edit: canManage ? { level: "campaign" as const, id: c.id, name: c.name, provider: c.provider, currency } : undefined,
             status: c.status,
             budget: c.daily_budget_cents,
             metrics: c.metrics,

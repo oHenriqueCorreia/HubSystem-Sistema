@@ -246,3 +246,29 @@ export async function googleAdsAccountLive(accessToken: string, customerId: stri
   const served = microsToCents(b?.accountBudget?.amountServedMicros) ?? 0;
   return { todaySpendCents, balanceCents: limit === null ? null : Math.max(0, limit - served) };
 }
+
+// ----------------------------------------------------------------------------
+// Edição: status e orçamento. Mudanças valem na hora na conta de anúncios.
+
+async function mutate(accessToken: string, customerId: string, service: string, operations: unknown[]) {
+  await call(accessToken, `/customers/${customerId}/${service}:mutate`, { method: "POST", body: JSON.stringify({ operations }) });
+}
+
+/** level: campaign (id), adGroup (id) ou ad ("grupo~anúncio"). */
+export async function googleAdsSetStatus(accessToken: string, customerId: string, level: "campaign" | "adset" | "ad", externalId: string, status: "ENABLED" | "PAUSED") {
+  const [service, resource] =
+    level === "campaign" ? ["campaigns", `customers/${customerId}/campaigns/${externalId}`] : level === "adset" ? ["adGroups", `customers/${customerId}/adGroups/${externalId}`] : ["adGroupAds", `customers/${customerId}/adGroupAds/${externalId}`];
+  await mutate(accessToken, customerId, service, [{ update: { resourceName: resource, status }, updateMask: "status" }]);
+}
+
+export async function googleAdsRenameCampaign(accessToken: string, customerId: string, campaignId: string, name: string) {
+  await mutate(accessToken, customerId, "campaigns", [{ update: { resourceName: `customers/${customerId}/campaigns/${campaignId}`, name }, updateMask: "name" }]);
+}
+
+/** Orçamento diário da campanha (o orçamento é um recurso próprio no Google). */
+export async function googleAdsSetCampaignBudget(accessToken: string, customerId: string, campaignId: string, dailyBudgetCents: number) {
+  const rows = await search<{ campaign: { campaignBudget?: string } }>(accessToken, customerId, `SELECT campaign.campaign_budget FROM campaign WHERE campaign.id = ${Number(campaignId)}`);
+  const budget = rows[0]?.campaign.campaignBudget;
+  if (!budget) throw Object.assign(new Error("google_ads_budget"), { userMessage: "Esta campanha não tem orçamento próprio para editar." });
+  await mutate(accessToken, customerId, "campaignBudgets", [{ update: { resourceName: budget, amountMicros: String(dailyBudgetCents * 10_000) }, updateMask: "amount_micros" }]);
+}

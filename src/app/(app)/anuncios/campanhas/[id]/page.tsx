@@ -13,6 +13,7 @@ import { filtersQuery, parseAdsFilters, PROVIDER_NAME } from "@/features/ads/fil
 import { formatMoney } from "@/features/ads/format";
 import { AdCard } from "@/features/ads/components/ad-card";
 import { EfficiencyGrid, KpiGrid, MetricsTable, StatusText } from "@/features/ads/components/report";
+import { BudgetCell, RowMenu, StatusSwitch } from "@/features/ads/components/ad-controls";
 import { CrmFunnel } from "@/features/ads/components/crm-funnel";
 
 export const metadata: Metadata = { title: "Campanha · Anúncios" };
@@ -20,7 +21,8 @@ export const metadata: Metadata = { title: "Campanha · Anúncios" };
 const GROUP_LABEL = { dia: "dia", semana: "semana", mes: "mês" } as const;
 
 export default async function CampanhaPage({ params, searchParams }: PageProps<"/anuncios/campanhas/[id]">) {
-  await requirePermission("ads.read");
+  const user = await requirePermission("ads.read");
+  const canManage = Boolean(user.permissions["ads.manage"]);
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const sp = await searchParams;
@@ -51,11 +53,15 @@ export default async function CampanhaPage({ params, searchParams }: PageProps<"
           <ChevronLeft className="size-4" aria-hidden="true" /> Campanhas
         </Link>
         <div className="grid gap-2">
-          <h2 className="text-lg font-semibold tracking-tight break-words">{campaign.name}</h2>
+          <div className="flex items-start gap-2">
+            <h2 className="min-w-0 text-lg font-semibold tracking-tight break-words">{campaign.name}</h2>
+            {canManage && <RowMenu target={{ level: "campaign", id: campaign.id, name: campaign.name, provider: account.provider, currency: account.currency }} />}
+          </div>
           <dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
             <div className="flex gap-1.5">
               <dt className="sr-only">Status</dt>
-              <dd>
+              <dd className="inline-flex items-center gap-2">
+                {canManage && <StatusSwitch target={{ level: "campaign", id: campaign.id, name: campaign.name, provider: account.provider, currency: account.currency }} status={campaign.status} />}
                 <StatusText status={campaign.status} />
               </dd>
             </div>
@@ -76,7 +82,13 @@ export default async function CampanhaPage({ params, searchParams }: PageProps<"
             {campaign.daily_budget_cents != null && (
               <div className="flex gap-1.5">
                 <dt className="text-muted-foreground">Orçamento diário</dt>
-                <dd className="tabular">{money(campaign.daily_budget_cents)}</dd>
+                <dd className="tabular">
+                  {canManage ? (
+                    <BudgetCell target={{ level: "campaign", id: campaign.id, name: campaign.name, provider: account.provider, currency: account.currency }} budget={campaign.daily_budget_cents} />
+                  ) : (
+                    money(campaign.daily_budget_cents)
+                  )}
+                </dd>
               </div>
             )}
             {campaign.lifetime_budget_cents != null && (
@@ -156,6 +168,7 @@ export default async function CampanhaPage({ params, searchParams }: PageProps<"
               }
               rows={adSets.map((s) => ({
                 key: s.id,
+                edit: canManage ? { level: "adset" as const, id: s.id, name: s.name, provider: account.provider, currency: account.currency } : undefined,
                 status: s.status,
                 budget: s.daily_budget_cents,
                 metrics: s.metrics,

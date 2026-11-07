@@ -3,8 +3,8 @@ import { publicEnv } from "@/lib/env";
 import { sumConversionActions, type MetaAction } from "@/domain/ads/conversions";
 import { parseFundingBalance } from "@/domain/ads/report-message";
 
-// Marketing API oficial da Meta (Graph API). Somente leitura de anúncios.
-export const META_SCOPES = ["ads_read", "business_management"];
+// Marketing API oficial da Meta (Graph API): leitura e edição de anúncios.
+export const META_SCOPES = ["ads_read", "ads_management", "business_management"];
 const version = () => process.env.META_GRAPH_VERSION || "v23.0";
 const graph = (path: string) => `https://graph.facebook.com/${version()}${path}`;
 
@@ -263,4 +263,44 @@ export async function metaAds(token: string, accountId: string): Promise<AdInfo[
       linkUrl: httpsOnly(a.preview_shareable_link),
     };
   });
+}
+
+// ----------------------------------------------------------------------------
+// Edição (exige ads_management). Mudanças valem na hora na conta de anúncios.
+
+async function post<T>(path: string, token: string, params: Record<string, string>): Promise<T> {
+  const res = await fetch(graph(path), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ ...params, access_token: token }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = (await res.json().catch(() => ({}))) as T & GraphError & { error?: { error_user_msg?: string } };
+  if (!res.ok || data.error)
+    throw Object.assign(new Error("meta_api"), {
+      code: data.error?.code,
+      subcode: data.error?.error_subcode,
+      // Mensagem da Meta para o usuário, quando existe (ex.: orçamento abaixo do mínimo).
+      userMessage: (data.error as { error_user_msg?: string } | undefined)?.error_user_msg ?? data.error?.message,
+    });
+  return data;
+}
+
+/** Campanha, conjunto ou anúncio: status ACTIVE/PAUSED, nome ou orçamento diário (centavos). */
+export async function metaUpdate(token: string, externalId: string, changes: { status?: "ACTIVE" | "PAUSED"; name?: string; dailyBudgetCents?: number }) {
+  const params: Record<string, string> = {};
+  if (changes.status) params.status = changes.status;
+  if (changes.name) params.name = changes.name;
+  if (changes.dailyBudgetCents != null) params.daily_budget = String(changes.dailyBudgetCents);
+  await post(`/${externalId}`, token, params);
+}
+
+/** Duplica campanha (com conjuntos e anúncios) ou conjunto; a cópia nasce pausada. */
+export async function metaDuplicate(token: string, level: "campaign" | "adset", externalId: string) {
+  const r = await post<{ copied_campaign_id?: string; copied_adset_id?: string }>(`/${externalId}/copies`, token, {
+    deep_copy: "true",
+    status_option: "PAUSED",
+  });
+  return level === "campaign" ? (r.copied_campaign_id ?? null) : (r.copied_adset_id ?? null);
 }

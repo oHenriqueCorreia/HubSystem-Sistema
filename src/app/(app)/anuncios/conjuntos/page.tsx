@@ -35,6 +35,7 @@ export default async function ConjuntosPage({ searchParams }: PageProps<"/anunci
           empty="Nenhum conjunto ou grupo com estes filtros. Campanhas Performance Max do Google não têm grupos de anúncios; elas aparecem só em Campanhas."
           rows={adSets.map((s) => ({
             key: s.id,
+            edit: user.permissions["ads.manage"] ? { level: "adset" as const, id: s.id, name: s.name, provider: s.provider, currency } : undefined,
             status: s.status,
             budget: s.daily_budget_cents,
             metrics: s.metrics,

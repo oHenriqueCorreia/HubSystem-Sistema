@@ -11,6 +11,7 @@ import { Kpi } from "@/features/dashboards/components/kpi";
 import { formatInt, formatMoney, formatPct, formatRoas } from "../format";
 import { PROVIDER_NAME, STATUS_GROUPS, STATUS_LABEL, type AdsFilters, type Provider } from "../filters";
 import { ratio, reportAccounts, type AdAccount, type CrmTotals, type Totals } from "../queries";
+import { BudgetCell, RowMenu, StatusSwitch, type EditTarget } from "./ad-controls";
 
 /** Moeda dos valores exibidos; avisa quando as contas misturam moedas. */
 export function reportCurrency(accounts: AdAccount[], f: AdsFilters) {
@@ -116,7 +117,8 @@ export function NameCell({ name, href, provider, context }: { name: string; href
   );
 }
 
-export type MetricsRow = { key: string; name: ReactNode; status: string | null; budget?: number | null; metrics: Totals; crm?: CrmTotals };
+/** edit: presente quando a pessoa pode editar (ads.manage); liga status, orçamento e o menu da linha. */
+export type MetricsRow = { key: string; name: ReactNode; status: string | null; budget?: number | null; metrics: Totals; crm?: CrmTotals; edit?: EditTarget };
 
 /** Tabela de métricas comum a campanhas, conjuntos e anúncios. As colunas do CRM só aparecem quando há conversas vindas de anúncios. */
 export function MetricsTable({ label, rows, currency, budgetLabel, empty }: { label: string; rows: MetricsRow[]; currency: string; budgetLabel?: string; empty: string }) {
@@ -154,11 +156,29 @@ export function MetricsTable({ label, rows, currency, budgetLabel, empty }: { la
             const m = r.metrics;
             return (
               <TableRow key={r.key}>
-                <TableCell className="min-w-56 max-w-80">{r.name}</TableCell>
-                <TableCell>
-                  <StatusText status={r.status} />
+                <TableCell className="min-w-56 max-w-80">
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="min-w-0">{r.name}</div>
+                    {r.edit && <RowMenu target={r.edit} />}
+                  </div>
                 </TableCell>
-                {budgetLabel && <TableCell className="tabular text-right">{r.budget != null ? money(r.budget) : "—"}</TableCell>}
+                <TableCell>
+                  <span className="inline-flex items-center gap-2">
+                    {r.edit && <StatusSwitch target={r.edit} status={r.status} />}
+                    <StatusText status={r.status} />
+                  </span>
+                </TableCell>
+                {budgetLabel && (
+                  <TableCell className="tabular text-right">
+                    {r.edit && r.edit.level !== "ad" && (r.edit.provider === "meta_ads" || r.edit.level === "campaign") ? (
+                      <BudgetCell target={{ ...r.edit, level: r.edit.level }} budget={r.budget ?? null} />
+                    ) : r.budget != null ? (
+                      money(r.budget)
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                )}
                 <TableCell className="tabular text-right font-medium">{money(m.spend)}</TableCell>
                 <TableCell className="tabular text-right">{formatInt(m.impressions)}</TableCell>
                 <TableCell className="tabular text-right">{formatInt(m.clicks)}</TableCell>
