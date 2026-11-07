@@ -11,6 +11,7 @@ import {
   googleAdsCampaigns,
   googleAdsCustomer,
   googleAdsDailyInsights,
+  googleAdsManagerChildren,
 } from "./google-ads";
 import { checkAlerts, sendConnectionAlert } from "./alerts";
 import { googleAccessToken, type AdProvider, type Connection } from "./tokens";
@@ -18,6 +19,38 @@ import { googleAccessToken, type AdProvider, type Connection } from "./tokens";
 export type { AdProvider };
 
 const daysAgo = (n: number) => todayLocal(new Date(Date.now() - n * 86_400_000));
+
+/**
+ * Contas do Google: as que o e-mail acessa direto e, em cada MCC, as contas de dentro.
+ * Conta de administrador não entra (não tem campanhas próprias).
+ */
+async function googleAccounts(token: string, reasons: Set<string>) {
+  const found = new Map<string, { externalId: string; name: string; currency: string; status: string; isPrepay: null; balanceCents: null; spendCapCents: null; amountSpentCents: null }>();
+  const add = (id: string, name: string, currency: string, status: string | null) =>
+    found.set(id, { externalId: id, name, currency, status: status ?? "", isPrepay: null, balanceCents: null, spendCapCents: null, amountSpentCents: null });
+  const ids = (await googleAdsAccessibleCustomers(token)).slice(0, 50);
+  const direct = await Promise.all(
+    ids.map(async (id) => ({
+      id,
+      c: await googleAdsCustomer(token, id).catch((e: { reason?: string }) => {
+        reasons.add(e.reason ?? "desconhecido");
+        return null;
+      }),
+    })),
+  );
+  for (const { id, c } of direct) {
+    if (!c) continue;
+    if (!c.manager) add(id, c.name, c.currency, c.status);
+    else {
+      const children = await googleAdsManagerChildren(token, id).catch((e: { reason?: string }) => {
+        reasons.add(e.reason ?? "desconhecido");
+        return [];
+      });
+      for (const ch of children.slice(0, 200)) if (!found.has(ch.id)) add(ch.id, ch.name, ch.currency, ch.status);
+    }
+  }
+  return [...found.values()];
+}
 
 /** Explica por que o Google não liberou nenhuma conta. */
 function googleDiscoveryMessage(reasons: Set<string>) {
@@ -138,17 +171,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
       ? []
       : provider === "meta_ads"
         ? (await metaAccounts(token)).map((a) => ({ ...a }))
-        : await Promise.all(
-            (await googleAdsAccessibleCustomers(token)).slice(0, 50).map(async (id) => {
-              const c = await googleAdsCustomer(token, id).catch((e: { reason?: string }) => {
-                googleReasons.add(e.reason ?? "desconhecido");
-                return null;
-              });
-              return c && !c.manager
-                ? { externalId: id, name: c.name, currency: c.currency, status: c.status ?? "", isPrepay: null, balanceCents: null, spendCapCents: null, amountSpentCents: null }
-                : null;
-            }),
-          ).then((r) => r.filter((x): x is NonNullable<typeof x> => Boolean(x)));
+        : await googleAccounts(token, googleReasons);
     // Nenhuma conta liberada: guarda o motivo do Google para mostrar na tela.
     const discoveryError = provider === "google_ads" && !accountId && !accounts.length ? googleDiscoveryMessage(googleReasons) : null;
 

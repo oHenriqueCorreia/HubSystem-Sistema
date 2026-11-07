@@ -43,19 +43,23 @@ export async function googleAdsExchangeCode(code: string) {
 
 export const googleAdsRefresh = (refreshToken: string) => token({ grant_type: "refresh_token", refresh_token: refreshToken });
 
-function headers(accessToken: string, loginCustomerId?: string) {
+function headers(accessToken: string, login: string | null) {
   const h: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
   };
-  const login = (loginCustomerId ?? process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? "").replace(/\D/g, "");
   if (login) h["login-customer-id"] = login;
   return h;
 }
 
-async function call<T>(accessToken: string, path: string, init?: RequestInit, loginCustomerId?: string): Promise<T> {
+const mcc = () => (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? "").replace(/\D/g, "") || null;
+
+// Uma conta pode ser acessada direto pelo e-mail ou por dentro da MCC. O jeito que funcionou fica guardado por conta.
+const loginFor = new Map<string, string | null>();
+
+async function request<T>(accessToken: string, path: string, init: RequestInit | undefined, login: string | null): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(`${API()}${path}`, { ...init, headers: headers(accessToken, loginCustomerId), cache: "no-store", signal: AbortSignal.timeout(30000) });
+    const res = await fetch(`${API()}${path}`, { ...init, headers: headers(accessToken, login), cache: "no-store", signal: AbortSignal.timeout(30000) });
     if ((res.status === 429 || res.status >= 500) && attempt < 2) {
       await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
       continue;
@@ -68,6 +72,28 @@ async function call<T>(accessToken: string, path: string, init?: RequestInit, lo
     }
     return data;
   }
+}
+
+async function call<T>(accessToken: string, path: string, init?: RequestInit): Promise<T> {
+  const customer = path.match(/^\/customers\/(\d+)\//)?.[1];
+  const manager = mcc();
+  // Sem conta no caminho (listar contas) ou sem MCC configurada: um jeito só.
+  if (!customer || !manager) return request<T>(accessToken, path, init, customer ? manager : null);
+  const known = loginFor.get(customer);
+  const order = known !== undefined ? [...new Set([known, null, manager])] : [null, manager];
+  let last: unknown;
+  for (const login of order) {
+    try {
+      const data = await request<T>(accessToken, path, init, login);
+      loginFor.set(customer, login);
+      return data;
+    } catch (e) {
+      last = e;
+      // Só tenta o outro jeito quando o problema é permissão de acesso à conta.
+      if (!["USER_PERMISSION_DENIED", "CUSTOMER_NOT_FOUND"].includes((e as { reason?: string }).reason ?? "")) throw e;
+    }
+  }
+  throw last;
 }
 
 /** Contas às quais o usuário tem acesso (IDs "customers/123..."). */
@@ -99,6 +125,25 @@ export async function googleAdsCustomer(accessToken: string, customerId: string)
   );
   const c = rows[0]?.customer;
   return { name: c?.descriptiveName || `Conta ${customerId}`, currency: c?.currencyCode ?? "BRL", status: c?.status ?? null, manager: Boolean(c?.manager) };
+}
+
+/**
+ * Contas dentro de uma conta de administrador (MCC), em qualquer nível.
+ * Elas só respondem pela MCC: o caminho fica guardado para as próximas consultas.
+ */
+export async function googleAdsManagerChildren(accessToken: string, managerId: string) {
+  const rows = await search<{ customerClient: { id?: string; descriptiveName?: string; currencyCode?: string; status?: string; manager?: boolean } }>(
+    accessToken,
+    managerId,
+    "SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.status, customer_client.manager FROM customer_client WHERE customer_client.level >= 1",
+  );
+  return rows
+    .map((r) => r.customerClient)
+    .filter((c) => c.id && !c.manager)
+    .map((c) => {
+      if (!loginFor.has(String(c.id))) loginFor.set(String(c.id), managerId);
+      return { id: String(c.id), name: c.descriptiveName || `Conta ${c.id}`, currency: c.currencyCode ?? "BRL", status: c.status ?? null };
+    });
 }
 
 // Valores monetários do Google Ads vêm em micros (1.000.000 = 1 unidade).
