@@ -11,7 +11,7 @@ const TABS = [
   { href: "/anuncios/conjuntos", label: "Conjuntos e grupos" },
   { href: "/anuncios/criativos", label: "Anúncios" },
   { href: "/anuncios/utms", label: "UTMs" },
-  { href: "/anuncios/contas", label: "Contas e alertas" },
+  { href: "/anuncios/contas", label: "Contas" },
 ];
 
 // Abas sem filtros de relatório.

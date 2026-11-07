@@ -55,7 +55,7 @@ export default async function CriativosPage({ searchParams }: PageProps<"/anunci
           <MetricsTable
             label="Anúncios"
             currency={currency}
-            empty="Nenhum anúncio com estes filtros. Sincronize em Contas e alertas para atualizar."
+            empty="Nenhum anúncio com estes filtros. Sincronize em Contas para atualizar."
             rows={ads.map((a) => ({
               key: a.id,
               status: a.status,
@@ -73,7 +73,7 @@ export default async function CriativosPage({ searchParams }: PageProps<"/anunci
             ))}
           </ul>
         ) : (
-          <p className="rounded-xl border border-dashed bg-surface px-4 py-6 text-sm text-muted-foreground">Nenhum anúncio com estes filtros. Sincronize em Contas e alertas para atualizar.</p>
+          <p className="rounded-xl border border-dashed bg-surface px-4 py-6 text-sm text-muted-foreground">Nenhum anúncio com estes filtros. Sincronize em Contas para atualizar.</p>
         )}
       </section>
     </>

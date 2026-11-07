@@ -42,7 +42,7 @@ export default async function CampanhasPage({ searchParams }: PageProps<"/anunci
           label="Campanhas"
           currency={currency}
           budgetLabel="Orçamento diário"
-          empty="Nenhuma campanha com estes filtros. Sincronize em Contas e alertas para atualizar."
+          empty="Nenhuma campanha com estes filtros. Sincronize em Contas para atualizar."
           rows={campaigns.map((c) => ({
             key: c.id,
             status: c.status,

@@ -2,20 +2,20 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { BellRing, LoaderCircle, Plug, RefreshCw, Unplug } from "lucide-react";
+import { ChevronDown, LoaderCircle, Plug, RefreshCw, Unplug } from "lucide-react";
+import { cn } from "cn";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
-import { FormField } from "@/components/app/form-field";
-import { MoneyInput } from "@/components/app/money-input";
 import { formatMoney } from "../format";
 import { formatDateTime } from "@/domain/shared/dates";
 import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { disconnectAds, setAccountClient, setAdAccountSelected, setAdAlerts, syncAdsNow } from "../actions";
+import { disconnectAds, setAccountClient, setAdAccountSelected, syncAdsNow } from "../actions";
 import type { AdAccount, AdClient, AdConnection } from "../queries";
 import { IntegrationGuide } from "@/features/integrations/components/integration-guide";
 
@@ -129,13 +129,17 @@ export function ProviderCard({
   );
 }
 
-export function AccountsList({ accounts, clients, canManage }: { accounts: AdAccount[]; clients: AdClient[]; canManage: boolean }) {
+export function AccountsList({ provider, accounts, clients, canManage }: { provider: "meta_ads" | "google_ads"; accounts: AdAccount[]; clients: AdClient[]; canManage: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const active = accounts.filter((a) => a.is_selected).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const others = accounts.filter((a) => !a.is_selected).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const q = query.trim().toLowerCase();
+  const shown = q ? others.filter((a) => a.name.toLowerCase().includes(q) || a.external_id.includes(q)) : others;
+  const [open, setOpen] = useState(active.length === 0);
   if (!accounts.length) return null;
-  // Contas nos relatórios primeiro; depois por nome.
-  const sorted = [...accounts].sort((a, b) => Number(b.is_selected) - Number(a.is_selected) || a.name.localeCompare(b.name));
 
   function run(fn: () => Promise<{ ok: boolean; message?: string }>, accountId?: string) {
     if (accountId) setSyncing(accountId);
@@ -148,137 +152,136 @@ export function AccountsList({ accounts, clients, canManage }: { accounts: AdAcc
     });
   }
 
+  const toggle = (a: AdAccount) =>
+    canManage && (
+      <label className="flex shrink-0 items-center gap-2 text-xs">
+        {syncing === a.id ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
+        <Switch
+          checked={a.is_selected}
+          disabled={pending}
+          onCheckedChange={(v) => run(() => setAdAccountSelected({ id: a.id, selected: v }), v ? a.id : undefined)}
+          aria-label={`Usar ${a.name} nos relatórios`}
+        />
+        {syncing === a.id ? "Sincronizando…" : "Nos relatórios"}
+      </label>
+    );
+
   return (
-    <section aria-labelledby="contas" className="grid gap-2">
+    <div className="grid gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="contas" className="text-sm font-semibold">
-          Contas de anúncio ({accounts.length})
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Ative “Nos relatórios” nas contas que você acompanha. A sincronização roda na hora e traz 90 dias.{" "}
+        <h3 className="text-sm font-semibold">
+          Nos relatórios ({active.length} de {accounts.length})
+        </h3>
+        <p className="flex flex-wrap gap-x-3 text-xs">
           <Link href="/anuncios/clientes" className="font-medium text-primary hover:underline">
             Organizar por cliente
           </Link>
+          <Link href="/relatorios" className="font-medium text-primary hover:underline">
+            Alertas e relatórios
+          </Link>
         </p>
       </div>
-      <ul className="grid gap-2 md:grid-cols-2">
-        {sorted.map((a) => (
-          <li key={a.id} className="grid content-start gap-2 rounded-xl border bg-surface p-3 text-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate font-medium">{a.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {a.provider === "meta_ads" ? "Meta" : "Google"} · {a.external_id} · {a.currency}
-                  {a.status ? ` · ${a.status}` : ""}
-                </p>
+
+      {active.length ? (
+        <ul className="grid gap-2 md:grid-cols-2">
+          {active.map((a) => (
+            <li key={a.id} className="grid content-start gap-3 rounded-xl border bg-surface p-3 text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium break-words">{a.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {a.external_id}, {a.currency}
+                    {a.status ? `, ${a.status}` : ""}
+                  </p>
+                </div>
+                {toggle(a)}
               </div>
-              {canManage && (
-                <label className="flex shrink-0 items-center gap-2 text-xs">
-                  {syncing === a.id ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
-                  <Switch
-                    checked={a.is_selected}
-                    disabled={pending}
-                    onCheckedChange={(v) => run(() => setAdAccountSelected({ id: a.id, selected: v }), v ? a.id : undefined)}
-                    aria-label={`Usar ${a.name} nos relatórios`}
-                  />
-                  {syncing === a.id ? "Sincronizando…" : "Nos relatórios"}
-                </label>
+              {canManage && clients.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground" id={`cliente-${a.id}`}>
+                    Cliente
+                  </span>
+                  <Select value={a.ad_client_id ?? "__sem__"} disabled={pending} onValueChange={(v) => run(() => setAccountClient({ id: a.id, clientId: v === "__sem__" ? null : v }))}>
+                    <SelectTrigger size="sm" className="w-56 max-w-full" aria-labelledby={`cliente-${a.id}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__sem__">Sem cliente</SelectItem>
+                      {clients.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
-            </div>
-            {canManage && clients.length > 0 && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground" id={`cliente-${a.id}`}>
-                  Cliente
-                </span>
-                <Select value={a.ad_client_id ?? "__sem__"} disabled={pending} onValueChange={(v) => run(() => setAccountClient({ id: a.id, clientId: v === "__sem__" ? null : v }))}>
-                  <SelectTrigger size="sm" className="w-56" aria-labelledby={`cliente-${a.id}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__sem__">Sem cliente</SelectItem>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {provider === "meta_ads" && (
+                <dl className="grid grid-cols-3 gap-2 border-t pt-2 text-xs">
+                  <div>
+                    <dt className="text-muted-foreground">Saldo</dt>
+                    <dd className="tabular">{a.balance_cents != null ? formatMoney(a.balance_cents, a.currency) : "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Limite de gastos</dt>
+                    <dd className="tabular">{a.spend_cap_cents != null ? formatMoney(a.spend_cap_cents, a.currency) : "Sem limite"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Gasto total</dt>
+                    <dd className="tabular">{a.amount_spent_cents != null ? formatMoney(a.amount_spent_cents, a.currency) : "—"}</dd>
+                  </div>
+                </dl>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="rounded-xl border border-dashed bg-surface p-3 text-sm text-muted-foreground">
+          Nenhuma conta nos relatórios. Ative abaixo as contas que você acompanha; a sincronização roda na hora e traz 90 dias.
+        </p>
+      )}
+
+      {others.length > 0 && (
+        <Collapsible open={open} onOpenChange={setOpen} className="grid gap-2">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="justify-self-start">
+              <ChevronDown className={cn("transition-transform motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
+              {open ? "Esconder" : "Mostrar"} outras contas ({others.length})
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="grid gap-2">
+            {others.length > 6 && (
+              <Input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar conta pelo nome ou número…"
+                aria-label="Buscar conta"
+                className="max-w-sm"
+                autoComplete="off"
+              />
             )}
-            <dl className="grid grid-cols-3 gap-2 text-xs">
-              <div>
-                <dt className="text-muted-foreground">Saldo</dt>
-                <dd className="tabular">{a.balance_cents != null ? formatMoney(a.balance_cents, a.currency) : "Indisponível pela API"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Limite de gastos</dt>
-                <dd className="tabular">{a.spend_cap_cents != null ? formatMoney(a.spend_cap_cents, a.currency) : a.provider === "meta_ads" ? "Sem limite" : "Indisponível pela API"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Gasto total</dt>
-                <dd className="tabular">{a.amount_spent_cents != null ? formatMoney(a.amount_spent_cents, a.currency) : "Indisponível pela API"}</dd>
-              </div>
-            </dl>
-            {canManage && a.is_selected && <AlertsDialog account={a} />}
-          </li>
-        ))}
-      </ul>
-      <p className="text-xs text-muted-foreground">
-        Na Meta, “saldo” é o valor informado pela plataforma para a conta (em contas pós-pagas, o valor devido). O Google Ads não informa saldo nem limite pela API de relatórios.
-      </p>
-    </section>
-  );
-}
-
-function AlertsDialog({ account }: { account: AdAccount }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [balance, setBalance] = useState<number | null>(account.alert_balance_below_cents);
-  const [spend, setSpend] = useState<number | null>(account.alert_daily_spend_above_cents);
-  const [pending, startTransition] = useTransition();
-
-  function save() {
-    startTransition(async () => {
-      const res = await setAdAlerts({ id: account.id, balanceBelowCents: balance, dailySpendAboveCents: spend });
-      if (!res.ok) return void toast.error(res.message);
-      toast.success(res.message);
-      setOpen(false);
-      router.refresh();
-    });
-  }
-
-  const active = account.alert_balance_below_cents != null || account.alert_daily_spend_above_cents != null;
-  return (
-    <Dialog open={open} onOpenChange={(v) => !pending && setOpen(v)}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="justify-self-start">
-          <BellRing aria-hidden="true" /> {active ? "Alertas ativos" : "Criar alertas"}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Alertas de {account.name}</DialogTitle>
-          <DialogDescription>Você recebe uma notificação por dia quando a condição for atingida. Deixe em branco para desligar.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-3">
-          {account.provider === "meta_ads" && (
-            <FormField label="Avisar quando o saldo ficar abaixo de" optional>
-              <MoneyInput value={balance} onChange={setBalance} />
-            </FormField>
-          )}
-          <FormField label="Avisar quando o gasto do dia passar de" optional>
-            <MoneyInput value={spend} onChange={setSpend} />
-          </FormField>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancelar
-          </Button>
-          <Button onClick={save} disabled={pending}>
-            {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Salvar alertas
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <ul className="divide-y rounded-xl border bg-surface">
+              {shown.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="break-words">{a.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {a.external_id}
+                      {a.status ? `, ${a.status}` : ""}
+                    </p>
+                  </div>
+                  {toggle(a)}
+                </li>
+              ))}
+              {!shown.length && <li className="px-3 py-3 text-sm text-muted-foreground">Nenhuma conta com “{query}”.</li>}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+      {provider === "meta_ads" && active.length > 0 && (
+        <p className="text-xs text-muted-foreground">“Saldo” é o valor informado pela Meta para a conta (em contas pós-pagas, o valor devido).</p>
+      )}
+    </div>
   );
 }

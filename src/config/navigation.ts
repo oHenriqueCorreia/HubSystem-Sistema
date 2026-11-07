@@ -14,6 +14,7 @@ export type NavIcon =
   | "finance-personal"
   | "dashboard"
   | "ads"
+  | "reports"
   | "inbox"
   | "settings";
 
@@ -40,6 +41,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/agenda", label: "Agenda", icon: "calendar", anyOf: ["calendar.read"], mobile: true },
       { href: "/conteudo", label: "Conteúdo", icon: "ads", anyOf: ["content.read"] },
       { href: "/anuncios", label: "Anúncios", icon: "ads", anyOf: ["ads.read"] },
+      { href: "/relatorios", label: "Alertas e relatórios", icon: "reports", anyOf: ["ads.read"] },
     ],
   },
   {

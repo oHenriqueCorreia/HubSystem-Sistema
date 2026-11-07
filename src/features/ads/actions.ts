@@ -9,7 +9,7 @@ import { decrypt } from "@/lib/crypto";
 import { fail, ok } from "@/domain/shared/result";
 import { metaRevoke } from "@/lib/ads/meta";
 import { syncAds } from "@/lib/ads/sync";
-import { clientIp, RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
+import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
 
 const provider = z.enum(["meta_ads", "google_ads"]);
 
@@ -136,21 +136,3 @@ export const deleteUtmLink = defineAction({ schema: z.object({ id: z.uuid() }), 
   revalidatePath("/anuncios/utms");
   return ok(null, "Link excluído.");
 });
-
-const cents = z.number().int().min(0).max(100_000_000_000).nullable();
-
-export const setAdAlerts = defineAction(
-  { schema: z.object({ id: z.uuid(), balanceBelowCents: cents, dailySpendAboveCents: cents }), permission: "ads.manage" },
-  async (input, { user }) => {
-    if (!(await withinRateLimit(`ads-alert:${user.id}:${await clientIp()}`, 60, 3600))) return fail("business_rule", RATE_LIMIT_MESSAGE);
-    const supabase = await createClient();
-    must(
-      await supabase
-        .from("ad_accounts")
-        .update({ alert_balance_below_cents: input.balanceBelowCents, alert_daily_spend_above_cents: input.dailySpendAboveCents })
-        .eq("id", input.id),
-    );
-    revalidatePath("/anuncios", "layout");
-    return ok(null, "Alertas salvos. Você será notificado na central de notificações.");
-  },
-);

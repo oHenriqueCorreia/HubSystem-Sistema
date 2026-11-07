@@ -19,7 +19,7 @@ const SECTIONS: LegalSection[] = [
         <p>Remova o acesso de um destes jeitos:</p>
         <ol>
           <li>
-            No {LEGAL.product}, abra <strong>Anúncios → Contas e alertas</strong> e clique em <strong>Desconectar</strong> no Meta Ads. A permissão é revogada na Meta e a chave de acesso é apagada na hora.
+            No {LEGAL.product}, abra <strong>Anúncios → Contas</strong> e clique em <strong>Desconectar</strong> no Meta Ads. A permissão é revogada na Meta e a chave de acesso é apagada na hora.
           </li>
           <li>
             Ou, no Facebook, abra{" "}
@@ -45,7 +45,7 @@ const SECTIONS: LegalSection[] = [
     content: (
       <ol>
         <li>
-          No {LEGAL.product}, clique em <strong>Desconectar</strong> em <strong>Configurações → Integrações</strong> (Agenda) ou em <strong>Anúncios → Contas e alertas</strong> (Google Ads). O acesso é revogado e a chave é apagada.
+          No {LEGAL.product}, clique em <strong>Desconectar</strong> em <strong>Configurações → Integrações</strong> (Agenda) ou em <strong>Anúncios → Contas</strong> (Google Ads). O acesso é revogado e a chave é apagada.
         </li>
         <li>
           Ou remova o acesso em{" "}

@@ -102,7 +102,7 @@ export const GUIDES: Record<IntegrationId, IntegrationGuideData> = {
       },
       {
         title: "Toque em “Conectar” no cartão Facebook Ads",
-        detail: "Aqui no sistema, abra Anúncios, depois Contas e alertas.",
+        detail: "Aqui no sistema, abra Anúncios, depois Contas.",
       },
       {
         title: "Marque os negócios e as contas de anúncios",
@@ -149,7 +149,7 @@ export const GUIDES: Record<IntegrationId, IntegrationGuideData> = {
       },
       {
         title: "Toque em “Conectar” no cartão Google Ads",
-        detail: "Aqui no sistema, abra Anúncios, depois Contas e alertas.",
+        detail: "Aqui no sistema, abra Anúncios, depois Contas.",
       },
       {
         title: "Escolha o e-mail e marque todas as caixas",

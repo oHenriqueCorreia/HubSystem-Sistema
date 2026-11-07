@@ -85,7 +85,7 @@ export function NewClientDialog({ accounts, systemClients = [], taken = [] }: { 
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Novo cliente</DialogTitle>
-          <DialogDescription>Agrupe as contas de anúncio de um cliente para ver o painel dele. Contas sem relatório ativado são ativadas na tela Contas e alertas.</DialogDescription>
+          <DialogDescription>Agrupe as contas de anúncio de um cliente para ver o painel dele. Contas sem relatório ativado são ativadas na tela Contas.</DialogDescription>
         </DialogHeader>
         <form
           className="grid gap-4"
@@ -101,7 +101,7 @@ export function NewClientDialog({ accounts, systemClients = [], taken = [] }: { 
           <fieldset className="grid gap-2">
             <legend className="mb-1 text-sm font-medium">Contas de anúncio</legend>
             {free.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Todas as contas já têm cliente. Você pode trocar o cliente de uma conta em Contas e alertas.</p>
+              <p className="text-sm text-muted-foreground">Todas as contas já têm cliente. Você pode trocar o cliente de uma conta em Contas.</p>
             ) : (
               <ul className="grid max-h-72 gap-1 overflow-y-auto rounded-lg border p-2">
                 {free.map((a) => (

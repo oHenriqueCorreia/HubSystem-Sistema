@@ -14,6 +14,7 @@ import {
   Building2,
   Megaphone,
   MessagesSquare,
+  BellRing,
   type LucideProps,
 } from "lucide-react";
 import type { NavIcon } from "@/config/navigation";
@@ -32,6 +33,7 @@ const ICONS: Record<NavIcon, React.ComponentType<LucideProps>> = {
   "finance-personal": Wallet,
   dashboard: ChartColumn,
   ads: Megaphone,
+  reports: BellRing,
   inbox: MessagesSquare,
   settings: Settings,
 };

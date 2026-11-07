@@ -95,7 +95,7 @@ export default async function AnunciosPage({ searchParams }: PageProps<"/anuncio
             <MetricsTable
               label="Campanhas com mais investimento"
               currency={currency}
-              empty="Nenhuma campanha com estes filtros. Sincronize em Contas e alertas para atualizar."
+              empty="Nenhuma campanha com estes filtros. Sincronize em Contas para atualizar."
               rows={campaigns.slice(0, 5).map((c) => ({
                 key: c.id,
                 status: c.status,

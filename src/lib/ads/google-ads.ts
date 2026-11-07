@@ -61,7 +61,11 @@ async function call<T>(accessToken: string, path: string, init?: RequestInit, lo
       continue;
     }
     const data = (await res.json().catch(() => ({}))) as T;
-    if (!res.ok) throw Object.assign(new Error("google_ads_api"), { status: res.status });
+    if (!res.ok) {
+      // Código do Google (ex.: CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION) para explicar o erro na tela.
+      const failure = (data as { error?: { details?: { errors?: { errorCode?: Record<string, string> }[] }[] } }).error?.details?.[0]?.errors?.[0]?.errorCode;
+      throw Object.assign(new Error("google_ads_api"), { status: res.status, reason: failure ? Object.values(failure)[0] : undefined });
+    }
     return data;
   }
 }

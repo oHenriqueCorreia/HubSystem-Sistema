@@ -15,6 +15,9 @@ import {
   googleAdsRefresh,
 } from "./google-ads";
 
+import { sendAlerts } from "./reports";
+import type { AlertItem } from "@/domain/ads/report-message";
+
 export type AdProvider = "meta_ads" | "google_ads";
 
 type Connection = {
@@ -28,6 +31,17 @@ type Connection = {
 };
 
 const daysAgo = (n: number) => todayLocal(new Date(Date.now() - n * 86_400_000));
+
+/** Explica por que o Google não liberou nenhuma conta. */
+function googleDiscoveryMessage(reasons: Set<string>) {
+  if (reasons.has("CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION"))
+    return "O projeto do Google Cloud ainda só tem acesso de teste. Peça o acesso Explorer na página da Google Ads API no Google Cloud; depois clique em “Sincronizar agora”.";
+  if (reasons.size && [...reasons].every((r) => r === "CUSTOMER_NOT_ENABLED"))
+    return "As contas deste e-mail estão canceladas ou ainda não foram ativadas no Google Ads.";
+  if (reasons.has("USER_PERMISSION_DENIED"))
+    return "Este e-mail não tem permissão nas contas. Se elas ficam numa conta de administrador (MCC), confira o ID em GOOGLE_ADS_LOGIN_CUSTOMER_ID.";
+  return "Nenhuma conta de anúncio foi encontrada para este e-mail do Google.";
+}
 
 async function googleAccessToken(conn: Connection) {
   if (conn.expires_at && new Date(conn.expires_at).getTime() > Date.now() + 60_000) return decrypt(conn.token_enc);
@@ -141,18 +155,24 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
     }
 
     // 1) Contas autorizadas (pulado quando só uma conta é sincronizada).
+    const googleReasons = new Set<string>();
     const accounts = accountId
       ? []
       : provider === "meta_ads"
         ? (await metaAccounts(token)).map((a) => ({ ...a }))
         : await Promise.all(
             (await googleAdsAccessibleCustomers(token)).slice(0, 50).map(async (id) => {
-              const c = await googleAdsCustomer(token, id).catch(() => null);
+              const c = await googleAdsCustomer(token, id).catch((e: { reason?: string }) => {
+                googleReasons.add(e.reason ?? "desconhecido");
+                return null;
+              });
               return c && !c.manager
                 ? { externalId: id, name: c.name, currency: c.currency, status: c.status ?? "", balanceCents: null, spendCapCents: null, amountSpentCents: null }
                 : null;
             }),
           ).then((r) => r.filter((x): x is NonNullable<typeof x> => Boolean(x)));
+    // Nenhuma conta liberada: guarda o motivo do Google para mostrar na tela.
+    const discoveryError = provider === "google_ads" && !accountId && !accounts.length ? googleDiscoveryMessage(googleReasons) : null;
 
     for (const a of accounts) {
       await admin.from("ad_accounts").upsert(
@@ -175,7 +195,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
     // 2) Campanhas e métricas das contas selecionadas.
     let selectedQ = admin
       .from("ad_accounts")
-      .select("id, external_id, name, currency, balance_cents, alert_balance_below_cents, alert_daily_spend_above_cents, ad_client:ad_clients(client_id)")
+      .select("id, external_id, name, currency, balance_cents, alert_balance_below_cents, alert_daily_spend_above_cents, alert_no_spend, ad_client:ad_clients(client_id)")
       .eq("organization_id", organizationId)
       .eq("provider", provider)
       .eq("is_selected", true);
@@ -183,8 +203,10 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
     const { data: selected, error: selectedError } = await selectedQ;
     if (selectedError) throw selectedError;
     const until = todayLocal();
+    const yesterday = daysAgo(1);
     let metrics = 0;
     let adLevelFailed = false;
+    const groupAlerts: (AlertItem & { key: string })[] = [];
 
     for (const acc of selected ?? []) {
       const campaigns = provider === "meta_ads" ? await metaCampaigns(token, acc.external_id) : await googleAdsCampaigns(token, acc.external_id);
@@ -257,6 +279,25 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
           p_key: `ads_spend:${acc.id}:${until}`,
           ...scope,
         });
+        groupAlerts.push({
+          key: `ads_spend:${acc.id}:${until}`,
+          title: `Gasto de hoje acima do limite em ${acc.name}`,
+          detail: `${formatBRL(todaySpend)} gastos hoje (limite ${formatBRL(acc.alert_daily_spend_above_cents)}).`,
+        });
+      }
+      const yesterdaySpend = rows.filter((r) => r.day === yesterday).reduce((s, r) => s + r.spend_cents, 0);
+      if (acc.alert_no_spend && yesterdaySpend === 0) {
+        await admin.rpc("notify_users", {
+          p_org: organizationId,
+          p_perm: "ads.read",
+          p_kind: "anuncio_parado",
+          p_title: `${acc.name} não gastou nada ontem`,
+          p_body: "Confira o pagamento e se as campanhas estão ativas.",
+          p_href: "/relatorios",
+          p_key: `ads_nospend:${acc.id}:${yesterday}`,
+          ...scope,
+        });
+        groupAlerts.push({ key: `ads_nospend:${acc.id}:${yesterday}`, title: `${acc.name} não gastou nada ontem`, detail: "Confira o pagamento e se as campanhas estão ativas." });
       }
       const { data: fresh } = await admin.from("ad_accounts").select("balance_cents").eq("id", acc.id).single();
       if (acc.alert_balance_below_cents != null && fresh?.balance_cents != null && fresh.balance_cents < acc.alert_balance_below_cents) {
@@ -270,14 +311,22 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
           p_key: `ads_balance:${acc.id}:${until}`,
           ...scope,
         });
+        groupAlerts.push({
+          key: `ads_balance:${acc.id}:${until}`,
+          title: `Saldo baixo na conta ${acc.name}`,
+          detail: `Saldo informado: ${formatBRL(fresh.balance_cents)} (alerta abaixo de ${formatBRL(acc.alert_balance_below_cents)}).`,
+        });
       }
     }
+
+    // Os mesmos alertas vão para o grupo do WhatsApp, se configurado. Falha no envio não derruba a sincronização.
+    await sendAlerts(organizationId, groupAlerts).catch((e) => console.error("[ads-sync] whatsapp", (e as Error).message));
 
     await admin
       .from("integration_connections")
       .update({
         status: "ativa",
-        last_error: adLevelFailed ? "Campanhas atualizadas, mas conjuntos e anúncios não puderam ser sincronizados. Tente novamente mais tarde." : null,
+        last_error: discoveryError ?? (adLevelFailed ? "Campanhas atualizadas, mas conjuntos e anúncios não puderam ser sincronizados. Tente novamente mais tarde." : null),
         last_synced_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -301,6 +350,13 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
         p_href: "/anuncios/contas",
         p_key: `ads_expired:${provider}:${todayLocal()}`,
       });
+      await sendAlerts(organizationId, [
+        {
+          key: `ads_expired:${provider}:${todayLocal()}`,
+          title: provider === "meta_ads" ? "Reconecte a conta da Meta" : "Reconecte a conta do Google Ads",
+          detail: "O acesso às contas de anúncios expirou. Os relatórios param até reconectar em Anúncios → Contas.",
+        },
+      ]).catch(() => null);
     }
     console.error("[ads-sync]", provider, err.code ?? err.status ?? "erro", (e as { detail?: string; message?: string }).detail ?? (e as Error).message);
     throw e;

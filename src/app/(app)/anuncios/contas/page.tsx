@@ -8,7 +8,7 @@ import { getSocialSetup } from "@/features/content/queries";
 import Link from "next/link";
 import { AccountsList, ProviderCard } from "@/features/ads/components/ads-setup";
 
-export const metadata: Metadata = { title: "Contas e alertas · Anúncios" };
+export const metadata: Metadata = { title: "Contas · Anúncios" };
 // "Sincronizar agora" traz campanhas, conjuntos, anúncios e métricas.
 export const maxDuration = 300;
 
@@ -31,11 +31,17 @@ export default async function ContasPage({ searchParams }: PageProps<"/anuncios/
     <>
       {erro && <FormAlert>{erro}</FormAlert>}
       {sp.conectado && <FormAlert tone="success">Conta conectada. Escolha abaixo quais contas entram nos relatórios.</FormAlert>}
-      <div className="grid gap-4 md:grid-cols-2">
-        <ProviderCard provider="meta_ads" configured={metaConfigured()} connection={connections.find((c) => c.provider === "meta_ads")} canManage={canManage} />
-        <ProviderCard provider="google_ads" configured={googleAdsConfigured()} connection={connections.find((c) => c.provider === "google_ads")} canManage={canManage} />
-      </div>
-      <AccountsList accounts={accounts} clients={clients} canManage={canManage} />
+      {(["meta_ads", "google_ads"] as const).map((provider) => (
+        <div key={provider} className="grid items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+          <ProviderCard
+            provider={provider}
+            configured={provider === "meta_ads" ? metaConfigured() : googleAdsConfigured()}
+            connection={connections.find((c) => c.provider === provider)}
+            canManage={canManage}
+          />
+          <AccountsList provider={provider} accounts={accounts.filter((a) => a.provider === provider)} clients={clients} canManage={canManage} />
+        </div>
+      ))}
       <section aria-labelledby="contas-publicacao" className="grid gap-2 rounded-xl border bg-surface p-4 text-sm">
         <h2 id="contas-publicacao" className="font-semibold">
           Páginas e Instagram para publicar

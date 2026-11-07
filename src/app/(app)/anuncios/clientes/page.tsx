@@ -73,7 +73,7 @@ export default async function ClientesAnunciosPage({ searchParams }: PageProps<"
                   <p className="text-sm text-muted-foreground">
                     Nenhuma conta ligada. Escolha o cliente de cada conta em{" "}
                     <Link href="/anuncios/contas" className="font-medium text-primary hover:underline">
-                      Contas e alertas
+                      Contas
                     </Link>
                     .
                   </p>

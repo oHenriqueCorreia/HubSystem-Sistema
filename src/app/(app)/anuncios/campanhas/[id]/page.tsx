@@ -115,7 +115,7 @@ export default async function CampanhaPage({ params, searchParams }: PageProps<"
 
       {!overview ? (
         <FormAlert tone="info">
-          A conta {account.name} não está nos relatórios. Ative “Nos relatórios” em <Link href="/anuncios/contas" className="underline">Contas e alertas</Link> para ver os resultados.
+          A conta {account.name} não está nos relatórios. Ative “Nos relatórios” em <Link href="/anuncios/contas" className="underline">Contas</Link> para ver os resultados.
         </FormAlert>
       ) : (
         <>
@@ -152,7 +152,7 @@ export default async function CampanhaPage({ params, searchParams }: PageProps<"
               empty={
                 account.provider === "google_ads"
                   ? "Esta campanha não tem grupos de anúncios sincronizados. Campanhas Performance Max não usam grupos; os resultados ficam no total da campanha."
-                  : "Esta campanha não tem conjuntos sincronizados. Sincronize em Contas e alertas."
+                  : "Esta campanha não tem conjuntos sincronizados. Sincronize em Contas."
               }
               rows={adSets.map((s) => ({
                 key: s.id,
