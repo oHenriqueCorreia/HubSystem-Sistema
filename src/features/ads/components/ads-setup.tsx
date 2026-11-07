@@ -219,7 +219,7 @@ export function AccountsList({ provider, accounts, clients, canManage }: { provi
               {provider === "meta_ads" && (
                 <dl className="grid grid-cols-3 gap-2 border-t pt-2 text-xs">
                   <div>
-                    <dt className="text-muted-foreground">Saldo</dt>
+                    <dt className="text-muted-foreground">{a.is_prepay === false ? "A pagar" : "Saldo"}</dt>
                     <dd className="tabular">{a.balance_cents != null ? formatMoney(a.balance_cents, a.currency) : "—"}</dd>
                   </div>
                   <div>
@@ -280,7 +280,7 @@ export function AccountsList({ provider, accounts, clients, canManage }: { provi
         </Collapsible>
       )}
       {provider === "meta_ads" && active.length > 0 && (
-        <p className="text-xs text-muted-foreground">“Saldo” é o valor informado pela Meta para a conta (em contas pós-pagas, o valor devido).</p>
+        <p className="text-xs text-muted-foreground">Conta pré-paga mostra o saldo disponível; pós-paga, o valor gasto ainda não cobrado.</p>
       )}
     </div>
   );

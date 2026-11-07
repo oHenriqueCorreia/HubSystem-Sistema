@@ -386,7 +386,7 @@ export function TemplatesEditor({ custom, samples, groupName, canManage }: { cus
 
           {canManage && (
             <div className="flex flex-wrap gap-2">
-              <Button disabled={pending || !dirty || unknown.length > 0} onClick={() => run(() => saveReportTemplate({ key, text }), () => setDrafts((d) => ({ ...d, [key]: undefined })))}>
+              <Button disabled={pending || !dirty || unknown.length > 0} onClick={() => run(() => saveReportTemplate({ key, text }))}>
                 {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Salvar modelo
               </Button>
               {dirty && (

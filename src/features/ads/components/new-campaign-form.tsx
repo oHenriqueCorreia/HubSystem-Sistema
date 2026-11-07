@@ -63,6 +63,8 @@ export function NewCampaignForm({ accounts }: { accounts: Account[] }) {
   const [ageMax, setAgeMax] = useState(65);
   const [gender, setGender] = useState<"todos" | "homens" | "mulheres">("todos");
   const [pages, setPages] = useState<{ id: string; name: string }[] | null>(null);
+  const [pagesError, setPagesError] = useState<string | null>(null);
+  const [pagesTry, setPagesTry] = useState(0);
   const [pageId, setPageId] = useState("");
   const [image, setImage] = useState<{ url: string; base64: string } | null>(null);
   const [message, setMessage] = useState("");
@@ -81,13 +83,14 @@ export function NewCampaignForm({ accounts }: { accounts: Account[] }) {
       if (!alive) return;
       if (res.ok) {
         setPages(res.data);
+        setPagesError(null);
         if (res.data.length === 1) setPageId(res.data[0].id);
-      } else toast.error(res.message);
+      } else setPagesError(res.message);
     });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [pagesTry]);
 
   // Busca de cidades e estados, com espera curta entre teclas.
   useEffect(() => {
@@ -296,10 +299,10 @@ export function NewCampaignForm({ accounts }: { accounts: Account[] }) {
         <legend className="px-1 text-base font-semibold">Anúncio</legend>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="grid content-start gap-4">
-            <FormField label="Página do Facebook" error={errors.pageId} hint="O anúncio aparece em nome dela.">
+            <FormField label="Página do Facebook" error={errors.pageId ?? pagesError ?? undefined} hint="O anúncio aparece em nome dela.">
               <Select value={pageId || undefined} onValueChange={setPageId} disabled={!pages}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={pages ? "Escolha a página" : "Carregando páginas…"} />
+                  <SelectValue placeholder={pages ? (pages.length ? "Escolha a página" : "Nenhuma página encontrada") : pagesError ? "Páginas indisponíveis" : "Carregando páginas…"} />
                 </SelectTrigger>
                 <SelectContent>
                   {(pages ?? []).map((p) => (
@@ -310,6 +313,20 @@ export function NewCampaignForm({ accounts }: { accounts: Account[] }) {
                 </SelectContent>
               </Select>
             </FormField>
+            {pagesError && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="-mt-2 justify-self-start"
+                onClick={() => {
+                  setPagesError(null);
+                  setPagesTry((n) => n + 1);
+                }}
+              >
+                Tentar de novo
+              </Button>
+            )}
             <FormField label="Texto principal" error={errors.message}>
               <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} maxLength={2000} placeholder="Ex.: Rodízio completo toda sexta a partir das 19h…" />
             </FormField>

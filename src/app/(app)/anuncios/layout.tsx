@@ -10,7 +10,7 @@ export default async function AnunciosLayout({ children }: LayoutProps<"/anuncio
       <PageHeader
         breadcrumbs={[{ label: "Trabalho" }, { label: "Anúncios" }]}
         title="Anúncios"
-        description="Meta Ads e Google Ads em um só lugar: campanhas, conjuntos, anúncios e resultados, pelas APIs oficiais e somente leitura."
+        description="Meta Ads e Google Ads em um só lugar: acompanhe resultados, ajuste orçamentos, pause ou ative e crie campanhas, pelas APIs oficiais."
       />
       <div className="px-4 sm:px-6">
         <Suspense>

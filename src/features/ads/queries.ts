@@ -11,6 +11,7 @@ export type AdAccount = {
   status: string | null;
   is_selected: boolean;
   balance_cents: number | null;
+  is_prepay?: boolean | null;
   spend_cap_cents: number | null;
   amount_spent_cents: number | null;
   alert_balance_below_cents: number | null;
