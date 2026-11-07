@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select plan(15);
 
 -- Administrador (A) e Somente leitura (L) na empresa A; a empresa B tem o próprio WhatsApp.
 insert into public.organizations (id, name) values
@@ -61,11 +61,18 @@ select lives_ok($$ update public.ad_accounts set alert_no_spend = true where id 
 select is((select spend_cents::int from public.ad_report_accounts(array['a9000000-0000-4000-8000-0000000000f1'::uuid], current_date - 1, current_date - 1)), 4000,
   'totais por conta somam só o período pedido');
 
+select lives_ok($$ update public.ads_report_settings set send_time = '08:30', monthly_day = 28, templates = '{"semanal": "{cliente}: {investimento}"}' $$,
+  'administrador salva horário, dia do mês e modelo');
+select throws_ok($$ update public.ads_report_settings set send_time = '08:10' $$, '23514', null, 'horário só de 15 em 15 minutos');
+select throws_ok($$ update public.ads_report_settings set monthly_day = 31 $$, '23514', null, 'dia do mensal vai de 1 a 28');
+select is((select reach::int from public.ad_report_accounts(array['a9000000-0000-4000-8000-0000000000f1'::uuid], current_date - 2, current_date - 1)), 0,
+  'totais por conta trazem o alcance');
+
 -- Somente leitura vê, mas não muda.
 select pg_temp.as_user('a9000000-0000-4000-8000-000000000002');
 select is((select group_name from public.ads_report_settings), 'HubSystem - Relatórios', 'leitura vê o grupo configurado');
-update public.ads_report_settings set daily_enabled = false;
-select is((select daily_enabled from public.ads_report_settings), true, 'leitura não altera a configuração');
+update public.ads_report_settings set weekly_enabled = false;
+select is((select weekly_enabled from public.ads_report_settings), true, 'leitura não altera a configuração');
 update public.ad_accounts set alert_no_spend = false where id = 'a9000000-0000-4000-8000-0000000000f1';
 select is((select alert_no_spend from public.ad_accounts where id = 'a9000000-0000-4000-8000-0000000000f1'), true, 'leitura não altera alertas da conta');
 

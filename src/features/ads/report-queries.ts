@@ -8,6 +8,10 @@ export type ReportSettingsView = {
   alerts_enabled: boolean;
   daily_enabled: boolean;
   weekly_enabled: boolean;
+  monthly_enabled: boolean;
+  monthly_day: number;
+  send_time: string;
+  templates: Partial<Record<string, string>>;
 };
 
 export type ReportNumber = { id: string; label: string; connected: boolean };
@@ -17,21 +21,24 @@ export type ReportAccount = {
   name: string;
   provider: "meta_ads" | "google_ads";
   currency: string;
+  status: string | null;
+  balance_cents: number | null;
+  is_prepay: boolean | null;
   client: string | null;
   alert_balance_below_cents: number | null;
   alert_daily_spend_above_cents: number | null;
   alert_no_spend: boolean;
 };
 
-export type ReportLogEntry = { id: string; kind: "teste" | "alerta" | "diario" | "semanal"; title: string; body: string; status: "enviado" | "falhou"; error: string | null; sent_at: string };
+export type ReportLogEntry = { id: string; kind: "teste" | "alerta" | "diario" | "semanal" | "mensal"; title: string; body: string; status: "enviado" | "falhou"; error: string | null; sent_at: string };
 
 export async function getReportsPage(canManage: boolean) {
   const supabase = await createClient();
   const [settings, accounts, log, numbers] = await Promise.all([
-    supabase.from("ads_report_settings").select("whatsapp_number_id, group_id, group_name, alerts_enabled, daily_enabled, weekly_enabled").maybeSingle(),
+    supabase.from("ads_report_settings").select("whatsapp_number_id, group_id, group_name, alerts_enabled, daily_enabled, weekly_enabled, monthly_enabled, monthly_day, send_time, templates").maybeSingle(),
     supabase
       .from("ad_accounts")
-      .select("id, name, provider, currency, alert_balance_below_cents, alert_daily_spend_above_cents, alert_no_spend, ad_client:ad_clients(name)")
+      .select("id, name, provider, currency, status, balance_cents, is_prepay, alert_balance_below_cents, alert_daily_spend_above_cents, alert_no_spend, ad_client:ad_clients(name)")
       .eq("is_selected", true)
       .order("name"),
     supabase.from("ads_report_log").select("id, kind, title, body, status, error, sent_at").order("sent_at", { ascending: false }).limit(30),

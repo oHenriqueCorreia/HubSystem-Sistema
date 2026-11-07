@@ -19,6 +19,7 @@ const PUBLIC_PATHS = [
   "/api/whatsapp/webhook",
   "/api/whatsapp/waha",
   "/api/inbox/jobs",
+  "/api/ads/tick",
   "/aprovar",
   "/api/hooks/in",
   // Comprovação de propriedade do site no Google Search Console.

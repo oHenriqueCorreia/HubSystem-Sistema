@@ -226,3 +226,23 @@ export async function googleAdsAdDailyInsights(accessToken: string, customerId: 
   );
   return rows.map((r) => ({ adExternalId: adKey(r.adGroup.id, r.adGroupAd.ad.id), ...toMetric(r) }));
 }
+
+/**
+ * Uma conta, na hora: gasto de hoje e quanto resta do orçamento da conta (faturamento
+ * por orçamento aprovado). Conta paga direto no Google não informa saldo pela API.
+ */
+export async function googleAdsAccountLive(accessToken: string, customerId: string) {
+  const [today, budgets] = await Promise.all([
+    search<{ metrics?: { costMicros?: string } }>(accessToken, customerId, "SELECT metrics.cost_micros FROM customer WHERE segments.date DURING TODAY"),
+    search<{ accountBudget?: { approvedSpendingLimitMicros?: string; amountServedMicros?: string; status?: string } }>(
+      accessToken,
+      customerId,
+      "SELECT account_budget.approved_spending_limit_micros, account_budget.amount_served_micros, account_budget.status FROM account_budget WHERE account_budget.status = 'APPROVED'",
+    ).catch(() => []),
+  ]);
+  const todaySpendCents = today.reduce((s, r) => s + (microsToCents(r.metrics?.costMicros) ?? 0), 0);
+  const b = budgets.find((r) => r.accountBudget?.approvedSpendingLimitMicros);
+  const limit = microsToCents(b?.accountBudget?.approvedSpendingLimitMicros);
+  const served = microsToCents(b?.accountBudget?.amountServedMicros) ?? 0;
+  return { todaySpendCents, balanceCents: limit === null ? null : Math.max(0, limit - served) };
+}

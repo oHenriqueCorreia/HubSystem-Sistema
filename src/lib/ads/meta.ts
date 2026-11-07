@@ -1,6 +1,7 @@
 import "server-only";
 import { publicEnv } from "@/lib/env";
 import { sumConversionActions, type MetaAction } from "@/domain/ads/conversions";
+import { parseFundingBalance } from "@/domain/ads/report-message";
 
 // Marketing API oficial da Meta (Graph API). Somente leitura de anúncios.
 export const META_SCOPES = ["ads_read", "business_management"];
@@ -77,24 +78,62 @@ async function all<T>(url: string, max = 2000): Promise<T[]> {
 // Valores monetários da Marketing API vêm em centavos da moeda da conta (string).
 const cents = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? null : Math.round(Number(v)));
 
-export type MetaAccount = { externalId: string; name: string; currency: string; status: string; balanceCents: number | null; spendCapCents: number | null; amountSpentCents: number | null };
+export type MetaAccount = {
+  externalId: string;
+  name: string;
+  currency: string;
+  status: string;
+  isPrepay: boolean | null;
+  balanceCents: number | null;
+  spendCapCents: number | null;
+  amountSpentCents: number | null;
+};
+
+type MetaAccountRow = {
+  id: string;
+  name: string;
+  currency: string;
+  account_status: number;
+  is_prepay_account?: boolean;
+  balance?: string;
+  spend_cap?: string;
+  amount_spent?: string;
+  funding_source_details?: { display_string?: string };
+};
+
+const ACCOUNT_FIELDS = "id,name,currency,account_status,is_prepay_account,balance,spend_cap,amount_spent,funding_source_details";
 
 const ACCOUNT_STATUS: Record<number, string> = { 1: "Ativa", 2: "Desativada", 3: "Pendente de pagamento", 7: "Em análise", 8: "Pagamento pendente", 9: "Em período de carência", 100: "Encerramento pendente", 101: "Encerrada" };
 
-export async function metaAccounts(token: string): Promise<MetaAccount[]> {
-  const rows = await all<{ id: string; name: string; currency: string; account_status: number; balance?: string; spend_cap?: string; amount_spent?: string }>(
-    graph(`/me/adaccounts?fields=id,name,currency,account_status,balance,spend_cap,amount_spent&limit=100&access_token=${encodeURIComponent(token)}`),
-  );
-  return rows.map((a) => ({
+function toAccount(a: MetaAccountRow): MetaAccount {
+  const prepay = typeof a.is_prepay_account === "boolean" ? a.is_prepay_account : null;
+  return {
     externalId: a.id,
     name: a.name,
     currency: a.currency,
     status: ACCOUNT_STATUS[a.account_status] ?? String(a.account_status),
-    balanceCents: cents(a.balance),
+    isPrepay: prepay,
+    // Pré-paga: o saldo disponível vem no texto da forma de pagamento ("Saldo disponível (R$2,65 BRL)").
+    // Pós-paga: "balance" é o valor ainda não cobrado.
+    balanceCents: prepay ? (parseFundingBalance(a.funding_source_details?.display_string) ?? cents(a.balance)) : cents(a.balance),
     // spend_cap "0" significa "sem limite definido".
     spendCapCents: a.spend_cap && a.spend_cap !== "0" ? cents(a.spend_cap) : null,
     amountSpentCents: cents(a.amount_spent),
-  }));
+  };
+}
+
+export async function metaAccounts(token: string): Promise<MetaAccount[]> {
+  const rows = await all<MetaAccountRow>(graph(`/me/adaccounts?fields=${ACCOUNT_FIELDS}&limit=100&access_token=${encodeURIComponent(token)}`));
+  return rows.map(toAccount);
+}
+
+/** Uma conta, na hora: situação, saldo e gasto de hoje (para os alertas). */
+export async function metaAccountLive(token: string, accountId: string) {
+  const [acc, today] = await Promise.all([
+    get<MetaAccountRow>(graph(`/${accountId}?fields=${ACCOUNT_FIELDS}&access_token=${encodeURIComponent(token)}`)),
+    get<{ data?: { spend?: string }[] }>(graph(`/${accountId}/insights?fields=spend&date_preset=today&access_token=${encodeURIComponent(token)}`)),
+  ]);
+  return { ...toAccount(acc), todaySpendCents: Math.round(Number(today.data?.[0]?.spend ?? 0) * 100) };
 }
 
 export type MetaCampaign = { externalId: string; name: string; status: string; objective: string | null; dailyBudgetCents: number | null; lifetimeBudgetCents: number | null };

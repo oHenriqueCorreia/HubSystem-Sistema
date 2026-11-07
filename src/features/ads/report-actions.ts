@@ -5,15 +5,11 @@ import { z } from "zod";
 import { defineAction, must } from "@/lib/actions";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok } from "@/domain/shared/result";
+import { DEFAULT_TEMPLATES, unknownVariables, type TemplateKey } from "@/domain/ads/report-message";
 import { listGroups, sendReportNow, sendTest } from "@/lib/ads/reports";
 import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
 
 const refresh = () => revalidatePath("/relatorios");
-
-const SEND_ERRORS: Record<string, string> = {
-  sem_destino: "Escolha o WhatsApp e o grupo antes de enviar.",
-  repetido: "Esta mensagem já foi enviada.",
-};
 
 /** Grupos de que o WhatsApp escolhido participa. */
 export const loadReportGroups = defineAction({ schema: z.object({ numberId: z.uuid() }), permission: "ads.manage" }, async (input, { user }) => {
@@ -38,6 +34,9 @@ export const saveReportSettings = defineAction(
       alertsEnabled: z.boolean(),
       dailyEnabled: z.boolean(),
       weeklyEnabled: z.boolean(),
+      monthlyEnabled: z.boolean(),
+      monthlyDay: z.number().int().min(1).max(28),
+      sendTime: z.string().regex(/^([01]\d|2[0-3]):(00|15|30|45)$/, "Escolha um horário da lista."),
     }),
     permission: "ads.manage",
   },
@@ -62,6 +61,9 @@ export const saveReportSettings = defineAction(
           alerts_enabled: input.alertsEnabled,
           daily_enabled: input.dailyEnabled,
           weekly_enabled: input.weeklyEnabled,
+          monthly_enabled: input.monthlyEnabled,
+          monthly_day: input.monthlyDay,
+          send_time: input.sendTime,
           updated_by: user.id,
         },
         { onConflict: "organization_id" },
@@ -72,20 +74,46 @@ export const saveReportSettings = defineAction(
   },
 );
 
+const templateKey = z.enum(Object.keys(DEFAULT_TEMPLATES) as [TemplateKey, ...TemplateKey[]]);
+
+/** text null = volta ao modelo padrão. */
+export const saveReportTemplate = defineAction(
+  { schema: z.object({ key: templateKey, text: z.string().max(2000, "O modelo pode ter até 2.000 caracteres.").nullable() }), permission: "ads.manage" },
+  async (input, { user }) => {
+    const text = input.text?.trim() || null;
+    if (text) {
+      const unknown = unknownVariables(input.key, text);
+      if (unknown.length) return fail("validation", `Variável que não existe nesta mensagem: ${unknown.map((u) => `{${u}}`).join(", ")}. Use as da lista.`);
+    }
+    const supabase = await createClient();
+    const { data: current } = await supabase.from("ads_report_settings").select("templates").maybeSingle();
+    const templates = { ...((current?.templates as Record<string, string> | null) ?? {}) };
+    if (text && text !== DEFAULT_TEMPLATES[input.key]) templates[input.key] = text;
+    else delete templates[input.key];
+    must(await supabase.from("ads_report_settings").upsert({ organization_id: user.organizationId, templates, updated_by: user.id }, { onConflict: "organization_id" }));
+    refresh();
+    return ok(null, text ? "Modelo salvo." : "Modelo padrão restaurado.");
+  },
+);
+
 export const sendReportTest = defineAction({ schema: z.object({}), permission: "ads.manage" }, async (_input, { user }) => {
   if (!(await withinRateLimit(`ads-report-send:${user.organizationId}`, 10, 3600))) return fail("business_rule", RATE_LIMIT_MESSAGE);
   const r = await sendTest(user.organizationId);
   refresh();
   if (r.sent) return ok(null, "Mensagem de teste enviada ao grupo.");
-  return fail("network", r.reason === "falhou" ? r.error : SEND_ERRORS[r.reason]);
+  return fail("network", r.reason === "falhou" ? r.error : r.reason === "sem_destino" ? "Escolha o WhatsApp e o grupo antes de enviar." : "Esta mensagem já foi enviada.");
 });
 
-export const sendReportManual = defineAction({ schema: z.object({ kind: z.enum(["diario", "semanal"]) }), permission: "ads.manage" }, async (input, { user }) => {
+const KIND_LABEL = { diario: "Relatório diário", semanal: "Relatório semanal", mensal: "Relatório mensal" } as const;
+
+export const sendReportManual = defineAction({ schema: z.object({ kind: z.enum(["diario", "semanal", "mensal"]) }), permission: "ads.manage" }, async (input, { user }) => {
   if (!(await withinRateLimit(`ads-report-send:${user.organizationId}`, 10, 3600))) return fail("business_rule", RATE_LIMIT_MESSAGE);
   const r = await sendReportNow(user.organizationId, input.kind);
   refresh();
-  if (r.sent) return ok(null, input.kind === "diario" ? "Relatório de ontem enviado ao grupo." : "Resumo da semana enviado ao grupo.");
-  return fail("network", r.reason === "falhou" ? r.error : SEND_ERRORS[r.reason]);
+  if (!r.total && r.failed) return fail("business_rule", r.failed);
+  if (!r.total) return fail("business_rule", "Nenhuma conta está nos relatórios. Ative as contas em Anúncios → Contas.");
+  if (r.sent === r.total) return ok(null, `${KIND_LABEL[input.kind]} enviado: ${r.sent} cliente(s).`);
+  return fail("network", `${r.sent} de ${r.total} mensagens enviadas. ${r.failed ?? ""}`.trim());
 });
 
 const cents = z.number().int().min(0).max(100_000_000_000).nullable();

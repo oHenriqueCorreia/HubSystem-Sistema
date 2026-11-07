@@ -1,7 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { decrypt, encrypt } from "@/lib/crypto";
-import { formatBRL } from "@/domain/shared/money";
+import { decrypt } from "@/lib/crypto";
 import { todayLocal } from "@/domain/shared/dates";
 import { metaAccounts, metaAdDailyInsights, metaAds, metaAdSets, metaCampaigns, metaDailyInsights, type AdDailyMetric, type AdInfo, type AdSetInfo, type DailyMetric } from "./meta";
 import {
@@ -12,23 +11,11 @@ import {
   googleAdsCampaigns,
   googleAdsCustomer,
   googleAdsDailyInsights,
-  googleAdsRefresh,
 } from "./google-ads";
+import { checkAlerts, sendConnectionAlert } from "./alerts";
+import { googleAccessToken, type AdProvider, type Connection } from "./tokens";
 
-import { sendAlerts } from "./reports";
-import type { AlertItem } from "@/domain/ads/report-message";
-
-export type AdProvider = "meta_ads" | "google_ads";
-
-type Connection = {
-  id: string;
-  organization_id: string;
-  provider: AdProvider;
-  token_enc: string;
-  refresh_token_enc: string | null;
-  expires_at: string | null;
-  last_synced_at: string | null;
-};
+export type { AdProvider };
 
 const daysAgo = (n: number) => todayLocal(new Date(Date.now() - n * 86_400_000));
 
@@ -43,15 +30,6 @@ function googleDiscoveryMessage(reasons: Set<string>) {
   return "Nenhuma conta de anúncio foi encontrada para este e-mail do Google.";
 }
 
-async function googleAccessToken(conn: Connection) {
-  if (conn.expires_at && new Date(conn.expires_at).getTime() > Date.now() + 60_000) return decrypt(conn.token_enc);
-  const t = await googleAdsRefresh(decrypt(conn.refresh_token_enc!));
-  await createAdminClient()
-    .from("integration_connections")
-    .update({ token_enc: encrypt(t.access_token), expires_at: new Date(Date.now() + t.expires_in * 1000).toISOString() })
-    .eq("id", conn.id);
-  return t.access_token;
-}
 
 type Admin = ReturnType<typeof createAdminClient>;
 type Account = { id: string; external_id: string };
@@ -167,7 +145,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
                 return null;
               });
               return c && !c.manager
-                ? { externalId: id, name: c.name, currency: c.currency, status: c.status ?? "", balanceCents: null, spendCapCents: null, amountSpentCents: null }
+                ? { externalId: id, name: c.name, currency: c.currency, status: c.status ?? "", isPrepay: null, balanceCents: null, spendCapCents: null, amountSpentCents: null }
                 : null;
             }),
           ).then((r) => r.filter((x): x is NonNullable<typeof x> => Boolean(x)));
@@ -184,6 +162,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
           currency: a.currency,
           status: a.status,
           balance_cents: a.balanceCents,
+          is_prepay: a.isPrepay,
           spend_cap_cents: a.spendCapCents,
           amount_spent_cents: a.amountSpentCents,
           last_synced_at: new Date().toISOString(),
@@ -195,7 +174,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
     // 2) Campanhas e métricas das contas selecionadas.
     let selectedQ = admin
       .from("ad_accounts")
-      .select("id, external_id, name, currency, balance_cents, alert_balance_below_cents, alert_daily_spend_above_cents, alert_no_spend, ad_client:ad_clients(client_id)")
+      .select("id, external_id, name")
       .eq("organization_id", organizationId)
       .eq("provider", provider)
       .eq("is_selected", true);
@@ -203,10 +182,8 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
     const { data: selected, error: selectedError } = await selectedQ;
     if (selectedError) throw selectedError;
     const until = todayLocal();
-    const yesterday = daysAgo(1);
     let metrics = 0;
     let adLevelFailed = false;
-    const groupAlerts: (AlertItem & { key: string })[] = [];
 
     for (const acc of selected ?? []) {
       const campaigns = provider === "meta_ads" ? await metaCampaigns(token, acc.external_id) : await googleAdsCampaigns(token, acc.external_id);
@@ -263,64 +240,10 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
         console.error("[ads-sync] anúncios", provider, (e as { code?: unknown; status?: unknown }).code ?? (e as { status?: unknown }).status ?? "erro", (e as { detail?: string }).detail ?? "");
       }
 
-      // 3) Alertas (um por conta por dia, sem repetição), só para quem enxerga a conta:
-      // escopo "todos" ou quem trabalha no cliente ligado a ela.
-      const adClient = (Array.isArray(acc.ad_client) ? acc.ad_client[0] : acc.ad_client) as { client_id: string | null } | null;
-      const scope = { p_client: adClient?.client_id ?? undefined, p_record: true };
-      const todaySpend = rows.filter((r) => r.day === until).reduce((s, r) => s + r.spend_cents, 0);
-      if (acc.alert_daily_spend_above_cents != null && todaySpend > acc.alert_daily_spend_above_cents) {
-        await admin.rpc("notify_users", {
-          p_org: organizationId,
-          p_perm: "ads.read",
-          p_kind: "anuncio_gasto",
-          p_title: `Gasto de hoje acima do limite em ${acc.name}`,
-          p_body: `${formatBRL(todaySpend)} gastos hoje (limite ${formatBRL(acc.alert_daily_spend_above_cents)}).`,
-          p_href: "/anuncios/contas",
-          p_key: `ads_spend:${acc.id}:${until}`,
-          ...scope,
-        });
-        groupAlerts.push({
-          key: `ads_spend:${acc.id}:${until}`,
-          title: `Gasto de hoje acima do limite em ${acc.name}`,
-          detail: `${formatBRL(todaySpend)} gastos hoje (limite ${formatBRL(acc.alert_daily_spend_above_cents)}).`,
-        });
-      }
-      const yesterdaySpend = rows.filter((r) => r.day === yesterday).reduce((s, r) => s + r.spend_cents, 0);
-      if (acc.alert_no_spend && yesterdaySpend === 0) {
-        await admin.rpc("notify_users", {
-          p_org: organizationId,
-          p_perm: "ads.read",
-          p_kind: "anuncio_parado",
-          p_title: `${acc.name} não gastou nada ontem`,
-          p_body: "Confira o pagamento e se as campanhas estão ativas.",
-          p_href: "/relatorios",
-          p_key: `ads_nospend:${acc.id}:${yesterday}`,
-          ...scope,
-        });
-        groupAlerts.push({ key: `ads_nospend:${acc.id}:${yesterday}`, title: `${acc.name} não gastou nada ontem`, detail: "Confira o pagamento e se as campanhas estão ativas." });
-      }
-      const { data: fresh } = await admin.from("ad_accounts").select("balance_cents").eq("id", acc.id).single();
-      if (acc.alert_balance_below_cents != null && fresh?.balance_cents != null && fresh.balance_cents < acc.alert_balance_below_cents) {
-        await admin.rpc("notify_users", {
-          p_org: organizationId,
-          p_perm: "ads.read",
-          p_kind: "anuncio_saldo",
-          p_title: `Saldo baixo na conta ${acc.name}`,
-          p_body: `Saldo informado: ${formatBRL(fresh.balance_cents)} (alerta abaixo de ${formatBRL(acc.alert_balance_below_cents)}).`,
-          p_href: "/anuncios/contas",
-          p_key: `ads_balance:${acc.id}:${until}`,
-          ...scope,
-        });
-        groupAlerts.push({
-          key: `ads_balance:${acc.id}:${until}`,
-          title: `Saldo baixo na conta ${acc.name}`,
-          detail: `Saldo informado: ${formatBRL(fresh.balance_cents)} (alerta abaixo de ${formatBRL(acc.alert_balance_below_cents)}).`,
-        });
-      }
     }
 
-    // Os mesmos alertas vão para o grupo do WhatsApp, se configurado. Falha no envio não derruba a sincronização.
-    await sendAlerts(organizationId, groupAlerts).catch((e) => console.error("[ads-sync] whatsapp", (e as Error).message));
+    // 3) Alertas com os números novos (saldo, gasto de hoje, conta parada). Falha aqui não derruba a sincronização.
+    if (!accountId) await checkAlerts(organizationId, provider).catch((e) => console.error("[ads-sync] alertas", (e as Error).message));
 
     await admin
       .from("integration_connections")
@@ -341,22 +264,7 @@ export async function syncAds(organizationId: string, provider: AdProvider, acco
       .update({ status: expired ? "expirada" : "erro", last_error: expired ? "O acesso expirou ou foi revogado. Conecte a conta novamente." : "Falha ao sincronizar com a plataforma.", updated_at: new Date().toISOString() })
       .eq("id", conn.id);
     if (expired) {
-      await admin.rpc("notify_users", {
-        p_org: organizationId,
-        p_perm: "ads.manage",
-        p_kind: "token_expirado",
-        p_title: provider === "meta_ads" ? "Reconecte a conta da Meta" : "Reconecte a conta do Google Ads",
-        p_body: "O acesso às contas de anúncios expirou.",
-        p_href: "/anuncios/contas",
-        p_key: `ads_expired:${provider}:${todayLocal()}`,
-      });
-      await sendAlerts(organizationId, [
-        {
-          key: `ads_expired:${provider}:${todayLocal()}`,
-          title: provider === "meta_ads" ? "Reconecte a conta da Meta" : "Reconecte a conta do Google Ads",
-          detail: "O acesso às contas de anúncios expirou. Os relatórios param até reconectar em Anúncios → Contas.",
-        },
-      ]).catch(() => null);
+      await sendConnectionAlert(organizationId, provider).catch(() => null);
     }
     console.error("[ads-sync]", provider, err.code ?? err.status ?? "erro", (e as { detail?: string; message?: string }).detail ?? (e as Error).message);
     throw e;
