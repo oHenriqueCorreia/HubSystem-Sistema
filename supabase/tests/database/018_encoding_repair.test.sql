@@ -51,7 +51,7 @@ select is((select after from public.admin_encoding_preview() where row_id = 'e80
 select is((select content from public.activities where id = 'e8000000-0000-4000-8000-0000000000c1'), 'Importado de ' || pg_temp.q() || 'nicho.csv' || pg_temp.qq(), 'pré-visualização não altera nada');
 select throws_ok($$ select public.admin_encoding_apply('sim') $$, 'P0001', null, 'aplicar exige digitar CORRIGIR');
 
-select public.admin_encoding_apply('CORRIGIR') as lote \gset
+select set_config('test.lote', public.admin_encoding_apply('CORRIGIR')::text, true);
 select is((select array_agg(content order by id) from public.activities where lead_id = 'e8000000-0000-4000-8000-0000000000a1'),
   array['Importado de “nicho.csv”', 'SÃO PAULO e Ação, tudo certo', 'Movido de “Contato”'], 'corrige os textos e mantém o correto');
 
@@ -60,10 +60,10 @@ reset role;
 update public.activities set content = 'Editado depois' where id = 'e8000000-0000-4000-8000-0000000000c3';
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
-select is(public.admin_encoding_revert(:'lote'), 1, 'desfazer volta só o que não foi editado depois');
+select is(public.admin_encoding_revert(current_setting('test.lote')::uuid), 1, 'desfazer volta só o que não foi editado depois');
 select is((select content from public.activities where id = 'e8000000-0000-4000-8000-0000000000c1'), 'Importado de ' || pg_temp.q() || 'nicho.csv' || pg_temp.qq(), 'texto volta ao original copiado');
 select is((select content from public.activities where id = 'e8000000-0000-4000-8000-0000000000c3'), 'Editado depois', 'edição posterior é preservada');
-select throws_ok(format($$ select public.admin_encoding_revert(%L) $$, :'lote'), 'P0002', null, 'o mesmo lote não é desfeito duas vezes');
+select throws_ok(format($$ select public.admin_encoding_revert(%L::uuid) $$, current_setting('test.lote')), 'P0002', null, 'o mesmo lote não é desfeito duas vezes');
 
 reset role;
 select is((select content from public.activities where id = 'e8000000-0000-4000-8000-0000000000c9'), 'Importado de ' || pg_temp.q() || 'outra.csv' || pg_temp.qq(), 'outra empresa não é tocada');
