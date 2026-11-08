@@ -317,3 +317,141 @@ export async function googleAdsSetCampaignBudget(accessToken: string, customerId
   if (!budget) throw Object.assign(new Error("google_ads_budget"), { userMessage: "Esta campanha não tem orçamento próprio para editar." });
   await mutate(accessToken, customerId, "campaignBudgets", [{ update: { resourceName: budget, amountMicros: String(dailyBudgetCents * 10_000) }, updateMask: "amount_micros" }]);
 }
+
+// ----------------------------------------------------------------------------
+// Palavras-chave e termos de pesquisa (consultados na hora, pelo período escolhido).
+
+const dateWhere = (from: string, to: string) => `segments.date BETWEEN '${from.replace(/[^\d-]/g, "")}' AND '${to.replace(/[^\d-]/g, "")}'`;
+
+type GMetrics = { impressions?: string; clicks?: string; costMicros?: string; conversions?: number; conversionsValue?: number };
+const toMetrics = (m?: GMetrics) => ({
+  impressions: Number(m?.impressions ?? 0),
+  clicks: Number(m?.clicks ?? 0),
+  costCents: microsToCents(m?.costMicros) ?? 0,
+  conversions: Number(m?.conversions ?? 0),
+});
+
+export type KeywordRow = {
+  criterionId: string;
+  adGroupId: string;
+  adGroup: string;
+  campaignId: string;
+  campaign: string;
+  text: string;
+  matchType: string;
+  status: string;
+  qualityScore: number | null;
+  impressions: number;
+  clicks: number;
+  costCents: number;
+  conversions: number;
+};
+
+/** Todas as palavras-chave (mesmo sem impressões no período), com as métricas do período. */
+export async function googleAdsKeywords(accessToken: string, customerId: string, from: string, to: string): Promise<KeywordRow[]> {
+  type Row = {
+    adGroupCriterion: { criterionId: string; status: string; keyword?: { text: string; matchType: string }; qualityInfo?: { qualityScore?: number } };
+    adGroup: { id: string; name: string };
+    campaign: { id: string; name: string };
+    metrics?: GMetrics;
+  };
+  const base = "ad_group_criterion.criterion_id, ad_group_criterion.status, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.quality_info.quality_score, ad_group.id, ad_group.name, campaign.id, campaign.name";
+  const [all, withMetrics] = await Promise.all([
+    search<Row>(
+      accessToken,
+      customerId,
+      `SELECT ${base} FROM ad_group_criterion WHERE ad_group_criterion.type = 'KEYWORD' AND ad_group_criterion.negative = FALSE AND ad_group_criterion.status != 'REMOVED' AND campaign.status != 'REMOVED' AND ad_group.status != 'REMOVED'`,
+    ),
+    search<Row>(accessToken, customerId, `SELECT ${base}, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM keyword_view WHERE ${dateWhere(from, to)}`),
+  ]);
+  const stats = new Map(withMetrics.map((r) => [`${r.adGroup.id}~${r.adGroupCriterion.criterionId}`, toMetrics(r.metrics)]));
+  return all.map((r) => ({
+    criterionId: r.adGroupCriterion.criterionId,
+    adGroupId: r.adGroup.id,
+    adGroup: r.adGroup.name,
+    campaignId: r.campaign.id,
+    campaign: r.campaign.name,
+    text: r.adGroupCriterion.keyword?.text ?? "",
+    matchType: r.adGroupCriterion.keyword?.matchType ?? "",
+    status: r.adGroupCriterion.status,
+    qualityScore: r.adGroupCriterion.qualityInfo?.qualityScore ?? null,
+    ...(stats.get(`${r.adGroup.id}~${r.adGroupCriterion.criterionId}`) ?? { impressions: 0, clicks: 0, costCents: 0, conversions: 0 }),
+  }));
+}
+
+export type SearchTermRow = {
+  term: string;
+  status: string; // ADDED, EXCLUDED, ADDED_EXCLUDED, NONE
+  keyword: string | null;
+  matchType: string | null;
+  campaignId: string;
+  campaign: string;
+  adGroupId: string;
+  adGroup: string;
+  impressions: number;
+  clicks: number;
+  costCents: number;
+  conversions: number;
+};
+
+/** O que as pessoas pesquisaram e acionou os anúncios, somado no período. */
+export async function googleAdsSearchTerms(accessToken: string, customerId: string, from: string, to: string): Promise<SearchTermRow[]> {
+  type Row = {
+    searchTermView: { searchTerm: string; status: string };
+    segments?: { keyword?: { info?: { text?: string; matchType?: string } } };
+    campaign: { id: string; name: string };
+    adGroup: { id: string; name: string };
+    metrics?: GMetrics;
+  };
+  const rows = await search<Row>(
+    accessToken,
+    customerId,
+    `SELECT search_term_view.search_term, search_term_view.status, segments.keyword.info.text, segments.keyword.info.match_type, campaign.id, campaign.name, ad_group.id, ad_group.name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM search_term_view WHERE ${dateWhere(from, to)} ORDER BY metrics.impressions DESC LIMIT 2000`,
+  );
+  // O mesmo termo vem uma vez por palavra-chave que o acionou: soma por termo + grupo.
+  const merged = new Map<string, SearchTermRow>();
+  for (const r of rows) {
+    const k = `${r.adGroup.id}~${r.searchTermView.searchTerm}`;
+    const m = toMetrics(r.metrics);
+    const prev = merged.get(k);
+    if (prev) {
+      prev.impressions += m.impressions;
+      prev.clicks += m.clicks;
+      prev.costCents += m.costCents;
+      prev.conversions += m.conversions;
+    } else
+      merged.set(k, {
+        term: r.searchTermView.searchTerm,
+        status: r.searchTermView.status,
+        keyword: r.segments?.keyword?.info?.text ?? null,
+        matchType: r.segments?.keyword?.info?.matchType ?? null,
+        campaignId: r.campaign.id,
+        campaign: r.campaign.name,
+        adGroupId: r.adGroup.id,
+        adGroup: r.adGroup.name,
+        ...m,
+      });
+  }
+  return [...merged.values()];
+}
+
+export type MatchType = "EXACT" | "PHRASE" | "BROAD";
+
+export async function googleAdsSetKeywordStatus(accessToken: string, customerId: string, adGroupId: string, criterionId: string, status: "ENABLED" | "PAUSED") {
+  await mutate(accessToken, customerId, "adGroupCriteria", [
+    { update: { resourceName: `customers/${customerId}/adGroupCriteria/${adGroupId}~${criterionId}`, status }, updateMask: "status" },
+  ]);
+}
+
+export async function googleAdsAddKeyword(accessToken: string, customerId: string, adGroupId: string, text: string, matchType: MatchType) {
+  await mutate(accessToken, customerId, "adGroupCriteria", [
+    { create: { adGroup: `customers/${customerId}/adGroups/${adGroupId}`, status: "ENABLED", keyword: { text, matchType } } },
+  ]);
+}
+
+/** Palavra-chave negativa na campanha: o anúncio deixa de aparecer para essa pesquisa. */
+export async function googleAdsAddNegative(accessToken: string, customerId: string, campaignId: string, text: string, matchType: MatchType) {
+  await mutate(accessToken, customerId, "campaignCriteria", [
+    { create: { campaign: `customers/${customerId}/campaigns/${campaignId}`, negative: true, keyword: { text, matchType } } },
+  ]);
+}

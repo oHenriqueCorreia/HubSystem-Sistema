@@ -10,6 +10,7 @@ const TABS = [
   { href: "/anuncios/campanhas", label: "Campanhas" },
   { href: "/anuncios/conjuntos", label: "Conjuntos e grupos" },
   { href: "/anuncios/criativos", label: "Anúncios" },
+  { href: "/anuncios/google", label: "Palavras-chave (Google)" },
   { href: "/anuncios/utms", label: "UTMs" },
   { href: "/anuncios/contas", label: "Contas" },
 ];
