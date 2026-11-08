@@ -14,6 +14,8 @@ export const HOME_WIDGETS = [
   { key: "prioritarias", label: "Prioritárias e agendadas" },
   { key: "reunioes", label: "Reuniões" },
   { key: "comercial", label: "Comercial" },
+  { key: "atendimento", label: "Atendimento (WhatsApp)" },
+  { key: "anuncios", label: "Anúncios" },
   { key: "financeiro", label: "Financeiro" },
   { key: "alertas", label: "Alertas e integrações" },
   { key: "meu_dia", label: "Meu dia" },
@@ -41,7 +43,17 @@ export type HomeOverview = {
   priorityList: HomeTask[];
   scheduledList: HomeTask[];
   meetings: { week: number; month: number; next: HomeMeeting[] } | null;
-  commercial: { attendedWeek: number; waiting: number; newLeadsWeek: number } | null;
+  commercial: { attendedWeek: number; waiting: number; newLeadsWeek: number; openDeals: number; pipelineCents: number; wonMonth: number; wonMonthCents: number } | null;
+  inbox: { open: number; waiting: number; unread: number; disconnected: number } | null;
+  ads: {
+    spendYesterday: number;
+    spend7d: number;
+    conversions7d: number;
+    accounts: number;
+    lowBalance: { id: string; name: string; balance_cents: number }[];
+    connections: { provider: string; status: string }[];
+    reportFailures: number;
+  } | null;
   finance: {
     scope: "empresa" | "pessoal";
     receivable: number;
@@ -57,7 +69,7 @@ export type HomeOverview = {
   pendingInvites: number;
 };
 
-const sum = (rows: { amount_cents: number }[] | null) => (rows ?? []).reduce((a, r) => a + Number(r.amount_cents), 0);
+const sum = (rows: { amount_cents: number | null }[] | null) => (rows ?? []).reduce((a, r) => a + Number(r.amount_cents ?? 0), 0);
 
 export async function getHomeOverview(user: CurrentUser): Promise<HomeOverview> {
   const supabase = await createClient();
@@ -128,7 +140,48 @@ export async function getHomeOverview(user: CurrentUser): Promise<HomeOverview> 
           .gte("occurred_at", weekStartIso),
         supabase.from("leads").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("owner_id", user.id).lt("next_contact_at", nowIso),
         supabase.from("leads").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("owner_id", user.id).gte("created_at", weekStartIso),
+        // Funil: negócios em aberto (valor em negociação) e ganhos no mês.
+        supabase.from("deals").select("amount_cents, stage:stages!inner(kind)").is("won_at", null).is("lost_at", null).eq("stage.kind", "open").limit(5000),
+        supabase.from("deals").select("amount_cents").gte("won_at", monthStartIso).limit(5000),
       ])
+    : null;
+
+  // Atendimento: conversas abertas, esperando resposta, mensagens não lidas e números desconectados.
+  const inboxP = p["inbox.read"]
+    ? Promise.all([
+        supabase.from("conversations").select("id", { count: "exact", head: true }).is("excluded_at", null).eq("status", "aberta"),
+        supabase.from("conversations").select("id", { count: "exact", head: true }).is("excluded_at", null).eq("status", "aberta").eq("waiting_reply", true),
+        supabase.from("conversations").select("unread_count").is("excluded_at", null).gt("unread_count", 0).limit(2000),
+        supabase.rpc("my_whatsapp_numbers"),
+      ])
+    : null;
+
+  // Anúncios: investimento de ontem e dos últimos 7 dias, saldo abaixo do alerta, conexões e envios que falharam.
+  const yesterday = format(addDays(zonedDay(today), -1), "yyyy-MM-dd");
+  const weekAgo = format(addDays(zonedDay(today), -7), "yyyy-MM-dd");
+  const adsP = p["ads.read"]
+    ? (async () => {
+        const { data: accounts } = await supabase.from("ad_accounts").select("id, name, balance_cents, alert_balance_below_cents").eq("is_selected", true);
+        const ids = (accounts ?? []).map((a) => a.id as string);
+        const [week, day, conns, failures] = await Promise.all([
+          ids.length ? supabase.rpc("ad_report_accounts", { p_accounts: ids, p_from: weekAgo, p_to: yesterday }) : Promise.resolve({ data: [] }),
+          ids.length ? supabase.rpc("ad_report_accounts", { p_accounts: ids, p_from: yesterday, p_to: yesterday }) : Promise.resolve({ data: [] }),
+          supabase.rpc("my_ad_connections"),
+          supabase.from("ads_report_log").select("id", { count: "exact", head: true }).eq("status", "falhou").gte("sent_at", new Date(Date.now() - 86_400_000).toISOString()),
+        ]);
+        const total = (rows: unknown, k: "spend_cents" | "conversions") => ((rows ?? []) as Record<string, number>[]).reduce((a, r) => a + Number(r[k] ?? 0), 0);
+        return {
+          spendYesterday: total(day.data, "spend_cents"),
+          spend7d: total(week.data, "spend_cents"),
+          conversions7d: Math.round(total(week.data, "conversions")),
+          accounts: ids.length,
+          lowBalance: ((accounts ?? []) as { id: string; name: string; balance_cents: number | null; alert_balance_below_cents: number | null }[])
+            .filter((a) => a.alert_balance_below_cents != null && a.balance_cents != null && a.balance_cents < a.alert_balance_below_cents)
+            .map((a) => ({ id: a.id, name: a.name, balance_cents: Number(a.balance_cents) })),
+          connections: ((conns.data ?? []) as { provider: string; status: string }[]).map((c) => ({ provider: c.provider, status: c.status })),
+          reportFailures: (failures as Count).count ?? 0,
+        };
+      })()
     : null;
 
   // Financeiro: contas a receber/pagar previstas até o fim do mês (e vencidas).
@@ -174,10 +227,12 @@ export async function getHomeOverview(user: CurrentUser): Promise<HomeOverview> 
     }),
   );
 
-  const [tasks, meetings, commercial, finance, google, invites] = await Promise.all([
+  const [tasks, meetings, commercial, inbox, ads, finance, google, invites] = await Promise.all([
     tasksP,
     meetingsP,
     commercialP,
+    inboxP,
+    adsP,
     financeP,
     supabase.rpc("my_google_connection"),
     p["admin.users"]
@@ -202,7 +257,26 @@ export async function getHomeOverview(user: CurrentUser): Promise<HomeOverview> 
     priorityList: (tasks?.[7].data ?? []) as HomeTask[],
     scheduledList: (tasks?.[8].data ?? []) as HomeTask[],
     meetings: meetings ? { week: n(meetings[0]), month: n(meetings[1]), next: (meetings[2].data ?? []) as HomeMeeting[] } : null,
-    commercial: commercial ? { attendedWeek: n(commercial[0]), waiting: n(commercial[1]), newLeadsWeek: n(commercial[2]) } : null,
+    commercial: commercial
+      ? {
+          attendedWeek: n(commercial[0]),
+          waiting: n(commercial[1]),
+          newLeadsWeek: n(commercial[2]),
+          openDeals: (commercial[3].data ?? []).length,
+          pipelineCents: sum(commercial[3].data as { amount_cents: number }[] | null),
+          wonMonth: (commercial[4].data ?? []).length,
+          wonMonthCents: sum(commercial[4].data as { amount_cents: number }[] | null),
+        }
+      : null,
+    inbox: inbox
+      ? {
+          open: n(inbox[0]),
+          waiting: n(inbox[1]),
+          unread: ((inbox[2].data ?? []) as { unread_count: number }[]).reduce((a, r) => a + r.unread_count, 0),
+          disconnected: ((inbox[3].data ?? []) as { status: string }[]).filter((x) => x.status !== "ativo").length,
+        }
+      : null,
+    ads,
     finance,
     google: g ?? null,
     pendingInvites: n(invites as Count),

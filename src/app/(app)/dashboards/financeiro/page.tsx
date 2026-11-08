@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LiveRefresh } from "@/components/app/live-refresh";
 import Link from "next/link";
 import { Suspense } from "react";
 import { AlarmClock } from "lucide-react";
@@ -79,6 +80,7 @@ export default async function FinanceiroDashboard({ searchParams }: PageProps<"/
         description={`${formatDate(period.from)} a ${formatDate(period.to)}. Comparação com ${formatDate(period.prevFrom)}–${formatDate(period.prevTo)}.`}
       />
       <PageBody className="grid gap-6">
+        <LiveRefresh intervalMs={60_000} />
         <DashboardTabs commercial={Boolean(user.permissions["dashboards.commercial"])} financial />
         <Suspense>
           <DashboardFilters

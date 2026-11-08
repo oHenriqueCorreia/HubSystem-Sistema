@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { LiveRefresh } from "@/components/app/live-refresh";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowUpRight, CalendarDays, CheckSquare2, CircleDollarSign, ContactRound, Repeat, UsersRound } from "lucide-react";
+import { ArrowUpRight, CalendarDays, CheckSquare2, CircleDollarSign, ContactRound, Megaphone, MessagesSquare, Repeat, UsersRound } from "lucide-react";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/dal";
 import { createClient } from "@/lib/supabase/server";
@@ -76,6 +77,23 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
     : Promise.resolve(null);
 
   const emptyCount = Promise.resolve({ count: 0, error: null });
+  // Atendimento e anúncios no período: conversas esperando resposta e investimento.
+  const adsPeriod = user.permissions["ads.read"]
+    ? (async () => {
+        const { data: accs } = await supabase.from("ad_accounts").select("id").eq("is_selected", true);
+        const ids = (accs ?? []).map((a) => a.id as string);
+        if (!ids.length) return null;
+        const { data } = await supabase.rpc("ad_report_accounts", { p_accounts: ids, p_from: period.from, p_to: period.to });
+        const rows = (data ?? []) as { spend_cents: number; conversions: number }[];
+        return { spend: rows.reduce((a, r) => a + Number(r.spend_cents), 0), conversions: Math.round(rows.reduce((a, r) => a + Number(r.conversions), 0)) };
+      })()
+    : Promise.resolve(null);
+  const [inboxWaiting, ads] = await Promise.all([
+    user.permissions["inbox.read"]
+      ? supabase.from("conversations").select("id", { count: "exact", head: true }).is("excluded_at", null).eq("status", "aberta").eq("waiting_reply", true)
+      : Promise.resolve({ count: null }),
+    adsPeriod,
+  ]);
   const [commercialResult, finance, tasksOpen, tasksLate, clients, events, cadences] = await Promise.all([
     commercialQuery,
     financeQuery,
@@ -105,6 +123,7 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
     <>
       <PageHeader breadcrumbs={[{ label: "Análise" }, { label: "Visão geral" }]} title="Visão geral" description={`O que está acontecendo no HubSystem de ${formatDate(period.from)} a ${formatDate(period.to)}.`} />
       <PageBody className="grid gap-6">
+        <LiveRefresh intervalMs={60_000} />
         <DashboardTabs commercial={canCommercial} financial={canFinancial} />
         <Suspense><DashboardFilters preset={period.preset} from={period.from} to={period.to} /></Suspense>
 
@@ -129,6 +148,18 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
             {user.permissions["clients.read"] && <AreaLink href="/clientes" icon={ContactRound} title="Clientes" value={String(clients.count ?? 0)} detail="Clientes no cadastro" />}
             {user.permissions["tasks.read"] && <AreaLink href="/tarefas" icon={CheckSquare2} title="Trabalho" value={String(tasksOpen.count ?? 0)} detail={`${tasksLate.count ?? 0} tarefa(s) atrasada(s)`} />}
             {user.permissions["calendar.read"] && <AreaLink href="/agenda" icon={CalendarDays} title="Agenda" value={String(events.count ?? 0)} detail="Compromissos no período" />}
+            {user.permissions["inbox.read"] && (
+              <AreaLink href="/atendimento?situacao=aguardando" icon={MessagesSquare} title="Atendimento" value={String(inboxWaiting.count ?? 0)} detail="Conversas esperando resposta" />
+            )}
+            {ads && (
+              <AreaLink
+                href={`/anuncios?periodo=${period.preset}`}
+                icon={Megaphone}
+                title="Anúncios"
+                value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(ads.spend / 100)}
+                detail={`Investido no período · ${ads.conversions} conversões`}
+              />
+            )}
             {user.permissions["crm.cadences.read"] && <AreaLink href="/crm/cadencias" icon={Repeat} title="Cadências" value={String(cadences.count ?? 0)} detail="Roteiros ativos" />}
             {financeScope && <AreaLink href={`/financeiro/${financeScope}`} icon={CircleDollarSign} title={`Financeiro ${financeScope}`} value={financial ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(financial.balance / 100) : "—"} detail="Saldo atual" />}
           </div>

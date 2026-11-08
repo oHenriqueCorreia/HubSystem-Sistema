@@ -2,7 +2,8 @@ import { parseAgendaPrefs } from "@/domain/calendar/agenda-prefs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
-import { AlertTriangle, BookOpen, CalendarClock, CalendarDays, CheckCircle2, CircleAlert, Flag, ListTodo, Plus, Sparkles, Timer, Video } from "lucide-react";
+import { AlertTriangle, BookOpen, CalendarClock, CalendarDays, CheckCircle2, CircleAlert, Flag, ListTodo, Megaphone, MessagesSquare, Plus, Sparkles, Timer, Video } from "lucide-react";
+import { LiveRefresh } from "@/components/app/live-refresh";
 import { cn } from "cn";
 import { requireUser } from "@/lib/auth/dal";
 import { PageBody } from "@/components/app/page-header";
@@ -166,6 +167,14 @@ export default async function InicioPage() {
     if (f.overdueReceivable) alerts.push({ text: `${formatBRL(f.overdueReceivable)} a receber em atraso (${f.scope})`, href: `/financeiro/${f.scope}/lancamentos`, tone: "warning" });
   }
   if (o.google && o.google.status !== "ativa") alerts.push({ text: "Google Agenda desconectado ou com erro", href: "/configuracoes/integracoes", tone: "danger" });
+  if (o.inbox?.disconnected) alerts.push({ text: `${o.inbox.disconnected} WhatsApp desconectado(s)`, href: "/atendimento", tone: "danger" });
+  if (o.inbox?.waiting) alerts.push({ text: `${o.inbox.waiting} conversa(s) esperando resposta`, href: "/atendimento?situacao=aguardando", tone: "warning" });
+  for (const c of o.ads?.connections ?? []) {
+    if (c.status !== "ativa" && (c.provider === "meta_ads" || c.provider === "google_ads"))
+      alerts.push({ text: `${c.provider === "meta_ads" ? "Meta Ads" : "Google Ads"}: conexão expirada ou com erro`, href: "/anuncios/contas", tone: "danger" });
+  }
+  for (const a of o.ads?.lowBalance ?? []) alerts.push({ text: `Saldo baixo em ${a.name}: ${formatBRL(a.balance_cents)}`, href: "/relatorios", tone: "danger" });
+  if (o.ads?.reportFailures) alerts.push({ text: `${o.ads.reportFailures} envio(s) ao grupo do WhatsApp falharam nas últimas 24 h`, href: "/relatorios", tone: "warning" });
   if (o.pendingInvites) alerts.push({ text: `${o.pendingInvites} convite(s) aguardando aceite`, href: "/configuracoes/usuarios", tone: "warning" });
 
   const blocks: Record<HomeWidget, ReactNode> = {
@@ -259,6 +268,49 @@ export default async function InicioPage() {
           <Stat label="Contato atrasado" value={o.commercial.waiting} href="/crm/leads" tone={o.commercial.waiting ? "warning" : undefined} />
           <Stat label="Leads novos" value={o.commercial.newLeadsWeek} href="/crm/leads" />
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Stat label={`Em negociação (${o.commercial.openDeals})`} value={formatBRL(o.commercial.pipelineCents)} href="/crm/funil" />
+          <Stat label={`Ganhos no mês (${o.commercial.wonMonth})`} value={formatBRL(o.commercial.wonMonthCents)} href="/dashboards/comercial" tone={o.commercial.wonMonth ? "success" : undefined} />
+        </div>
+      </Panel>
+    ) : null,
+    atendimento: o.inbox ? (
+      <Panel key="atendimento" title="Atendimento" icon={MessagesSquare} href="/atendimento">
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Esperando resposta" value={o.inbox.waiting} href="/atendimento?situacao=aguardando" tone={o.inbox.waiting ? "warning" : undefined} />
+          <Stat label="Não lidas" value={o.inbox.unread} href="/atendimento" tone={o.inbox.unread ? "warning" : undefined} />
+          <Stat label="Abertas" value={o.inbox.open} href="/atendimento" />
+        </div>
+      </Panel>
+    ) : null,
+    anuncios: o.ads ? (
+      <Panel key="anuncios" title="Anúncios" icon={Megaphone} href="/anuncios">
+        {o.ads.accounts ? (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              <Stat label="Investido ontem" value={formatBRL(o.ads.spendYesterday)} href="/anuncios?periodo=7d" />
+              <Stat label="Últimos 7 dias" value={formatBRL(o.ads.spend7d)} href="/anuncios?periodo=7d" />
+              <Stat label="Conversões em 7 dias" value={o.ads.conversions7d} href="/anuncios" tone={o.ads.conversions7d ? "success" : undefined} />
+            </div>
+            {o.ads.lowBalance.length > 0 && (
+              <ul className="grid gap-1 text-sm">
+                {o.ads.lowBalance.map((a) => (
+                  <li key={a.id} className="flex justify-between gap-2 text-danger">
+                    <span className="min-w-0 truncate">Saldo baixo: {a.name}</span>
+                    <span className="tabular shrink-0">{formatBRL(a.balance_cents)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma conta nos relatórios.{" "}
+            <Link href="/anuncios/contas" className="text-primary hover:underline">
+              Ativar contas
+            </Link>
+          </p>
+        )}
       </Panel>
     ) : null,
     financeiro: o.finance.length ? (
@@ -355,6 +407,8 @@ export default async function InicioPage() {
 
   return (
     <PageBody className="grid gap-6 pt-6">
+      {/* Os números acompanham o que acontece no sistema: a cada minuto, ao voltar para a aba e quando chega mensagem. */}
+      <LiveRefresh intervalMs={60_000} realtime={Boolean(user.permissions["inbox.read"])} />
       <LiveClock firstName={firstName} serverNow={serverNow} />
       <div className="flex flex-wrap gap-2">
         {user.permissions["tasks.create"] && lookups && (
