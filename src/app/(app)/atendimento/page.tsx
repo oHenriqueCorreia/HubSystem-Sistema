@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { after } from "next/server";
+import { refreshAvatars } from "@/lib/inbox-avatars";
 import { ScrollMemory } from "@/components/app/scroll-memory";
 import { Check, CheckCheck, History, MessagesSquare, Search, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
@@ -61,9 +63,15 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
     listQuickReplies(),
   ]);
   const selectedLead = selected?.lead ?? null;
-  const clients = selected ? await listClientOptions() : [];
-  const groupCount = filters.status === "grupos" ? await countGroups(filters.numero) : 0;
-  const [leadDeals, leadWork, cadences] = selectedLead ? await Promise.all([listLeadDeals(selectedLead.id), getLeadWork(selectedLead.id), listCadences()]) : [[], null, []];
+  // Tudo o que depende da conversa aberta vem junto, em paralelo.
+  const [clients, groupCount, [leadDeals, leadWork, cadences]] = await Promise.all([
+    selected ? listClientOptions() : Promise.resolve([]),
+    filters.status === "grupos" ? countGroups(filters.numero) : Promise.resolve(0),
+    selectedLead ? Promise.all([listLeadDeals(selectedLead.id), getLeadWork(selectedLead.id), listCadences()]) : Promise.resolve([[], null, []] as const),
+  ]);
+  // Fotos e nomes de grupo: atualizados depois que a tela já abriu, sem atrasar.
+  const visibleIds = [...list.items.map((c) => c.id), ...(selected ? [selected.id] : [])];
+  after(() => refreshAvatars(visibleIds).catch((e) => console.error("[atendimento] fotos", (e as Error).message)));
   const channel = selected ? setup.numbers.find((n) => n.id === selected.number_id) : undefined;
   const names = Object.fromEntries(lookups.owners.map((o) => [o.id, o.full_name || o.email]));
   const href = (patch: Record<string, string | undefined>) => {
@@ -182,7 +190,7 @@ export default async function AtendimentoPage({ searchParams }: { searchParams: 
                   <li key={c.id}>
                     <SelectRow id={c.id} name={name}>
                     <Link href={href({ conversa: c.id })} aria-current={selected?.id === c.id ? "true" : undefined} className={cn("flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent", selected?.id === c.id && "bg-accent")}>
-                      <ChatAvatar name={c.contact_name} seed={c.contact_e164 ?? c.group_jid ?? c.id} group={group} className="size-12 text-base" />
+                      <ChatAvatar name={c.contact_name} seed={c.contact_e164 ?? c.group_jid ?? c.id} group={group} src={c.avatar_url} className="size-12 text-base" />
                       <span className="grid min-w-0 flex-1 gap-0.5 border-b pb-2.5">
                         <span className="flex items-baseline justify-between gap-2">
                           <span className="truncate font-medium">{name}</span>

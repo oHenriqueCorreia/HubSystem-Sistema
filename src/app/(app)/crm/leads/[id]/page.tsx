@@ -28,6 +28,8 @@ import { LgpdMenu } from "@/features/crm/components/lgpd-menu";
 import { Attachments } from "@/features/clients/components/attachments";
 import Link from "next/link";
 import { BriefcaseBusiness } from "lucide-react";
+import { leadMapsUrl } from "@/domain/crm/maps";
+import { LeadQuickActions } from "@/features/crm/components/lead-quick-actions";
 
 export async function generateMetadata({ params }: PageProps<"/crm/leads/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -48,8 +50,8 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
     listServices(),
     listAttachments("lead", id),
   ]);
-  const conversations = user.permissions["inbox.read"] ? await listLeadConversations(id) : [];
   if (!data) notFound();
+  const conversations = user.permissions["inbox.read"] ? await listLeadConversations(id) : [];
   const { lead, deals } = data;
 
   const canEdit = canOnRecord(user.permissions, "crm.leads.update", lead.owner_id, user.id);
@@ -112,6 +114,24 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
         }
       />
       <PageBody>
+        <LeadQuickActions
+          lead={{ id: lead.id, name: lead.name }}
+          mapsUrl={leadMapsUrl(lead)}
+          rating={lead.gmb_rating}
+          reviews={lead.gmb_reviews_count}
+          phone={lead.phone_e164 ?? lead.whatsapp_e164}
+          website={lead.website}
+          conversationId={conversations[0]?.id ?? null}
+          unread={conversations[0]?.unread_count ?? 0}
+          owners={lookups.owners}
+          meId={user.id}
+          perms={{
+            createTask: Boolean(user.permissions["tasks.create"]),
+            assignTask: Boolean(user.permissions["tasks.create"] && user.permissions["tasks.create"] !== "own"),
+            manageCalendar: Boolean(user.permissions["calendar.manage"]),
+            assignCalendar: Boolean(user.permissions["calendar.manage"] && user.permissions["calendar.manage"] !== "own"),
+          }}
+        />
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="grid content-start gap-6">
             <NextActionPanel leadId={lead.id} at={lead.next_contact_at} canEdit={canEdit} />
@@ -201,7 +221,7 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
                   </p>
                 )}
                 {lead.gmb_url && (
-                  <a href={lead.gmb_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                  <a href={leadMapsUrl(lead)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
                     Abrir no Google Maps <ExternalLink className="size-3.5" aria-hidden="true" />
                   </a>
                 )}

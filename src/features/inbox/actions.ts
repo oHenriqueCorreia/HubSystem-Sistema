@@ -22,10 +22,9 @@ const WINDOW_MS = 24 * 3600_000;
 const QR_OFFLINE = "O WhatsApp por QR Code está desconectado. Reconecte o número para enviar.";
 const OUTSIDE_WINDOW = "Passaram mais de 24 horas desde a última mensagem do cliente. Envie um modelo aprovado para retomar a conversa.";
 
-const done = (conversationId?: string) => {
-  revalidatePath("/atendimento");
-  if (conversationId) revalidatePath(`/atendimento?conversa=${conversationId}`);
-};
+// A resposta da ação já traz a tela atualizada (uma ida ao servidor só).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const done = (_conversationId?: string) => revalidatePath("/atendimento");
 
 // --- Conexão do número (Cloud API) ---------------------------------------------------
 
@@ -118,10 +117,15 @@ const storedWamid = (conv: Pick<ConvRow, "number_id" | "group_jid">, wamid: stri
 
 async function loadConversation(id: string) {
   const supabase = await createClient();
-  const conv = (await supabase.from("conversations").select("id, number_id, contact_e164, group_jid, last_inbound_at, lead_id, organization_id, first_response_at").eq("id", id).maybeSingle()).data as ConvRow | null;
-  if (!conv) return null;
-  const { data: lead } = conv.lead_id ? await supabase.from("leads").select("contact_opt_out_at").eq("id", conv.lead_id).maybeSingle() : { data: null };
-  return { conv, optOut: Boolean(lead?.contact_opt_out_at) };
+  // Conversa e pedido de saída do lead numa consulta só.
+  const { data } = await supabase
+    .from("conversations")
+    .select("id, number_id, contact_e164, group_jid, last_inbound_at, lead_id, organization_id, first_response_at, lead:leads(contact_opt_out_at)")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  const lead = (Array.isArray(data.lead) ? data.lead[0] : data.lead) as { contact_opt_out_at: string | null } | null;
+  return { conv: data as unknown as ConvRow, optOut: Boolean(lead?.contact_opt_out_at) };
 }
 
 type OutgoingFile = { media_id: string; media_mime: string; media_name: string };
@@ -146,20 +150,22 @@ async function recordOutgoing(conv: ConvRow, clientRef: string, wamid: string | 
   if (insertError?.code === "23505" && wamid) await admin.from("messages").update({ client_ref: clientRef, author_id: authorId, reply_to_wamid: replyToWamid ?? null, ...file }).eq("wamid", wamid);
   if (!error) {
     const now = new Date().toISOString();
-    await admin
-      .from("conversations")
-      .update({ last_message_at: now, waiting_reply: false, unread_count: 0, ...(conv.first_response_at ? {} : { first_response_at: now }) })
-      .eq("id", conv.id);
-    if (conv.lead_id) {
-      await admin.from("activities").insert({
-        organization_id: conv.organization_id,
-        lead_id: conv.lead_id,
-        type: "whatsapp",
-        content: `Mensagem enviada: ${(body || file?.media_name || "arquivo").slice(0, 300)}`,
-        metadata: { conversation_id: conv.id, origem: "manual" },
-        created_by: authorId,
-      });
-    }
+    await Promise.all([
+      admin
+        .from("conversations")
+        .update({ last_message_at: now, waiting_reply: false, unread_count: 0, ...(conv.first_response_at ? {} : { first_response_at: now }) })
+        .eq("id", conv.id),
+      conv.lead_id
+        ? admin.from("activities").insert({
+            organization_id: conv.organization_id,
+            lead_id: conv.lead_id,
+            type: "whatsapp",
+            content: `Mensagem enviada: ${(body || file?.media_name || "arquivo").slice(0, 300)}`,
+            metadata: { conversation_id: conv.id, origem: "manual" },
+            created_by: authorId,
+          })
+        : Promise.resolve(),
+    ]);
   }
 }
 
@@ -175,19 +181,24 @@ async function channelBlock(conv: ConvRow) {
 const sendSchema = z.object({ conversationId: z.uuid(), clientRef: z.uuid(), body: z.string().trim().min(1, "Escreva a mensagem.").max(4096), replyToId: z.uuid().nullable().optional() });
 
 export const sendWhatsAppMessage = defineAction({ schema: sendSchema, permission: "inbox.reply" }, async (input, { user }) => {
-  if (!(await withinRateLimit(`wa-send:${user.id}`, 60, 60))) return fail("business_rule", RATE_LIMIT_MESSAGE);
-  const loaded = await loadConversation(input.conversationId);
+  const admin = createAdminClient();
+  // Tudo o que não depende de nada vai junto: limite, conversa, clique repetido e mensagem citada.
+  const [allowed, loaded, { data: dup }, { data: quotedRow }] = await Promise.all([
+    withinRateLimit(`wa-send:${user.id}`, 60, 60),
+    loadConversation(input.conversationId),
+    admin.from("messages").select("id").eq("client_ref", input.clientRef).maybeSingle(),
+    input.replyToId ? admin.from("messages").select("wamid, direction, sender_jid, conversation_id").eq("id", input.replyToId).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  if (!allowed) return fail("business_rule", RATE_LIMIT_MESSAGE);
   if (!loaded) return fail("not_found", "Conversa não encontrada.");
   const { conv, optOut } = loaded;
   if (optOut) return fail("business_rule", "Este contato pediu para não receber mensagens. O envio está bloqueado.");
+  if (dup) return ok(null); // clique repetido: já enviado
   const blocked = await channelBlock(conv);
   if (blocked) return fail("business_rule", blocked);
-  const admin = createAdminClient();
-  const { data: dup } = await admin.from("messages").select("id").eq("client_ref", input.clientRef).maybeSingle();
-  if (dup) return ok(null); // clique repetido: já enviado
   try {
     // Citação: só de mensagem desta mesma conversa, que já tenha id no WhatsApp.
-    const { data: quoted } = input.replyToId ? await admin.from("messages").select("wamid, direction, sender_jid").eq("id", input.replyToId).eq("conversation_id", conv.id).maybeSingle() : { data: null };
+    const quoted = quotedRow && quotedRow.conversation_id === conv.id ? quotedRow : null;
     const replyTo = quoted?.wamid ? { wamid: unscopedWamid(quoted.wamid as string), fromMe: quoted.direction === "saida", participant: quoted.sender_jid as string | null } : null;
     const wamid = await sendText(conv.number_id, addressOf(conv), input.body, replyTo);
     await recordOutgoing(conv, input.clientRef, storedWamid(conv, wamid), "text", input.body, user.id, undefined, undefined, quoted?.wamid as string | undefined);

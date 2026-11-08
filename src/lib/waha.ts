@@ -120,17 +120,29 @@ export async function wahaDeleteSession(conn: WahaConn) {
 }
 
 /** Endereço de envio do contato: o WhatsApp pode registrar o número com ou sem o 9º dígito. Grupo já é o endereço. */
+// Endereço já descoberto de cada número: o mesmo contato não é consultado de novo a cada mensagem.
+const chatIds = new Map<string, { id: string; at: number }>();
+const CHAT_ID_TTL = 12 * 3600_000;
+
 export async function wahaChatId(conn: WahaConn, e164: string) {
   if (e164.endsWith("@g.us")) return e164;
-  let answered = false;
-  for (const variant of brPhoneVariants(e164)) {
-    const digits = variant.replace(/\D/g, "");
-    const r = await call<{ numberExists?: boolean; chatId?: string }>(conn, `/api/contacts/check-exists?phone=${digits}&session=${conn.session}`, { timeoutMs: 5000 }).catch(() => null);
-    if (r) answered = true;
-    if (r?.numberExists) return r.chatId || `${digits}@c.us`;
+  const key = `${conn.session}|${e164}`;
+  const cached = chatIds.get(key);
+  if (cached && Date.now() - cached.at < CHAT_ID_TTL) return cached.id;
+  // As variantes (com e sem o 9º dígito) são conferidas ao mesmo tempo; vale a primeira da lista que existe.
+  const variants = brPhoneVariants(e164).map((v) => v.replace(/\D/g, ""));
+  const answers = await Promise.all(
+    variants.map((digits) => call<{ numberExists?: boolean; chatId?: string }>(conn, `/api/contacts/check-exists?phone=${digits}&session=${conn.session}`, { timeoutMs: 5000 }).catch(() => null)),
+  );
+  const hit = answers.findIndex((r) => r?.numberExists);
+  if (hit >= 0) {
+    const id = answers[hit]!.chatId || `${variants[hit]}@c.us`;
+    if (chatIds.size > 5000) chatIds.clear();
+    chatIds.set(key, { id, at: Date.now() });
+    return id;
   }
   // Sem resposta é o servidor fora do ar, não um número sem WhatsApp.
-  throw Object.assign(new Error("waha_numero"), { detail: answered ? "Este número não tem WhatsApp." : "Não foi possível falar com o servidor do WhatsApp. Confira se ele está ligado." });
+  throw Object.assign(new Error("waha_numero"), { detail: answers.some(Boolean) ? "Este número não tem WhatsApp." : "Não foi possível falar com o servidor do WhatsApp. Confira se ele está ligado." });
 }
 
 export async function wahaSendText(conn: WahaConn, chatId: string, text: string, replyTo?: { wamid: string; fromMe: boolean; participant?: string | null } | null) {
@@ -181,4 +193,11 @@ export function validWahaSignature(rawBody: string, header: string | null, secre
   const expected = Buffer.from(createHmac("sha512", secret).update(rawBody, "utf8").digest("hex"));
   const got = Buffer.from(header);
   return expected.length === got.length && timingSafeEqual(expected, got);
+}
+
+/** Foto de perfil de contato ou grupo (link assinado do WhatsApp, que expira). null = sem foto ou privada. */
+export async function wahaProfilePicture(conn: WahaConn, jid: string) {
+  const r = await call<{ profilePictureURL?: string | null }>(conn, `/api/contacts/profile-picture?contactId=${encodeURIComponent(jid)}&session=${encodeURIComponent(conn.session)}`, { timeoutMs: 8000 });
+  const url = r.profilePictureURL ?? null;
+  return url && url.startsWith("https://") && url.length <= 2000 ? url : null;
 }

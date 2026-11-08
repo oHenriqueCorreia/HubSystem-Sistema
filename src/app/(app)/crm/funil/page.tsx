@@ -90,7 +90,20 @@ export default async function FunilPage({ searchParams }: PageProps<"/crm/funil"
             }
           />
         ) : (
-          <Board key={pipeline.id} pipeline={pipeline} cards={cards} lookups={lookups} canMove={Boolean(user.permissions["crm.pipeline.move"])} />
+          <Board
+            key={pipeline.id}
+            pipeline={pipeline}
+            cards={cards}
+            lookups={lookups}
+            canMove={Boolean(user.permissions["crm.pipeline.move"])}
+            work={{
+              meId: user.id,
+              canTask: Boolean(user.permissions["tasks.create"]),
+              assignTask: Boolean(user.permissions["tasks.create"] && user.permissions["tasks.create"] !== "own"),
+              canSchedule: Boolean(user.permissions["calendar.manage"]),
+              assignCalendar: Boolean(user.permissions["calendar.manage"] && user.permissions["calendar.manage"] !== "own"),
+            }}
+          />
         )}
       </PageBody>
     </>

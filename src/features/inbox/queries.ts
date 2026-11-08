@@ -10,6 +10,7 @@ export type ConversationListItem = {
   contact_e164: string | null;
   group_jid: string | null;
   contact_name: string;
+  avatar_url: string | null;
   status: "aberta" | "encerrada";
   waiting_reply: boolean;
   unread_count: number;
@@ -35,7 +36,7 @@ export async function visibleNumberIds(supabase: Awaited<ReturnType<typeof creat
 /** Conversas paginadas (mais recentes primeiro), nunca todas de uma vez. */
 export async function listConversations(f: InboxFilters, userId: string, page = 0) {
   const supabase = await createClient();
-  const cols = `id, number_id, kind, contact_e164, group_jid, contact_name, status, waiting_reply, unread_count, last_message_at, last_inbound_at, assignee_id,
+  const cols = `id, number_id, kind, contact_e164, group_jid, contact_name, avatar_url, status, waiting_reply, unread_count, last_message_at, last_inbound_at, assignee_id,
     lead:leads(id, name), conversation_tags(tag:tags(id, name, color))${f.etiqueta ? ", tag_filter:conversation_tags!inner(tag_id)" : ""}`;
   let q = supabase.from("conversations").select(cols, { count: "exact" }).in("number_id", await visibleNumberIds(supabase));
   const status = f.status ?? "abertas";
@@ -75,18 +76,20 @@ export async function listConversations(f: InboxFilters, userId: string, page = 
 
 export async function getConversation(id: string) {
   const supabase = await createClient();
-  const [conv, msgs] = await Promise.all([
+  const [conv, msgs, visible, origin] = await Promise.all([
     supabase
       .from("conversations")
-      .select("id, number_id, kind, contact_e164, group_jid, client_id, excluded_at, contact_name, status, assignee_id, last_inbound_at, outcome, lead:leads(id, name, company_name, email, notes, next_contact_at, contact_opt_out_at, whatsapp_consent_at, owner_id), conversation_tags(tag_id)")
+      .select("id, number_id, kind, contact_e164, group_jid, client_id, excluded_at, contact_name, avatar_url, status, assignee_id, last_inbound_at, outcome, lead:leads(id, name, company_name, email, notes, next_contact_at, contact_opt_out_at, whatsapp_consent_at, owner_id), conversation_tags(tag_id)")
       .eq("id", id)
       .maybeSingle(),
     // Últimas mensagens; as anteriores carregam sob demanda na própria conversa.
     supabase.from("messages").select(MESSAGE_COLUMNS).eq("conversation_id", id).order("created_at", { ascending: false }).limit(MESSAGE_PAGE),
+    visibleNumberIds(supabase),
+    getConversationOrigin(id),
   ]);
   if (conv.error) throw conv.error;
   if (!conv.data) return null;
-  if (conv.data.excluded_at || !(await visibleNumberIds(supabase)).includes(conv.data.number_id as string)) return null;
+  if (conv.data.excluded_at || !visible.includes(conv.data.number_id as string)) return null;
   const lead = Array.isArray(conv.data.lead) ? conv.data.lead[0] : conv.data.lead;
   return {
     ...conv.data,
@@ -94,7 +97,7 @@ export async function getConversation(id: string) {
     tagIds: ((conv.data.conversation_tags as { tag_id: string }[] | null) ?? []).map((t) => t.tag_id),
     messages: ((msgs.data ?? []) as unknown as Message[]).reverse(),
     hasOlder: (msgs.data ?? []).length === MESSAGE_PAGE,
-    origin: await getConversationOrigin(id),
+    origin,
   };
 }
 

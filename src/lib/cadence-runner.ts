@@ -82,7 +82,19 @@ async function finish(d: Due, status: "enviado" | "executado" | "bloqueado" | "e
 
 async function sendWhatsApp(d: Due) {
   const admin = createAdminClient();
-  const { data: number } = await admin.from("whatsapp_numbers").select("id, provider").eq("organization_id", d.organization_id).eq("status", "ativo").order("created_at").limit(1).maybeSingle();
+  const { data: numbers } = await admin.from("whatsapp_numbers").select("id, provider").eq("organization_id", d.organization_id).eq("status", "ativo").order("created_at");
+  // Prefere o número em que o lead já conversa: a mensagem cai na mesma conversa do Atendimento.
+  const { data: talking } = numbers?.length
+    ? await admin
+        .from("conversations")
+        .select("number_id")
+        .in("number_id", numbers.map((n) => n.id))
+        .in("contact_e164", brPhoneVariants(d.lead_phone!))
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+  const number = numbers?.find((n) => n.id === talking?.number_id) ?? numbers?.[0] ?? null;
   if (!number) throw Object.assign(new Error("numero"), { reason: "Nenhum número de WhatsApp conectado" });
   const qr = number.provider === "waha";
   if (!qr && !whatsappConfigured()) throw Object.assign(new Error("config"), { reason: "WhatsApp não configurado no servidor" });
@@ -101,7 +113,7 @@ async function sendWhatsApp(d: Due) {
   const params = Array.from({ length: count }, (_, i) => values[i] ?? d.lead_name);
 
   const phone = d.lead_phone!;
-  const { data: existing } = await admin.from("conversations").select("id").eq("number_id", number.id).in("contact_e164", brPhoneVariants(phone)).limit(1).maybeSingle();
+  const { data: existing } = await admin.from("conversations").select("id, lead_id, excluded_at").eq("number_id", number.id).in("contact_e164", brPhoneVariants(phone)).limit(1).maybeSingle();
   const conversationId =
     existing?.id ??
     (
@@ -126,7 +138,25 @@ async function sendWhatsApp(d: Due) {
     body: tpl ? body.replace(/\{\{(\d+)\}\}/g, (_, n: string) => params[Number(n) - 1] ?? "") || tpl.name : text,
     status: "enviada",
   });
-  await admin.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conversationId);
+  await Promise.all([
+    admin
+      .from("conversations")
+      .update({
+        last_message_at: new Date().toISOString(),
+        waiting_reply: false,
+        // A conversa passa a ser do lead e volta para a lista, se tinha sido excluída.
+        ...(existing && !existing.lead_id ? { lead_id: d.lead_id } : {}),
+        ...(existing?.excluded_at ? { excluded_at: null } : {}),
+      })
+      .eq("id", conversationId),
+    admin.from("activities").insert({
+      organization_id: d.organization_id,
+      lead_id: d.lead_id,
+      type: "whatsapp",
+      content: `Cadência: mensagem enviada no WhatsApp${tpl ? ` (modelo ${tpl.name})` : ""}.`,
+      metadata: { conversation_id: conversationId, origem: "cadencia", task_id: d.task_id },
+    }),
+  ]);
 }
 
 /** Processa as etapas automáticas vencidas (todas as organizações ou uma só). */

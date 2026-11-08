@@ -165,7 +165,7 @@ export const moveDeal = defineAction({ schema: moveDealSchema, permission: "crm.
       p_lost_note: input.lostNote ?? null,
     }),
   );
-  revalidatePath("/crm/funil");
+  // O quadro já mostra a mudança na hora; refazer o funil inteiro aqui só deixaria o arraste pesado.
   revalidatePath("/crm/leads");
   return ok(null, "Negócio movido.");
 });

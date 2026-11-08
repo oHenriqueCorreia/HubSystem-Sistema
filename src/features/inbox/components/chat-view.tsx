@@ -38,6 +38,7 @@ type Conversation = {
   contact_e164: string | null;
   group_jid: string | null;
   client_id: string | null;
+  avatar_url?: string | null;
   hasOlder: boolean;
   contact_name: string;
   status: string;
@@ -50,8 +51,27 @@ type Conversation = {
 };
 type Pending = { clientRef: string; body: string; at: string; failed: boolean; replyToId: string | null };
 
-export function ChatAvatar({ name, seed, className, group = false }: { name: string; seed: string; className?: string; group?: boolean }) {
+export function ChatAvatar({ name, seed, className, group = false, src }: { name: string; seed: string; className?: string; group?: boolean; src?: string | null }) {
   const letters = chatInitials(name);
+  const [broken, setBroken] = useState<string | null>(null);
+  // Foto do WhatsApp; se o link expirou ou falhou, volta para as iniciais.
+  if (src && broken !== src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        aria-hidden="true"
+        referrerPolicy="no-referrer"
+        loading="lazy"
+        decoding="async"
+        width={96}
+        height={96}
+        onError={() => setBroken(src)}
+        className={cn("shrink-0 rounded-full bg-muted object-cover", className ?? "size-10 text-sm")}
+      />
+    );
+  }
   if (group) {
     return (
       <span className={cn("grid shrink-0 place-items-center rounded-full font-semibold text-white select-none", className ?? "size-10 text-sm")} style={{ background: avatarColor(seed) }} aria-hidden="true">
@@ -330,8 +350,10 @@ export function ChatView({
     if (!res?.ok) {
       setPending((list) => list.map((x) => (x.clientRef === p.clientRef ? { ...x, failed: true } : x)));
       toast.error(res?.message ?? "Sem conexão. Toque em tentar de novo.");
+      // Sem resposta do servidor, a tela não veio atualizada junto: busca de novo.
+      if (!res) router.refresh();
     }
-    router.refresh();
+    // Com resposta, a própria ação já devolve a tela atualizada (sem segunda ida ao servidor).
   }
 
   async function sendFile(blob: Blob, name: string, mime: string, caption: string) {
@@ -415,7 +437,7 @@ export function ChatView({
           </Link>
         </Button>
         <button type="button" onClick={() => setInfo(true)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-lg text-left" aria-label={`Dados de ${display}`}>
-          <ChatAvatar name={conversation.contact_name} seed={seed} group={group} />
+          <ChatAvatar name={conversation.contact_name} seed={seed} group={group} src={conversation.avatar_url} />
           <span className="grid min-w-0">
             <span className="truncate font-semibold">{display}</span>
             <span className="truncate text-xs text-muted-foreground">
@@ -798,7 +820,7 @@ export function ChatView({
             <SheetDescription className="sr-only">Responsável, etiquetas, cliente e lead da conversa.</SheetDescription>
           </SheetHeader>
           <div className="grid justify-items-center gap-2 px-4 pb-2 text-center">
-            <ChatAvatar name={conversation.contact_name} seed={seed} group={group} className="size-24 text-3xl" />
+            <ChatAvatar name={conversation.contact_name} seed={seed} group={group} src={conversation.avatar_url} className="size-24 text-3xl" />
             <p className="text-lg font-semibold break-words">{display}</p>
             <p className="text-sm text-muted-foreground tabular">{group ? "Grupo do WhatsApp" : formatPhone(conversation.contact_e164 ?? "")}</p>
           </div>

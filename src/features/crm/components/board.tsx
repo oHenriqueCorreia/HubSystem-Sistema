@@ -19,7 +19,10 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Clock, ExternalLink, GripVertical, MapPin, MoreHorizontal } from "lucide-react";
+import { CalendarPlus, Clock, ExternalLink, GripVertical, ListPlus, MapPin, MessageCircle, MoreHorizontal } from "lucide-react";
+import { TaskFormDialog } from "@/features/tasks/components/task-form-dialog";
+import { EventDialog } from "@/features/tasks/components/event-dialog";
+import { todayLocal } from "@/domain/shared/dates";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -58,8 +61,14 @@ function group(cards: BoardCard[], stages: Stage[]): Columns {
 // Devagar o bastante para soltar na etapa vizinha: o padrão atravessa o quadro inteiro em menos de um segundo.
 const AUTO_SCROLL = { acceleration: 4, interval: 12, threshold: { x: 0.15, y: 0.15 } };
 
-export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipeline; cards: BoardCard[]; lookups: CrmLookups; canMove: boolean }) {
+/** O que a pessoa pode criar a partir do cartão: tarefa (cai em Tarefas) e compromisso (cai na Agenda). */
+export type BoardWork = { meId: string; canTask: boolean; assignTask: boolean; canSchedule: boolean; assignCalendar: boolean };
+type WorkKind = "tarefa" | "agenda";
+
+export function Board({ pipeline, cards, lookups, canMove, work }: { pipeline: Pipeline; cards: BoardCard[]; lookups: CrmLookups; canMove: boolean; work?: BoardWork }) {
   const router = useRouter();
+  const [workFor, setWorkFor] = useState<{ kind: WorkKind; lead: { id: string; name: string } } | null>(null);
+  const onWork = useCallback((card: BoardCard, kind: WorkKind) => setWorkFor({ kind, lead: { id: card.lead.id, name: card.lead.name } }), []);
   const [columns, setColumns] = useState<Columns>(() => group(cards, pipeline.stages));
   const [activeId, setActiveId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Columns | null>(null);
@@ -267,6 +276,8 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
                       ownerName={card.owner_id ? ownerById.get(card.owner_id) : undefined}
                       canMove={canMove}
                       onMove={onMove}
+                      onWork={work && (work.canTask || work.canSchedule) ? onWork : undefined}
+                      work={work}
                       now={now}
                     />
                   ))}
@@ -289,6 +300,29 @@ export function Board({ pipeline, cards, lookups, canMove }: { pipeline: Pipelin
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* Tarefa cai em Tarefas; compromisso cai na Agenda (e no Google Agenda, se conectado). */}
+      {work && workFor?.kind === "tarefa" && (
+        <TaskFormDialog
+          key={`tarefa-${workFor.lead.id}`}
+          owners={lookups.owners}
+          canAssign={work.assignTask}
+          defaults={{ lead: workFor.lead }}
+          open
+          onOpenChange={(v) => !v && setWorkFor(null)}
+        />
+      )}
+      {work && workFor?.kind === "agenda" && (
+        <EventDialog
+          key={`agenda-${workFor.lead.id}`}
+          open
+          onOpenChange={(v) => !v && setWorkFor(null)}
+          draft={{ date: todayLocal(), time: "10:00", lead: workFor.lead }}
+          owners={lookups.owners}
+          canAssign={work.assignCalendar}
+          meId={work.meId}
+        />
+      )}
 
       <Dialog
         open={Boolean(lost)}
@@ -389,6 +423,8 @@ function SortableCard({
   ownerName,
   canMove,
   onMove,
+  onWork,
+  work,
   now,
 }: {
   card: BoardCard;
@@ -397,60 +433,83 @@ function SortableCard({
   ownerName?: string;
   canMove: boolean;
   onMove: (card: BoardCard, stageId: string) => void;
+  onWork?: (card: BoardCard, kind: WorkKind) => void;
+  work?: BoardWork;
   now: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id, disabled: !canMove, transition: DRAG_MOVE });
   const leadName = card.lead.name;
-  // Alça e menu fixos: assim o cartão não é redesenhado a cada pequeno movimento do arraste.
+  // O cartão inteiro arrasta (como nas Tarefas); o ícone só indica que dá para arrastar.
   const handle = useMemo(
     () =>
       canMove ? (
-        <button
-          type="button"
-          className="-ml-1 cursor-grab touch-none rounded p-1 text-muted-foreground select-none [-webkit-touch-callout:none] hover:bg-muted active:cursor-grabbing pointer-coarse:p-2.5"
-          aria-label={`Arrastar ${leadName}`}
-          onContextMenu={(e) => e.preventDefault()}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-4" aria-hidden="true" />
-        </button>
+        <span className="-ml-1 rounded p-1 text-muted-foreground" aria-hidden="true">
+          <GripVertical className="size-4" />
+        </span>
       ) : null,
-    [canMove, leadName, attributes, listeners],
+    [canMove],
   );
   const menu = useMemo(
     () =>
-      canMove ? (
+      canMove || onWork ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-xs" aria-label={`Mover ${card.lead.name} para outra etapa`}>
+                <Button variant="ghost" size="icon-xs" aria-label={`Ações de ${card.lead.name}`}>
                   <MoreHorizontal aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Mover para…</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {stages.map((s) => (
-                  <DropdownMenuItem key={s.id} disabled={s.id === card.stage_id} onSelect={() => onMove(card, s.id)}>
-                    <span className={cn("size-2 rounded-full", STAGE_DOT[s.color])} aria-hidden="true" />
-                    {s.name}
+                {onWork && work?.canTask && (
+                  <DropdownMenuItem onSelect={() => onWork(card, "tarefa")}>
+                    <ListPlus aria-hidden="true" /> Criar tarefa
                   </DropdownMenuItem>
-                ))}
+                )}
+                {onWork && work?.canSchedule && (
+                  <DropdownMenuItem onSelect={() => onWork(card, "agenda")}>
+                    <CalendarPlus aria-hidden="true" /> Agendar compromisso
+                  </DropdownMenuItem>
+                )}
                 {(card.lead.whatsapp_e164 || card.lead.phone_e164) && (
+                  <DropdownMenuItem asChild>
+                    <Link href={`/atendimento?situacao=todas&q=${encodeURIComponent((card.lead.whatsapp_e164 ?? card.lead.phone_e164 ?? "").replace(/\D/g, "").slice(-8))}`}>
+                      <MessageCircle aria-hidden="true" /> Abrir conversa
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {canMove && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href={`/atendimento?situacao=todas&q=${encodeURIComponent((card.lead.whatsapp_e164 ?? card.lead.phone_e164 ?? "").replace(/\D/g, "").slice(-8))}`}>Abrir conversa</Link>
-                    </DropdownMenuItem>
+                    <DropdownMenuLabel>Mover para…</DropdownMenuLabel>
+                    {stages.map((s) => (
+                      <DropdownMenuItem key={s.id} disabled={s.id === card.stage_id} onSelect={() => onMove(card, s.id)}>
+                        <span className={cn("size-2 rounded-full", STAGE_DOT[s.color])} aria-hidden="true" />
+                        {s.name}
+                      </DropdownMenuItem>
+                    ))}
                   </>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
       ) : null,
-    [canMove, card, stages, onMove],
+    [canMove, card, stages, onMove, onWork, work],
   );
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-30")}>
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(canMove && "cursor-grab active:cursor-grabbing pointer-coarse:select-none [-webkit-touch-callout:none]", isDragging && "opacity-30")}
+      // Segurar o dedo pega o cartão: o menu do aparelho interromperia o arraste.
+      onContextMenu={(e) => {
+        if (window.matchMedia("(pointer: coarse)").matches) e.preventDefault();
+      }}
+      {...attributes}
+      {...listeners}
+      // Teclado: só arrasta com o foco no próprio cartão (Enter num link dentro dele abre o link).
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget) listeners?.onKeyDown?.(e);
+      }}
+      aria-label={canMove ? `${leadName}: arraste para mudar de etapa` : undefined}
+    >
       <CardView card={card} stage={stage} ownerName={ownerName} now={now} handle={handle} menu={menu} />
     </div>
   );
