@@ -75,7 +75,7 @@ async function request<T>(accessToken: string, path: string, init: RequestInit |
 }
 
 async function call<T>(accessToken: string, path: string, init?: RequestInit): Promise<T> {
-  const customer = path.match(/^\/customers\/(\d+)\//)?.[1];
+  const customer = path.match(/^\/customers\/(\d+)[/:]/)?.[1];
   const manager = mcc();
   // Sem conta no caminho (listar contas) ou sem MCC configurada: um jeito só.
   if (!customer || !manager) return request<T>(accessToken, path, init, customer ? manager : null);
@@ -454,4 +454,35 @@ export async function googleAdsAddNegative(accessToken: string, customerId: stri
   await mutate(accessToken, customerId, "campaignCriteria", [
     { create: { campaign: `customers/${customerId}/campaigns/${campaignId}`, negative: true, keyword: { text, matchType } } },
   ]);
+}
+
+// ----------------------------------------------------------------------------
+// Planejador de palavras-chave (exige acesso Básico da Google Ads API).
+
+export type KeywordIdea = { text: string; avgMonthlySearches: number | null; competition: string | null; lowBidCents: number | null; highBidCents: number | null };
+
+/** Ideias a partir de palavras e/ou de um site, para o Brasil em português. */
+export async function googleAdsKeywordIdeas(accessToken: string, customerId: string, seed: { keywords: string[]; url: string | null }): Promise<KeywordIdea[]> {
+  const body: Record<string, unknown> = {
+    language: "languageConstants/1014",
+    geoTargetConstants: ["geoTargetConstants/2076"],
+    keywordPlanNetwork: "GOOGLE_SEARCH",
+    includeAdultKeywords: false,
+    pageSize: 200,
+  };
+  if (seed.keywords.length && seed.url) body.keywordAndUrlSeed = { keywords: seed.keywords, url: seed.url };
+  else if (seed.url) body.urlSeed = { url: seed.url };
+  else body.keywordSeed = { keywords: seed.keywords };
+  type Idea = {
+    text: string;
+    keywordIdeaMetrics?: { avgMonthlySearches?: string; competition?: string; lowTopOfPageBidMicros?: string; highTopOfPageBidMicros?: string };
+  };
+  const r = await call<{ results?: Idea[] }>(accessToken, `/customers/${customerId}:generateKeywordIdeas`, { method: "POST", body: JSON.stringify(body) });
+  return (r.results ?? []).map((i) => ({
+    text: i.text,
+    avgMonthlySearches: i.keywordIdeaMetrics?.avgMonthlySearches != null ? Number(i.keywordIdeaMetrics.avgMonthlySearches) : null,
+    competition: i.keywordIdeaMetrics?.competition ?? null,
+    lowBidCents: microsToCents(i.keywordIdeaMetrics?.lowTopOfPageBidMicros),
+    highBidCents: microsToCents(i.keywordIdeaMetrics?.highTopOfPageBidMicros),
+  }));
 }

@@ -6,7 +6,7 @@ import { defineAction } from "@/lib/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fail, ok } from "@/domain/shared/result";
-import { googleAdsAddKeyword, googleAdsAddNegative, googleAdsSetKeywordStatus } from "@/lib/ads/google-ads";
+import { googleAdsAddKeyword, googleAdsAddNegative, googleAdsKeywordIdeas, googleAdsSetKeywordStatus } from "@/lib/ads/google-ads";
 import { accessToken, getConnection } from "@/lib/ads/tokens";
 import { RATE_LIMIT_MESSAGE, withinRateLimit } from "@/lib/rate-limit";
 
@@ -91,5 +91,36 @@ export const addGoogleNegative = defineAction(
     await audit(ctx.acc.organization_id, user.id, ctx.acc.id, { negativada: input.text, correspondencia: input.matchType });
     refresh();
     return ok(null, `“${input.text}” negativada: o anúncio não aparece mais para essa pesquisa.`);
+  },
+);
+
+/** Ideias do Planejador. Sem acesso Básico, devolve o aviso de aprovação pendente. */
+export const getKeywordIdeas = defineAction(
+  {
+    schema: z
+      .object({
+        accountId: z.uuid(),
+        keywords: z.array(z.string().trim().min(1).max(80)).max(10),
+        url: z.string().trim().max(500).nullable(),
+      })
+      .refine((v) => v.keywords.length > 0 || (v.url && /^https?:\/\//.test(v.url)), { message: "Informe palavras ou um site começando com https://", path: ["keywords"] }),
+    permission: "ads.read",
+  },
+  async (input, { user }) => {
+    if (!(await withinRateLimit(`ads-ideas:${user.id}`, 30, 3600))) return fail("business_rule", RATE_LIMIT_MESSAGE);
+    const supabase = await createClient();
+    const { data: acc } = await supabase.from("ad_accounts").select("id, organization_id, external_id, provider").eq("id", input.accountId).maybeSingle();
+    if (!acc || acc.provider !== "google_ads") return fail("forbidden", "Conta não encontrada.");
+    const conn = await getConnection(acc.organization_id, "google_ads");
+    const token = conn && conn.status === "ativa" ? await accessToken(conn).catch(() => null) : null;
+    if (!token) return fail("business_rule", "A conexão com o Google expirou. Reconecte em Anúncios → Contas.");
+    try {
+      return ok({ ideas: await googleAdsKeywordIdeas(token, acc.external_id, { keywords: input.keywords, url: input.url || null }) });
+    } catch (e) {
+      const reason = (e as { reason?: string }).reason;
+      if (reason === "DEVELOPER_TOKEN_NOT_APPROVED")
+        return fail("business_rule", "O Planejador ainda não foi liberado: o Google está analisando o pedido de acesso Básico. Assim que aprovar, as ideias aparecem aqui, sem precisar mudar nada.");
+      return fail("network", "O Google não respondeu agora. Tente de novo em alguns minutos.");
+    }
   },
 );

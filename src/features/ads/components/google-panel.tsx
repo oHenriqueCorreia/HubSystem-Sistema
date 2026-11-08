@@ -13,8 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FormField } from "@/components/app/form-field";
 import { formatInt, formatMoney, formatPct } from "../format";
-import { addGoogleKeyword, addGoogleNegative, setGoogleKeywordStatus } from "../google-actions";
-import type { KeywordRow, SearchTermRow } from "@/lib/ads/google-ads";
+import { addGoogleKeyword, addGoogleNegative, getKeywordIdeas, setGoogleKeywordStatus } from "../google-actions";
+import type { KeywordIdea, KeywordRow, SearchTermRow } from "@/lib/ads/google-ads";
 
 type Match = "EXACT" | "PHRASE" | "BROAD";
 const MATCH: Record<string, string> = { EXACT: "Exata", PHRASE: "Frase", BROAD: "Ampla" };
@@ -310,7 +310,19 @@ export function SearchTermsView({ rows, accountId, canManage, currency }: { rows
 }
 
 /** Sugestões a partir das pesquisas reais: o que converte vira palavra-chave; o que só gasta, negativa. */
-export function SuggestionsView({ rows, accountId, canManage, currency }: { rows: SearchTermRow[]; accountId: string; canManage: boolean; currency: string }) {
+export function SuggestionsView({
+  rows,
+  accountId,
+  canManage,
+  currency,
+  adGroups,
+}: {
+  rows: SearchTermRow[];
+  accountId: string;
+  canManage: boolean;
+  currency: string;
+  adGroups: { id: string; name: string }[];
+}) {
   const [action, setAction] = useState<TermAction>(null);
   const fresh = rows.filter((r) => r.status === "NONE");
   const good = fresh.filter((r) => r.conversions > 0 || r.clicks >= 3).sort((a, b) => b.conversions - a.conversions || b.clicks - a.clicks).slice(0, 50);
@@ -321,9 +333,7 @@ export function SuggestionsView({ rows, accountId, canManage, currency }: { rows
   const wasted = waste.reduce((s, r) => s + r.costCents, 0);
   return (
     <div className="grid gap-8">
-      <p className="rounded-xl border bg-surface p-4 text-sm text-muted-foreground">
-        Sugestões tiradas das pesquisas reais que acionaram seus anúncios no período. O Planejador de Palavras-chave do Google (ideias e volume de buscas) exige o acesso Básico da Google Ads API; quando ele for liberado, as ideias aparecem aqui também.
-      </p>
+      <KeywordPlanner accountId={accountId} adGroups={adGroups} canManage={canManage} currency={currency} />
       <section aria-labelledby="sug-boas" className="grid gap-3">
         <div className="grid gap-1">
           <h3 id="sug-boas" className="text-base font-semibold">
@@ -354,5 +364,145 @@ export function SuggestionsView({ rows, accountId, canManage, currency }: { rows
       </section>
       <TermDialog key={action ? `${action.kind}~${action.term.adGroupId}~${action.term.term}` : "fechado"} action={action} onClose={() => setAction(null)} accountId={accountId} />
     </div>
+  );
+}
+
+const COMPETITION: Record<string, string> = { LOW: "Baixa", MEDIUM: "Média", HIGH: "Alta" };
+
+/** Planejador de palavras-chave do Google: ideias com volume de buscas e lance sugerido. */
+export function KeywordPlanner({ accountId, adGroups, canManage, currency }: { accountId: string; adGroups: { id: string; name: string }[]; canManage: boolean; currency: string }) {
+  const [seeds, setSeeds] = useState("");
+  const [url, setUrl] = useState("");
+  const [ideas, setIdeas] = useState<KeywordIdea[] | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [adding, setAdding] = useState<KeywordIdea | null>(null);
+  const [group, setGroup] = useState(adGroups[0]?.id ?? "");
+  const [match, setMatch] = useState<Match>("PHRASE");
+  const [searching, startSearch] = useTransition();
+  const { pending, run } = useAction();
+  const money = (c: number | null) => (c == null ? "—" : formatMoney(c, currency));
+  const canAdd = canManage && adGroups.length > 0;
+
+  function search() {
+    setNotice(null);
+    startSearch(async () => {
+      const keywords = seeds
+        .split(/[,\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 10);
+      const res = await getKeywordIdeas({ accountId, keywords, url: url.trim() || null });
+      if (res.ok) setIdeas(res.data.ideas);
+      else {
+        setIdeas(null);
+        setNotice(res.message ?? null);
+      }
+    });
+  }
+
+  return (
+    <section aria-labelledby="planejador" className="grid gap-3 rounded-xl border bg-surface p-4 sm:p-5">
+      <div className="grid gap-1">
+        <h3 id="planejador" className="text-base font-semibold">
+          Planejador de palavras-chave
+        </h3>
+        <p className="text-sm text-muted-foreground">Ideias novas do Google, com quantas vezes cada uma é buscada por mês no Brasil.</p>
+      </div>
+      <form
+        className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          search();
+        }}
+      >
+        <FormField label="Palavras de partida" hint="Separe por vírgula. Até 10.">
+          <Input value={seeds} onChange={(e) => setSeeds(e.target.value)} placeholder="Ex.: brindes personalizados, canecas…" autoComplete="off" />
+        </FormField>
+        <FormField label="Site" optional>
+          <Input type="url" inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" autoComplete="off" spellCheck={false} />
+        </FormField>
+        <Button type="submit" disabled={searching || (!seeds.trim() && !url.trim())}>
+          {searching && <LoaderCircle className="animate-spin" aria-hidden="true" />} Buscar ideias
+        </Button>
+      </form>
+      {notice && <p className="rounded-lg bg-warning-soft p-3 text-sm text-warning">{notice}</p>}
+      {ideas && !ideas.length && <p className="text-sm text-muted-foreground">O Google não trouxe ideias para essas palavras. Tente termos mais gerais.</p>}
+      {ideas && ideas.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border">
+          <Table aria-label="Ideias de palavras-chave">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Palavra-chave</TableHead>
+                <TableHead className="text-right">Buscas por mês</TableHead>
+                <TableHead>Concorrência</TableHead>
+                <TableHead className="text-right">Lance sugerido</TableHead>
+                {canAdd && <TableHead className="text-right">Ação</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ideas.map((i) => (
+                <TableRow key={i.text}>
+                  <TableCell className="min-w-48 font-medium break-words">{i.text}</TableCell>
+                  <TableCell className="tabular text-right">{i.avgMonthlySearches != null ? formatInt(i.avgMonthlySearches) : "—"}</TableCell>
+                  <TableCell>{COMPETITION[i.competition ?? ""] ?? "—"}</TableCell>
+                  <TableCell className="tabular text-right whitespace-nowrap">
+                    {i.lowBidCents != null || i.highBidCents != null ? `${money(i.lowBidCents)} a ${money(i.highBidCents)}` : "—"}
+                  </TableCell>
+                  {canAdd && (
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" onClick={() => setAdding(i)} aria-label={`Adicionar “${i.text}”`}>
+                        <Plus aria-hidden="true" /> Adicionar
+                      </Button>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <Dialog open={Boolean(adding)} onOpenChange={(v) => !v && !pending && setAdding(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adicionar “{adding?.text}”</DialogTitle>
+            <DialogDescription>A palavra-chave entra ativa no grupo escolhido.</DialogDescription>
+          </DialogHeader>
+          <FormField label="Grupo de anúncios">
+            <Select value={group} onValueChange={setGroup}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {adGroups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Correspondência" hint={MATCH_HINT[match]}>
+            <Select value={match} onValueChange={(v) => setMatch(v as Match)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="EXACT">Exata</SelectItem>
+                <SelectItem value="PHRASE">Frase</SelectItem>
+                <SelectItem value="BROAD">Ampla</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdding(null)} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button disabled={pending || !group} onClick={() => adding && run(() => addGoogleKeyword({ accountId, adGroupId: group, text: adding.text, matchType: match }), () => setAdding(null))}>
+              {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />} Adicionar palavra-chave
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
   );
 }

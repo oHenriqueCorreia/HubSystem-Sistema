@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { requirePermission } from "@/lib/auth/dal";
+import { createClient } from "@/lib/supabase/server";
 import { cn } from "cn";
 import { EmptyState } from "@/components/app/states";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,13 @@ export default async function GooglePage({ searchParams }: PageProps<"/anuncios/
           : "O Google não respondeu agora. Tente de novo em alguns minutos.";
   }
 
+  // Grupos de anúncios sincronizados, para adicionar as ideias do Planejador.
+  let adGroups: { id: string; name: string }[] = [];
+  if (tab === "sugestoes") {
+    const { data } = await (await createClient()).from("ad_sets").select("external_id, name").eq("account_id", account.id).order("name");
+    adGroups = ((data ?? []) as { external_id: string; name: string }[]).map((g) => ({ id: g.external_id, name: g.name }));
+  }
+
   const query = (aba: string) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && k !== "aba") q.set(k, v);
@@ -104,7 +112,7 @@ export default async function GooglePage({ searchParams }: PageProps<"/anuncios/
       ) : tab === "termos" ? (
         <SearchTermsView rows={terms} accountId={account.id} canManage={canManage} currency={account.currency} />
       ) : (
-        <SuggestionsView rows={terms} accountId={account.id} canManage={canManage} currency={account.currency} />
+        <SuggestionsView rows={terms} accountId={account.id} canManage={canManage} currency={account.currency} adGroups={adGroups} />
       )}
     </>
   );
