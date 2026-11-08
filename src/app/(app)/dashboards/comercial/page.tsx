@@ -46,13 +46,14 @@ export default async function ComercialPage({ searchParams }: PageProps<"/dashbo
   const user = await requirePermission("dashboards.commercial");
   const sp = await searchParams;
   const period = resolvePeriod(sp);
-  const lookups = await getCrmLookups();
   const seeAll = user.permissions["dashboards.commercial"] !== "own";
   const owner = seeAll && typeof sp.responsavel === "string" && sp.responsavel ? sp.responsavel : seeAll ? null : user.id;
   const pipeline = typeof sp.funil === "string" && sp.funil ? sp.funil : null;
 
   const supabase = await createClient();
-  const [cur, prev] = await Promise.all([
+  // Listas de pessoas e funis carregam junto com os números (antes, esperavam).
+  const [lookups, cur, prev] = await Promise.all([
+    getCrmLookups(),
     supabase.rpc("commercial_dashboard", { p_from: period.from, p_to: period.to, p_owner: owner, p_pipeline: pipeline }),
     supabase.rpc("commercial_dashboard", { p_from: period.prevFrom, p_to: period.prevTo, p_owner: owner, p_pipeline: pipeline }),
   ]);

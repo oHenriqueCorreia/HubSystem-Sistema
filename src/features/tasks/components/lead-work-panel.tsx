@@ -119,7 +119,6 @@ export function LeadWorkPanel({
                           if (!res.ok) return void toast.error(res.message);
                           toast.success(res.message);
                           setEnrollOpen(false);
-                          router.refresh();
                         })
                       }
                     >
@@ -147,7 +146,6 @@ export function LeadWorkPanel({
                         const res = await setEnrollmentStatus({ id: e.id, leadId: lead.id, status: e.status === "ativa" ? "pausada" : "ativa" });
                         if (res.ok) {
                           toast.success(res.message);
-                          router.refresh();
                         } else toast.error(res.message);
                       })
                     }

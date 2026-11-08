@@ -88,13 +88,12 @@ export default async function DashboardsPage({ searchParams }: PageProps<"/dashb
         return { spend: rows.reduce((a, r) => a + Number(r.spend_cents), 0), conversions: Math.round(rows.reduce((a, r) => a + Number(r.conversions), 0)) };
       })()
     : Promise.resolve(null);
-  const [inboxWaiting, ads] = await Promise.all([
-    user.permissions["inbox.read"]
-      ? supabase.from("conversations").select("id", { count: "exact", head: true }).is("excluded_at", null).eq("status", "aberta").eq("waiting_reply", true)
-      : Promise.resolve({ count: null }),
-    adsPeriod,
-  ]);
-  const [commercialResult, finance, tasksOpen, tasksLate, clients, events, cadences] = await Promise.all([
+  const inboxWaitingP = user.permissions["inbox.read"]
+    ? supabase.from("conversations").select("id", { count: "exact", head: true }).is("excluded_at", null).eq("status", "aberta").eq("waiting_reply", true)
+    : Promise.resolve({ count: null });
+  // Uma rodada só: atendimento e anúncios vão junto com o resto.
+  const [[inboxWaiting, ads], commercialResult, finance, tasksOpen, tasksLate, clients, events, cadences] = await Promise.all([
+    Promise.all([inboxWaitingP, adsPeriod]),
     commercialQuery,
     financeQuery,
     user.permissions["tasks.read"] ? supabase.from("tasks").select("id", { count: "exact", head: true }).is("deleted_at", null).in("status", ["a_fazer", "em_andamento"]) : emptyCount,

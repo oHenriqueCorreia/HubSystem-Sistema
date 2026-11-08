@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowRightLeft, LoaderCircle, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,6 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 
 /** Barra que aparece ao marcar lançamentos: mover de área ou excluir vários de uma vez. */
 export function BulkBar({ rows, scope, perms, onClear }: { rows: Transaction[]; scope: FinanceScope; perms: { delete: boolean; transfer?: boolean; recurring?: boolean }; onClear: () => void }) {
-  const router = useRouter();
   const [moving, setMoving] = useState(false);
   const to: FinanceScope = scope === "empresa" ? "pessoal" : "empresa";
   const total = rows.reduce((sum, t) => sum + (t.kind === "receita" ? 1 : t.kind === "despesa" ? -1 : 0) * Number(t.status === "pago" ? (t.paid_amount_cents ?? t.amount_cents) : t.amount_cents), 0);
@@ -39,13 +37,11 @@ export function BulkBar({ rows, scope, perms, onClear }: { rows: Transaction[]; 
         label: "Desfazer",
         onClick: async () => {
           const r = await bulkRestoreTransactions({ ids: res.data.deleted });
-          if (r.ok) router.refresh();
-          else toast.error(r.message);
+          if (!r.ok) toast.error(r.message);
         },
       },
     });
     onClear();
-    router.refresh();
   }
 
   return (
@@ -85,7 +81,6 @@ export function BulkBar({ rows, scope, perms, onClear }: { rows: Transaction[]; 
 }
 
 function BulkTransferDialog({ rows, scope, canRecur, onClose, onDone }: { rows: Transaction[]; scope: FinanceScope; canRecur: boolean; onClose: () => void; onDone: () => void }) {
-  const router = useRouter();
   const to: FinanceScope = scope === "empresa" ? "pessoal" : "empresa";
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -138,7 +133,6 @@ function BulkTransferDialog({ rows, scope, canRecur, onClose, onDone }: { rows: 
         recurring: showRecurring && recurring,
       });
       if (!res.ok) return setError(res.message ?? "Não foi possível mover.");
-      router.refresh();
       if (res.data.failed.length) {
         // O que deu certo já mudou de área: fica na tela só o que precisa de atenção.
         setFailed(res.data.failed);

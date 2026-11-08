@@ -316,7 +316,6 @@ export function ContentCalendar({ month, schedules, today, hrefBase }: { month: 
 }
 
 export function SocialSetup({ accounts, connection, configured, canManage, notice }: { accounts: SocialAccount[]; connection: Connection; configured: boolean; canManage: boolean; notice?: string | null }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const healthy = connection?.status === "ativa";
   const [now] = useState(() => Date.now());
@@ -371,7 +370,6 @@ export function SocialSetup({ accounts, connection, configured, canManage, notic
                   const res = await disconnectSocial({});
                   if (res.ok) toast.success(res.message);
                   else toast.error(res.message);
-                  router.refresh();
                 }}
               />
             )}
@@ -395,7 +393,6 @@ export function SocialSetup({ accounts, connection, configured, canManage, notic
                     startTransition(async () => {
                       const res = await setSocialSelected({ id: a.id, selected });
                       if (!res.ok) toast.error(res.message);
-                      router.refresh();
                     })
                   }
                 />

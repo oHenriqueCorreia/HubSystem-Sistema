@@ -340,7 +340,6 @@ function BoardColumn({
   highlighted: boolean;
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -354,7 +353,6 @@ function BoardColumn({
     startTransition(async () => {
       const res = await moveTaskColumn({ id: column.id, position });
       if (!res.ok) toast.error(res.message);
-      router.refresh();
     });
   }
 
@@ -363,7 +361,6 @@ function BoardColumn({
       const res = await archiveTaskColumn({ id: column.id });
       if (res.ok) toast.success(res.message);
       else toast.error(res.message);
-      router.refresh();
     });
   }
 
@@ -415,7 +412,6 @@ function BoardColumn({
 }
 
 function ColumnFormDialog({ column, boardId, open: controlled, onOpenChange }: { column?: TaskColumn; boardId?: string; open?: boolean; onOpenChange?: (v: boolean) => void }) {
-  const router = useRouter();
   const [inner, setInner] = useState(false);
   const open = controlled ?? inner;
   const setOpen = onOpenChange ?? setInner;
@@ -437,7 +433,6 @@ function ColumnFormDialog({ column, boardId, open: controlled, onOpenChange }: {
       toast.success(res.message);
       setOpen(false);
       if (!column) setName("");
-      router.refresh();
     });
   }
 
@@ -512,7 +507,6 @@ function ColumnFormDialog({ column, boardId, open: controlled, onOpenChange }: {
 const ARCHIVE = "__arquivar__";
 
 function DeleteColumnDialog({ column, count, columns, onClose }: { column: TaskColumn; count: number; columns: TaskColumn[]; onClose: () => void }) {
-  const router = useRouter();
   const others = columns.filter((c) => c.id !== column.id);
   const [choice, setChoice] = useState<string>(others.find((c) => c.kind === column.kind)?.id ?? others[0]?.id ?? ARCHIVE);
   const [pending, startTransition] = useTransition();
@@ -530,7 +524,6 @@ function DeleteColumnDialog({ column, count, columns, onClose }: { column: TaskC
       }
       toast.success(res.message);
       onClose();
-      router.refresh();
     });
   }
 

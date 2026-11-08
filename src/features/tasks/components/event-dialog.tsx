@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { AlertTriangle, CalendarSearch, LoaderCircle, Mail, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -70,7 +69,6 @@ export function EventDialog({
   canAssign: boolean;
   meId: string;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [lead, setLead] = useState<LeadOption | null>(event?.lead ?? draft?.lead ?? null);
@@ -192,7 +190,6 @@ export function EventDialog({
       }
       toast.success(res.message);
       onOpenChange(false);
-      router.refresh();
     });
   });
 
@@ -528,14 +525,12 @@ export function EventDialog({
                   const res = await deleteEvent({ id: event.id });
                   if (!res.ok) return void toast.error(res.message);
                   onOpenChange(false);
-                  router.refresh();
                   toast.success("Evento excluído.", {
                     action: {
                       label: "Desfazer",
                       onClick: async () => {
                         const r = await restoreEvent({ id: event.id });
-                        if (r.ok) router.refresh();
-                        else toast.error(r.message);
+                        if (!r.ok) toast.error(r.message);
                       },
                     },
                   });

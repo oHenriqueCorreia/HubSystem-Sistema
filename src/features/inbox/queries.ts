@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { MESSAGE_COLUMNS, MESSAGE_PAGE, type Message } from "./message-columns";
 
@@ -27,9 +28,16 @@ export type InboxFilters = { q?: string; status?: "abertas" | "aguardando" | "gr
 
 const PAGE = 50;
 
+/** Números da organização, buscados uma vez por página. */
+export const myWhatsappNumbers = cache(async () => {
+  const supabase = await createClient();
+  return supabase.rpc("my_whatsapp_numbers");
+});
+
 /** Por QR Code, a conversa só aparece depois de a pessoa compilar. A API oficial não tem essa etapa. */
-export async function visibleNumberIds(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data } = await supabase.rpc("my_whatsapp_numbers");
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function visibleNumberIds(_supabase?: Awaited<ReturnType<typeof createClient>>) {
+  const { data } = await myWhatsappNumbers();
   return ((data ?? []) as { id: string; provider: string; compiled_at: string | null }[]).filter((n) => n.provider !== "waha" || n.compiled_at).map((n) => n.id);
 }
 
@@ -132,7 +140,7 @@ async function getConversationOrigin(conversationId: string): Promise<Conversati
 export async function getInboxSetup() {
   const supabase = await createClient();
   const [numbers, templates, imports, finished] = await Promise.all([
-    supabase.rpc("my_whatsapp_numbers"),
+    myWhatsappNumbers(),
     supabase.from("whatsapp_templates").select("id, name, language, category, status, components").order("name"),
     supabase.from("whatsapp_imports").select("number_id, contacts_done, groups_done, messages_done").in("status", ["importando", "aguardando"]),
     supabase.from("whatsapp_imports").select("number_id").eq("status", "concluida"),

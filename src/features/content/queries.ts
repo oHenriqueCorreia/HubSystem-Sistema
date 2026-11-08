@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ContentFormat, ContentStatus } from "@/domain/content";
@@ -44,14 +45,14 @@ export async function listContent(filter: { status?: string; client?: string }) 
 
 export type SocialAccount = { id: string; platform: "facebook" | "instagram"; external_id: string; name: string; username: string | null; status: string; selected: boolean; last_error: string | null; picture_url: string | null; picture_checked_at: string | null };
 
-export async function getSocialSetup() {
+export const getSocialSetup = cache(async function getSocialSetup() {
   const supabase = await createClient();
   const [accounts, connection] = await Promise.all([supabase.rpc("my_social_accounts"), supabase.rpc("my_social_connection")]);
   return {
     accounts: (accounts.data ?? []) as SocialAccount[],
     connection: (((connection.data ?? []) as { status: string; external_user: string; expires_at: string | null; last_error: string | null }[])[0] ?? null),
   };
-}
+});
 
 export type ScheduleRow = { id: string; content_id: string; account_id: string; scheduled_at: string; status: string; permalink: string | null; error: string | null; published_at: string | null; account: { name: string; platform: string; username: string | null; picture_url: string | null } | null; title: string; caption: string; format: ContentFormat; thumb: string | null };
 

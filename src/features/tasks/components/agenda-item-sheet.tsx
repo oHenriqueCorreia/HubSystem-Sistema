@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Ban, CalendarDays, CalendarX2, Flag, ListChecks, LoaderCircle, Pencil, Send, Users, Video } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "cn";
@@ -71,7 +70,6 @@ export function AgendaItemSheet({
 }
 
 function Details({ entry, onClose, onChanged, owners, meId, canManageEvents, canAssignEvents, canEditTasks, canPublish }: { entry: AgendaEntry; onClose: () => void; onChanged?: () => void; owners: Owner[]; meId: string; canManageEvents: boolean; canAssignEvents: boolean; canEditTasks: boolean; canPublish: boolean }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [rescheduling, setRescheduling] = useState(false);
   const [date, setDate] = useState(dayKey(entry.start));
@@ -85,7 +83,6 @@ function Details({ entry, onClose, onChanged, owners, meId, canManageEvents, can
   function finish(message?: string) {
     if (message) toast.success(message);
     onChanged?.();
-    router.refresh();
     onClose();
   }
 

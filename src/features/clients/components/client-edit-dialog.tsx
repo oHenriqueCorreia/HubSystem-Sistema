@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { LoaderCircle, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,6 @@ import type { ClientRow } from "../types";
 import { issuesToMap } from "./contract-fields";
 
 export function ClientEditDialog({ client }: { client: ClientRow }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +40,6 @@ export function ClientEditDialog({ client }: { client: ClientRow }) {
       if (!res.ok) return void setError(res.message);
       toast.success(res.message);
       setOpen(false);
-      router.refresh();
     });
   }
 

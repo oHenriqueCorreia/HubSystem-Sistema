@@ -80,7 +80,6 @@ export function BoardBar({ boards, current, clients, canConfigure }: { boards: T
                 const q = new URLSearchParams(params.toString());
                 q.delete("quadro");
                 router.replace(`${pathname}?${q.toString()}`, { scroll: false });
-                router.refresh();
               }}
             />
           )}
@@ -95,7 +94,6 @@ export function BoardBar({ boards, current, clients, canConfigure }: { boards: T
 
 /** Nova lista: toda lista nasce dentro de um quadro, então sempre aparece nele. */
 export function ListDialog({ boards, boardId, onClose, onCreated }: { boards: { id: string; name: string }[]; boardId: string; onClose: () => void; onCreated?: (listId: string, boardId: string) => void }) {
-  const router = useRouter();
   const [board, setBoard] = useState(boardId);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<TaskStatus>("em_andamento");
@@ -111,7 +109,6 @@ export function ListDialog({ boards, boardId, onClose, onCreated }: { boards: { 
       toast.success(`Lista criada em ${boards.find((b) => b.id === board)?.name ?? "o quadro"}.`);
       onCreated?.(res.data.id, board);
       onClose();
-      router.refresh();
     });
   }
 
@@ -170,7 +167,6 @@ export function ListDialog({ boards, boardId, onClose, onCreated }: { boards: { 
 }
 
 function BoardDialog({ board, clients, onClose, onCreated }: { board?: TaskBoard; clients: { id: string; legal_name: string }[]; onClose: () => void; onCreated?: (id: string) => void }) {
-  const router = useRouter();
   const [name, setName] = useState(board?.name ?? "");
   const [description, setDescription] = useState(board?.description ?? "");
   const [clientId, setClientId] = useState(board?.client_id ?? NONE);
@@ -187,7 +183,6 @@ function BoardDialog({ board, clients, onClose, onCreated }: { board?: TaskBoard
       toast.success(res.message);
       if (res.data && onCreated) onCreated(res.data.id);
       onClose();
-      router.refresh();
     });
   }
 

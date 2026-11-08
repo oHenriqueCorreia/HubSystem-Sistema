@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { ChevronDown, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ const NONE = "__nenhum__";
 type Lookups = { accounts: Account[]; categories: Category[]; costCenters: CostCenter[]; contracts?: { id: string; title: string; clientId: string | null; clientName: string }[] };
 
 export function TxnFormDialog({ scope, lookups, trigger, defaultKind = "despesa", txn }: { scope: FinanceScope; lookups: Lookups; trigger: ReactNode; defaultKind?: TxnKind; txn?: Transaction }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +94,6 @@ export function TxnFormDialog({ scope, lookups, trigger, defaultKind = "despesa"
         if (!res.ok) return void setError(res.message);
         toast.success(res.message);
         setOpen(false);
-        router.refresh();
       });
       return;
     }
@@ -109,7 +106,6 @@ export function TxnFormDialog({ scope, lookups, trigger, defaultKind = "despesa"
       toast.success(res.message);
       setOpen(false);
       setV(initial());
-      router.refresh();
     });
   }
 

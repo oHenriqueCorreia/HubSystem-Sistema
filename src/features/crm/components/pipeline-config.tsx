@@ -46,7 +46,6 @@ export function PipelineConfig({ pipeline, counts }: { pipeline: Pipeline; count
       if (!res.ok) return void toast.error(res.message);
       if (res.message) toast.success(res.message);
       after?.(res.data);
-      router.refresh();
     });
   }
 
@@ -153,7 +152,6 @@ export function PipelineConfig({ pipeline, counts }: { pipeline: Pipeline; count
 }
 
 function StageDialog({ pipelineId, stage, onClose }: { pipelineId: string; stage: Stage | null; onClose: () => void }) {
-  const router = useRouter();
   const [name, setName] = useState(stage?.name ?? "");
   const [color, setColor] = useState<TagColor>(stage?.color ?? "blue");
   const [kind, setKind] = useState<StageKind>(stage?.kind ?? "open");
@@ -170,7 +168,6 @@ function StageDialog({ pipelineId, stage, onClose }: { pipelineId: string; stage
       if (!res.ok) return setError(res.fieldErrors?.name?.[0] ?? res.fieldErrors?.slaDays?.[0] ?? res.message);
       toast.success(res.message);
       onClose();
-      router.refresh();
     });
   }
 
@@ -240,7 +237,6 @@ function StageDialog({ pipelineId, stage, onClose }: { pipelineId: string; stage
 const ARCHIVE = "__arquivar__";
 
 function DeleteStageDialog({ stage, stages, count, onClose }: { stage: Stage; stages: Stage[]; count: number; onClose: () => void }) {
-  const router = useRouter();
   const others = stages.filter((s) => s.id !== stage.id);
   const [choice, setChoice] = useState(others.find((s) => s.kind === stage.kind)?.id ?? others[0]?.id ?? ARCHIVE);
   const [pending, startTransition] = useTransition();
@@ -251,7 +247,6 @@ function DeleteStageDialog({ stage, stages, count, onClose }: { stage: Stage; st
       if (!res.ok) return void toast.error(res.message);
       toast.success(res.message);
       onClose();
-      router.refresh();
     });
   }
 

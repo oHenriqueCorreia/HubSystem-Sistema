@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { LoaderCircle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,7 +27,6 @@ type Frequency = (typeof FREQ)[number][0];
 
 /** Nova recorrência (despesa ou receita): dia do mês ou N-ésimo dia útil, com prévia dos próximos vencimentos. */
 export function RecurrenceDialog({ scope, accounts, categories, variant = "default" }: { scope: FinanceScope; accounts: Account[]; categories: Category[]; variant?: "default" | "outline" }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"despesa" | "receita">("despesa");
   const [description, setDescription] = useState("");
@@ -75,7 +73,6 @@ export function RecurrenceDialog({ scope, accounts, categories, variant = "defau
       setDescription("");
       setAmount(null);
       setErrors({});
-      router.refresh();
     });
   }
 

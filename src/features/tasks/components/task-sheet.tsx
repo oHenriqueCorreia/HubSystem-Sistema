@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -50,7 +49,6 @@ export function TaskSheet({
 }
 
 function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Task; owners: Owner[]; canAssign: boolean; canDelete: boolean; onClose: () => void }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [items, setItems] = useState<ChecklistItem[]>(task.checklist);
   const [newItem, setNewItem] = useState("");
@@ -74,7 +72,7 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
       if (!res.ok) {
         setItems((list) => list.map((i) => (i.id === item.id ? item : i)));
         toast.error(res.message);
-      } else router.refresh();
+      }
     });
   }
 
@@ -86,7 +84,6 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
       const res = await addChecklistItem({ taskId: task.id, title });
       if (res.ok) {
         setItems((l) => [...l, res.data]);
-        router.refresh();
       } else toast.error(res.message);
     });
   }
@@ -96,7 +93,6 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
       const res = await setTaskStatus({ id: task.id, status: s, outcome });
       if (res.ok) {
         toast.success(res.message);
-        router.refresh();
       } else toast.error(res.message);
     });
   }
@@ -144,14 +140,12 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
                   const res = await deleteTask({ id: task.id });
                   if (!res.ok) return void toast.error(res.message);
                   onClose();
-                  router.refresh();
                   toast.success("Tarefa excluída.", {
                     action: {
                       label: "Desfazer",
                       onClick: async () => {
                         const r = await restoreTask({ id: task.id });
-                        if (r.ok) router.refresh();
-                        else toast.error(r.message);
+                        if (!r.ok) toast.error(r.message);
                       },
                     },
                   });
@@ -283,7 +277,7 @@ function TaskDetails({ task, owners, canAssign, canDelete, onClose }: { task: Ta
                       if (!res.ok) {
                         toast.error(res.message);
                         setItems((l) => [...l, i]);
-                      } else router.refresh();
+                      }
                     })
                   }
                 >

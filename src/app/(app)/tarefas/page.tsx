@@ -32,6 +32,8 @@ export default async function TarefasPage({ searchParams }: PageProps<"/tarefas"
     aprovacao: (["aguardando", "aprovado", "recusado"] as const).find((a) => a === str(sp.aprovacao)),
   };
   const linkId = str(sp.tarefa);
+  // Pessoas e etiquetas não dependem do quadro: começam já.
+  const lookupsP = getCrmLookups();
   const [boards, linked, clients] = await Promise.all([listTaskBoards(), linkId && /^[0-9a-f-]{36}$/i.test(linkId) ? getTask(linkId) : Promise.resolve(null), listClientOptions()]);
   const mode = str(sp.modo) === "quadro" ? "quadro" : "lista";
   const pickedBoard = boards.find((b) => b.id === str(sp.quadro)) ?? null;
@@ -41,7 +43,7 @@ export default async function TarefasPage({ searchParams }: PageProps<"/tarefas"
   // No quadro mostramos também as concluídas para permitir arrastar entre listas.
   const [tasks, lookups] = await Promise.all([
     listTasks({ ...(mode === "quadro" && !sp.status ? { ...filters, status: "todas" as const } : filters), ...(board ? { columnIds: columns.map((c) => c.id) } : {}) }),
-    getCrmLookups(),
+    lookupsP,
   ]);
   const canAssign = scope === "team" || scope === "all";
   const hasFilters = Boolean(filters.q || filters.responsavel || filters.prioridade || filters.periodo || filters.tag || filters.aprovacao || sp.status || pickedBoard);

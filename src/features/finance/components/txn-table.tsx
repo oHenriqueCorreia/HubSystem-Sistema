@@ -93,7 +93,6 @@ export function TxnTable({ scope, rows, lookups, perms }: { scope: FinanceScope;
       const res = await fn();
       if (!res.ok) return void toast.error(res.message);
       toast.success(res.message, undo ? { action: { label: "Desfazer", onClick: async () => { const r = await undo(); if (r.ok) router.refresh(); else toast.error(r.message); } } } : undefined);
-      router.refresh();
     });
   }
 

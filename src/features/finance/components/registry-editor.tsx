@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Pencil, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,6 @@ import { saveAccount, saveCategory, saveCostCenter } from "../actions";
 import { ACCOUNT_TYPE_LABEL, type Account, type Category, type CostCenter, type FinanceScope } from "../types";
 
 function useSave() {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const run = (fn: () => Promise<{ ok: boolean; message?: string }>, done?: () => void) =>
     startTransition(async () => {
@@ -23,7 +21,6 @@ function useSave() {
       if (!res.ok) return void toast.error(res.message);
       toast.success(res.message);
       done?.();
-      router.refresh();
     });
   return { pending, run };
 }

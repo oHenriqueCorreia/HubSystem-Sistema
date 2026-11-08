@@ -155,7 +155,7 @@ export const getCrmLookups = cache(async (): Promise<CrmLookups> => {
   };
 });
 
-export async function getLead(id: string) {
+export const getLead = cache(async function getLead(id: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("leads")
@@ -175,7 +175,7 @@ export async function getLead(id: string) {
     lead: { ...(row as unknown as Lead), segment: one(row.segment as Lead["segment"]), tags: flattenTags(row), deal: deals[0] ?? null } as Lead,
     deals: deals as unknown as BoardCard[],
   };
-}
+});
 
 export async function getLeadActivities(leadId: string, limit = 100): Promise<Activity[]> {
   const supabase = await createClient();

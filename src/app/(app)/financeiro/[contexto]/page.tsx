@@ -30,6 +30,12 @@ export default async function FinanceOverview({ params, searchParams }: PageProp
   // Lista "em aberto": do maior entre hoje e o início do período até o fim do período.
   const openFrom = period.from > today ? period.from : today;
 
+  const readsP: Promise<{ actor_name: string | null; read_at: string }[]> =
+    scope === "pessoal"
+      ? createClient()
+          .then((supabase) => supabase.rpc("my_personal_finance_reads"))
+          .then(({ data }) => (data ?? []) as { actor_name: string | null; read_at: string }[])
+      : Promise.resolve([]);
   const [summary, open, lookups, overdue, upcoming, flow, flowPeriod] = await Promise.all([
     getSummary(scope, period.from, period.to),
     getOpenInPeriod(scope, period.from, period.to, today),
@@ -49,12 +55,7 @@ export default async function FinanceOverview({ params, searchParams }: PageProp
   }));
   const result = summary.income_paid - summary.expense_paid;
 
-  let reads: { actor_name: string | null; read_at: string }[] = [];
-  if (scope === "pessoal") {
-    const supabase = await createClient();
-    const { data } = await supabase.rpc("my_personal_finance_reads");
-    reads = (data ?? []) as typeof reads;
-  }
+  const reads = await readsP;
 
   const empty = summary.accounts.length > 0 && flow.length === 0 && overdue.total === 0 && upcoming.total === 0;
 

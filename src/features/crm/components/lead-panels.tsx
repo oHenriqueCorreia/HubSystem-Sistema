@@ -45,7 +45,6 @@ function daysFromNow(days: number, hour = 9) {
 
 /** Faixa "Próxima ação": o elemento de destaque da tela do lead. */
 export function NextActionPanel({ leadId, at, canEdit }: { leadId: string; at: string | null; canEdit: boolean }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [custom, setCustom] = useState(toLocalInput(at));
 
@@ -54,7 +53,6 @@ export function NextActionPanel({ leadId, at, canEdit }: { leadId: string; at: s
       const res = await setNextContact({ leadId, at: iso });
       if (res.ok) {
         toast.success(res.message);
-        router.refresh();
       } else toast.error(res.message);
     });
   }
@@ -114,7 +112,6 @@ const ACTIVITY_OPTIONS = [
 ] as const;
 
 export function ActivityComposer({ leadId, dealId }: { leadId: string; dealId: string | null }) {
-  const router = useRouter();
   const [type, setType] = useState<(typeof ACTIVITY_OPTIONS)[number]["value"]>("nota");
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +129,6 @@ export function ActivityComposer({ leadId, dealId }: { leadId: string; dealId: s
       if (res.ok) {
         setContent("");
         toast.success(res.message);
-        router.refresh();
       } else setError(res.message);
     });
   }
@@ -185,7 +181,6 @@ export function DealPanel({
   canMove: boolean;
   canEdit: boolean;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [lostFor, setLostFor] = useState<{ deal: Deal; stageId: string } | null>(null);
   const [reason, setReason] = useState("");
@@ -198,7 +193,6 @@ export function DealPanel({
       if (res.ok) {
         toast.success(res.message);
         setLostFor(null);
-        router.refresh();
       } else toast.error(res.message);
     });
   }
@@ -265,7 +259,6 @@ export function DealPanel({
                   const res = await startDealInPipeline({ leadId, pipelineId: p.id });
                   if (res.ok) {
                     toast.success(res.message);
-                    router.refresh();
                   } else toast.error(res.message);
                 })
               }
@@ -318,7 +311,6 @@ export function DealPanel({
 }
 
 function DealValueEditor({ deal }: { deal: Deal }) {
-  const router = useRouter();
   const [value, setValue] = useState(deal.amount_cents != null ? (deal.amount_cents / 100).toFixed(2).replace(".", ",") : "");
   const [billing, setBilling] = useState<string>(deal.billing ?? "unico");
   const [date, setDate] = useState(deal.expected_close_date ?? "");
@@ -371,7 +363,6 @@ function DealValueEditor({ deal }: { deal: Deal }) {
             });
             if (res.ok) {
               toast.success(res.message);
-              router.refresh();
             } else toast.error(res.message);
           })
         }
@@ -383,7 +374,6 @@ function DealValueEditor({ deal }: { deal: Deal }) {
 }
 
 export function OwnerSelect({ leadId, ownerId, lookups }: { leadId: string; ownerId: string | null; lookups: CrmLookups }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   return (
     <Select
@@ -394,7 +384,6 @@ export function OwnerSelect({ leadId, ownerId, lookups }: { leadId: string; owne
           const res = await assignLead({ leadId, ownerId: v === "sem" ? null : v });
           if (res.ok) {
             toast.success(res.message);
-            router.refresh();
           } else toast.error(res.message);
         })
       }
@@ -415,7 +404,6 @@ export function OwnerSelect({ leadId, ownerId, lookups }: { leadId: string; owne
 }
 
 export function TagEditor({ leadId, current, all, canEdit }: { leadId: string; current: Tag[]; all: Tag[]; canEdit: boolean }) {
-  const router = useRouter();
   const [selected, setSelected] = useState(() => current.map((t) => t.id));
   const [pending, startTransition] = useTransition();
   // Etiquetas arquivadas que o lead já tem continuam visíveis.
@@ -426,7 +414,6 @@ export function TagEditor({ leadId, current, all, canEdit }: { leadId: string; c
     startTransition(async () => {
       const res = await setLeadTags({ leadId, tagIds: next });
       if (!res.ok) toast.error(res.message);
-      router.refresh();
     });
   }
 

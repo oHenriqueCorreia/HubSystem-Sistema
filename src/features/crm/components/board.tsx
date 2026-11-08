@@ -127,8 +127,7 @@ export function Board({ pipeline, cards, lookups, canMove, work }: { pipeline: P
             label: "Desfazer",
             onClick: async () => {
               const back = await moveDeal({ dealId: card.id, stageId: card.stage_id, position: card.position });
-              if (back.ok) router.refresh();
-              else toast.error(back.message);
+              if (!back.ok) toast.error(back.message);
             },
           },
         });

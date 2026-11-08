@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { LoaderCircle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,6 @@ import type { FinanceScope } from "../types";
 
 /** "+ Nova categoria" dentro dos formulários: cria e já seleciona. Também aparece em Contas e categorias. */
 export function NewCategoryInline({ scope, kind, onCreated }: { scope: FinanceScope; kind: "receita" | "despesa"; onCreated: (id: string) => void }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
@@ -34,7 +32,6 @@ export function NewCategoryInline({ scope, kind, onCreated }: { scope: FinanceSc
       setName("");
       setError(undefined);
       setOpen(false);
-      router.refresh();
     });
   }
 

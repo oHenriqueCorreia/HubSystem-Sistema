@@ -24,7 +24,6 @@ const NONE = "__nenhuma__";
 
 /** Mostra o que será movido antes de confirmar. Categoria e conta precisam ser as da área de destino. */
 export function TransferDialog({ txn, scope, onClose, categoryName, accountName, canRecur = false }: { txn: Transaction; scope: FinanceScope; onClose: () => void; categoryName?: string; accountName?: string; canRecur?: boolean }) {
-  const router = useRouter();
   const to: FinanceScope = scope === "empresa" ? "pessoal" : "empresa";
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -57,7 +56,6 @@ export function TransferDialog({ txn, scope, onClose, categoryName, accountName,
       if (!res.ok) return setError(res.message);
       toast.success(res.message);
       onClose();
-      router.refresh();
     });
   }
 
@@ -269,7 +267,6 @@ export function ChargeDialog({ txn, scope, onClose }: { txn: Transaction; scope:
       }
       toast.success(res.message);
       onClose();
-      router.refresh();
     });
   }
 

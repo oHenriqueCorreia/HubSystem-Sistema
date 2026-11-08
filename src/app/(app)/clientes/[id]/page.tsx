@@ -26,20 +26,21 @@ export default async function ClientePage({ params }: PageProps<"/clientes/[id]"
   const user = await requirePermission("clients.read");
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const client = await getClient(id);
-  if (!client) notFound();
-
   // A lista de pessoas só vai para o navegador de quem pode associar.
   const canManageTeam = Boolean(user.permissions["admin.users"]);
-  const [contracts, services, activities, attachments, lookups, team, people] = await Promise.all([
+  // Tudo o que só depende do id começa junto com o cliente (antes, esperava o cliente chegar).
+  const rest = Promise.all([
     user.permissions["contracts.read"] ? listContracts({ cliente: id }) : Promise.resolve([]),
     listServices(),
-    getLeadActivities(client.lead_id, 30).catch(() => []),
     listAttachments("client", id),
     getCrmLookups(),
     getClientTeam(id),
     canManageTeam ? listPeople() : Promise.resolve(null),
   ]);
+  rest.catch(() => null);
+  const client = await getClient(id);
+  if (!client) notFound();
+  const [[contracts, services, attachments, lookups, team, people], activities] = await Promise.all([rest, getLeadActivities(client.lead_id, 30).catch(() => [])]);
   const names = new Map(lookups.owners.map((o) => [o.id, o.full_name || o.email]));
   const mrr = contracts.reduce((s, k) => s + monthlyValue(k), 0);
   const total = contracts.filter((k) => k.status !== "cancelado").reduce((s, k) => s + (k.amount_cents ?? 0), 0);

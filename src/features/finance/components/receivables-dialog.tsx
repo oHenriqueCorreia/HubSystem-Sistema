@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { FileSignature, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,7 +22,6 @@ export function ReceivablesDialog({
   lookups: { accounts: Account[]; categories: Category[] };
   defaultContract?: string;
 }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [contract, setContract] = useState(defaultContract ?? "");
   const [account, setAccount] = useState(lookups.accounts.find((a) => a.is_active)?.id ?? NONE);
@@ -108,7 +106,6 @@ export function ReceivablesDialog({
                 if (!res.ok) return void toast.error(res.message);
                 toast.success(res.message);
                 setOpen(false);
-                router.refresh();
               })
             }
           >

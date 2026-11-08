@@ -24,14 +24,22 @@ export default async function ContratoPage({ params }: PageProps<"/contratos/[id
   const user = await requirePermission("contracts.read");
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  const canFinance = Boolean(user.permissions["finance.company.read"]);
+  // Tudo o que só depende do id começa junto com o contrato (antes eram três rodadas em fila).
+  const rest = Promise.all([
+    listServices(),
+    listAttachments("contract", id),
+    getCrmLookups(),
+    canFinance ? getContractReceivables(id) : Promise.resolve([]),
+    canFinance ? getLookups("empresa") : Promise.resolve(null),
+  ]);
+  rest.catch(() => null);
   const contract = await getContract(id);
   if (!contract) notFound();
-  const [services, attachments, lookups] = await Promise.all([listServices(), listAttachments("contract", id), getCrmLookups()]);
+  const [services, attachments, lookups, receivables, finLookups] = await rest;
   const canEdit = canOnRecord(user.permissions, "contracts.update", contract.owner_id, user.id);
   const canDelete = canOnRecord(user.permissions, "contracts.delete", contract.owner_id, user.id);
   const owner = lookups.owners.find((o) => o.id === contract.owner_id);
-  const canFinance = Boolean(user.permissions["finance.company.read"]);
-  const [receivables, finLookups] = canFinance ? await Promise.all([getContractReceivables(id), getLookups("empresa")]) : [[], null];
 
   return (
     <>

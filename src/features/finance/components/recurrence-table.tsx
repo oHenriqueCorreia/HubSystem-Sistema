@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Pause, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,7 +28,6 @@ const STATE: Record<RecurrenceRow["state"], { label: string; variant: "default" 
 };
 
 export function RecurrenceTable({ rows, categories, clients, canEdit }: { rows: RecurrenceRow[]; categories: Map<string, string>; clients?: Map<string, string>; canEdit: boolean }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function change(id: string, state: RecurrenceRow["state"]) {
@@ -37,7 +35,6 @@ export function RecurrenceTable({ rows, categories, clients, canEdit }: { rows: 
       const res = await setRecurrenceState({ id, state });
       if (res.ok) toast.success(res.message);
       else toast.error(res.message);
-      router.refresh();
     });
   }
 

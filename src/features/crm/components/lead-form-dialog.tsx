@@ -80,7 +80,6 @@ export function LeadFormDialog({
       toast.success(res.message);
       setOpen(false);
       if (!lead && res.data && typeof res.data === "object" && "id" in res.data) router.push(`/crm/leads/${(res.data as { id: string }).id}`);
-      else router.refresh();
     });
   });
 

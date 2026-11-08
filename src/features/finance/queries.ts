@@ -145,7 +145,7 @@ export async function listFlow(scope: FinanceScope, from: string, to: string) {
   }[];
 }
 
-export async function listContractsForFinance() {
+export const listContractsForFinance = cache(async function listContractsForFinance() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("contracts")
@@ -159,7 +159,7 @@ export async function listContractsForFinance() {
     const lead = c ? ((Array.isArray(c.lead) ? c.lead[0] : c.lead) as { name: string } | null) : null;
     return { id: k.id as string, title: k.title as string, clientId: (c?.id as string) ?? null, clientName: lead?.name ?? "" };
   });
-}
+});
 
 export async function getContractReceivables(contractId: string) {
   const supabase = await createClient();

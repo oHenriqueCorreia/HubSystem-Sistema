@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,7 +24,6 @@ export function ContractDialog({
   services: Service[];
   owners?: { id: string; full_name: string; email: string }[];
 }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +61,6 @@ export function ContractDialog({
       if (!res.ok) return void setError(res.message);
       toast.success(res.message);
       setOpen(false);
-      router.refresh();
     });
   }
 

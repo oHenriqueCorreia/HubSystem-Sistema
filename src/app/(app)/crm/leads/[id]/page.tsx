@@ -42,16 +42,16 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
-  const [data, lookups, activities, client, services, attachments] = await Promise.all([
+  const [data, lookups, activities, client, services, attachments, conversations] = await Promise.all([
     getLead(id),
     getCrmLookups(),
     getLeadActivities(id),
     getClientByLead(id),
     listServices(),
     listAttachments("lead", id),
+    user.permissions["inbox.read"] ? listLeadConversations(id) : Promise.resolve([]),
   ]);
   if (!data) notFound();
-  const conversations = user.permissions["inbox.read"] ? await listLeadConversations(id) : [];
   const { lead, deals } = data;
 
   const canEdit = canOnRecord(user.permissions, "crm.leads.update", lead.owner_id, user.id);

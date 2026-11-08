@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { memo, useOptimistic, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { AlarmClock, CalendarClock, Columns3, Flag, ListChecks, MessageCircle, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +23,6 @@ const PRIORITY_STYLE: Record<Task["priority"], string> = {
 
 // Sem memo, cada pequeno movimento do arraste redesenharia todos os cartões do quadro.
 export const TaskItem = memo(function TaskItem({ task, ownerName, onOpen, now, as = "li" }: { task: Task; ownerName?: string; onOpen?: (t: Task) => void; now: number; as?: "li" | "div" }) {
-  const router = useRouter();
   const [, startTransition] = useTransition();
   const [optimisticDone, setOptimisticDone] = useOptimistic(task.status === "concluida");
   const overdue = !optimisticDone && isOverdue(task, new Date(now));
@@ -46,13 +44,11 @@ export const TaskItem = memo(function TaskItem({ task, ownerName, onOpen, now, a
             label: "Desfazer",
             onClick: async () => {
               const r = await setTaskStatus({ id: task.id, status: "a_fazer" });
-              if (r.ok) router.refresh();
-              else toast.error(r.message);
+              if (!r.ok) toast.error(r.message);
             },
           },
         });
       }
-      router.refresh();
     });
   }
 

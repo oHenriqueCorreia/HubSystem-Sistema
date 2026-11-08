@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { ChevronDown, LoaderCircle, Plus, Users, X } from "lucide-react";
 import { toast } from "sonner";
@@ -54,7 +53,6 @@ export function TaskFormDialog({
   onOpenChange?: (v: boolean) => void;
   canConfigure?: boolean;
 }) {
-  const router = useRouter();
   const [innerOpen, setInnerOpen] = useState(false);
   const open = controlledOpen ?? innerOpen;
   const setOpen = onOpenChange ?? setInnerOpen;
@@ -164,7 +162,6 @@ export function TaskFormDialog({
         setParticipantIds([]);
         setColumnId(defaults?.columnId ?? null);
       }
-      router.refresh();
     });
   });
 

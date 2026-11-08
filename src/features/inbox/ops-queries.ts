@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { myWhatsappNumbers } from "./queries";
 
 export type InboxSettings = {
   radar_client_minutes: number;
@@ -32,7 +33,7 @@ export type RadarItem = { id: string; contact_e164: string; contact_name: string
 /** Conversas abertas paradas: as de quem espera resposta e as que esperam o cliente. */
 export async function getRadar(settings: InboxSettings, nowMs: number) {
   const supabase = await createClient();
-  const { data: numbers } = await supabase.rpc("my_whatsapp_numbers");
+  const { data: numbers } = await myWhatsappNumbers();
   const visible = ((numbers ?? []) as { id: string; provider: string; compiled_at: string | null }[]).filter((n) => n.provider !== "waha" || n.compiled_at).map((n) => n.id);
   const columns = "id, contact_e164, contact_name, last_message_at, assignee_id, last_inbound_at, number_id, lead:leads(id, name, contact_opt_out_at)";
   const clientLimit = new Date(nowMs - settings.radar_client_minutes * 60_000).toISOString();

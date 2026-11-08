@@ -90,7 +90,6 @@ export function ContentEditor(p: Props) {
       if (!res.ok) return void toast.error(res.message);
       if (res.message) toast.success(res.message);
       after?.();
-      router.refresh();
     });
   }
 
@@ -393,7 +392,6 @@ export function ContentEditor(p: Props) {
 }
 
 function ScheduleBox({ id, schedules, accounts, canPublish, approved, images, videos, caption, blockedVideo }: Props & { approved: boolean; images: number; videos: number; blockedVideo: boolean }) {
-  const router = useRouter();
   const [selected, setSelected] = useState<string[]>([]);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("10:00");
@@ -414,7 +412,6 @@ function ScheduleBox({ id, schedules, accounts, canPublish, approved, images, vi
       if (!res.ok) return void toast.error(Object.values(res.fieldErrors ?? {})[0]?.[0] ?? res.message);
       if (res.message) toast.success(res.message);
       after?.();
-      router.refresh();
     });
   }
 
