@@ -26,13 +26,6 @@ const CONNECTIONS = [
   { name: "Facebook Ads", text: "Lê contas, campanhas e resultados para montar os relatórios. O sistema não altera as suas campanhas." },
 ];
 
-// As áreas ficam sobre os anéis da marca, alternando entre o anel do meio e o interno.
-const orbit = AREAS.map((area, i) => {
-  const angle = (2 * Math.PI * i) / AREAS.length - Math.PI / 2;
-  const radius = i % 2 === 0 ? 12.5 : 9;
-  return { name: area.name, x: (Math.cos(angle) * radius).toFixed(2), y: (Math.sin(angle) * radius).toFixed(2) };
-});
-
 function Rows({ items }: { items: { name: string; text: string }[] }) {
   return (
     <dl className="divide-y border-y">
@@ -63,28 +56,25 @@ export default function HomePage() {
         <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-8 px-4 pt-12 pb-16 sm:px-6 lg:min-h-[34rem] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:py-10">
           <div className="max-w-xl">
             <h1 className="text-4xl leading-tight font-semibold tracking-tight text-balance sm:text-5xl">Comercial, tarefas, agenda e financeiro da sua empresa em um só lugar.</h1>
-            <p className="mt-5 max-w-lg text-lg leading-8 text-pretty text-blue-100/85">O Hub System é um sistema de gestão para empresas e agências acompanharem clientes, equipe e resultados sem pular entre ferramentas.</p>
+            <p className="mt-5 max-w-lg text-lg leading-8 text-pretty text-white/70">O Hub System é um sistema de gestão para empresas e agências acompanharem clientes, equipe e resultados sem pular entre ferramentas.</p>
             <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2">
               <Button asChild size="lg">
                 <Link href="/login">Entrar no sistema</Link>
               </Button>
-              <p className="text-sm text-blue-100/85">Acesso somente por convite.</p>
+              <p className="text-sm text-white/65">Acesso somente por convite.</p>
             </div>
           </div>
           <div className="relative hidden h-[28rem] lg:block" aria-hidden="true">
-            <span className="auth-orbit-ring auth-orbit-ring-one" />
-            <span className="auth-orbit-ring auth-orbit-ring-two" />
-            <span className="auth-orbit-ring auth-orbit-ring-three" />
-            <Image src="/brand/symbol-dark.png" alt="" width={64} height={64} className="auth-logo absolute top-1/2 left-1/2 -mt-8 -ml-8 size-16 object-contain" />
-            {orbit.map((o) => (
-              <span
-                key={o.name}
-                style={{ left: `calc(50% + ${o.x}rem)`, top: `calc(50% + ${o.y}rem)` }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-blue-300/30 bg-[#0b2245] px-3 py-1 text-sm whitespace-nowrap text-blue-50"
-              >
-                {o.name}
-              </span>
-            ))}
+            <span className="auth-panel-shape auth-panel-shape-left" />
+            <span className="auth-panel-shape auth-panel-shape-right" />
+            <Image src="/brand/symbol-dark.png" alt="" width={64} height={64} className="auth-logo absolute top-1/2 left-1/2 -mt-12 -ml-12 size-24 object-contain" />
+            <div className="absolute inset-x-10 bottom-4 grid grid-cols-2 gap-2">
+              {AREAS.map((area) => (
+                <span key={area.name} className="border-l border-[#c7ff00]/50 px-3 py-1.5 text-sm text-white/70">
+                  {area.name}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </div>

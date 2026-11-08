@@ -65,25 +65,25 @@
 :root {
   color-scheme: light;
   --radius: 0.5rem;
-  --background: #f3f6fa;
+  --background: #f6f6f2;
   --surface: #ffffff;
-  --foreground: #0b2245;
+  --foreground: #161719;
   --card: #ffffff;
-  --card-foreground: #0b2245;
+  --card-foreground: #161719;
   --popover: #ffffff;
-  --popover-foreground: #0b2245;
-  --primary: #0969da;
-  --primary-foreground: #ffffff;
-  --secondary: #e8f0fb;
-  --secondary-foreground: #0b2245;
-  --muted: #eaf0f7;
-  --muted-foreground: #526174;
-  --accent: #dceafc;
-  --accent-foreground: #0b3f81;
+  --popover-foreground: #161719;
+  --primary: #a8d900;
+  --primary-foreground: #0b0b0d;
+  --secondary: #ecece7;
+  --secondary-foreground: #161719;
+  --muted: #edede8;
+  --muted-foreground: #64666b;
+  --accent: #e7f5b4;
+  --accent-foreground: #293500;
   --destructive: #b42318;
-  --border: #d7e1ee;
-  --input: #bdccdf;
-  --ring: #0969da;
+  --border: #deded8;
+  --input: #c8c8c0;
+  --ring: #86ad00;
 
   --signal: #b5530a;
   --signal-soft: #fbeee3;
@@ -95,7 +95,7 @@
   --danger-soft: #fdecea;
   --info: #1d5fa8;
   --info-soft: #e8f0fa;
-  --ctx-company: #0969da;
+  --ctx-company: #6f9000;
   --ctx-personal: #426ba3;
 
 
@@ -123,37 +123,37 @@
   --chart-grid: #e2eaf3;
   --chart-axis: #a9bbd0;
 
-  --sidebar: #edf3fa;
-  --sidebar-foreground: #0b2245;
-  --sidebar-primary: #0969da;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #dceafc;
-  --sidebar-accent-foreground: #0b3f81;
-  --sidebar-border: #d7e1ee;
-  --sidebar-ring: #0969da;
+  --sidebar: #efefe9;
+  --sidebar-foreground: #161719;
+  --sidebar-primary: #a8d900;
+  --sidebar-primary-foreground: #0b0b0d;
+  --sidebar-accent: #e3e3dc;
+  --sidebar-accent-foreground: #161719;
+  --sidebar-border: #d8d8d1;
+  --sidebar-ring: #86ad00;
 }
 
 .dark {
   color-scheme: dark;
-  --background: #07162d;
-  --surface: #102441;
-  --foreground: #edf5ff;
-  --card: #102441;
-  --card-foreground: #edf5ff;
-  --popover: #142b4b;
-  --popover-foreground: #edf5ff;
-  --primary: #70b4ff;
-  --primary-foreground: #07162d;
-  --secondary: #183455;
-  --secondary-foreground: #edf5ff;
-  --muted: #152c4b;
-  --muted-foreground: #a8bad0;
-  --accent: #173b65;
-  --accent-foreground: #d9ecff;
+  --background: #0b0b0d;
+  --surface: #151618;
+  --foreground: #f5f5f0;
+  --card: #151618;
+  --card-foreground: #f5f5f0;
+  --popover: #1a1b1e;
+  --popover-foreground: #f5f5f0;
+  --primary: #c7ff00;
+  --primary-foreground: #0b0b0d;
+  --secondary: #242528;
+  --secondary-foreground: #f5f5f0;
+  --muted: #202124;
+  --muted-foreground: #a8a9ad;
+  --accent: #303a12;
+  --accent-foreground: #eaff9d;
   --destructive: #f2867c;
-  --border: #294261;
-  --input: #365574;
-  --ring: #70b4ff;
+  --border: #333438;
+  --input: #46474c;
+  --ring: #c7ff00;
 
   --signal: #f0a35e;
   --signal-soft: #3a2615;
@@ -165,7 +165,7 @@
   --danger-soft: #3a1b18;
   --info: #7fb2ec;
   --info-soft: #172739;
-  --ctx-company: #70b4ff;
+  --ctx-company: #c7ff00;
   --ctx-personal: #9bbdff;
 
   --chat-wallpaper: #0b141a;
@@ -191,14 +191,14 @@
   --chart-grid: #294261;
   --chart-axis: #47617e;
 
-  --sidebar: #0b1f3b;
-  --sidebar-foreground: #edf5ff;
-  --sidebar-primary: #70b4ff;
-  --sidebar-primary-foreground: #07162d;
-  --sidebar-accent: #183455;
-  --sidebar-accent-foreground: #edf5ff;
-  --sidebar-border: #294261;
-  --sidebar-ring: #70b4ff;
+  --sidebar: #111214;
+  --sidebar-foreground: #f5f5f0;
+  --sidebar-primary: #c7ff00;
+  --sidebar-primary-foreground: #0b0b0d;
+  --sidebar-accent: #242528;
+  --sidebar-accent-foreground: #f5f5f0;
+  --sidebar-border: #303136;
+  --sidebar-ring: #c7ff00;
 }
 
 @layer base {
@@ -351,41 +351,39 @@
 
 .auth-stage {
   background:
-    radial-gradient(circle at 56% 45%, rgb(9 105 218 / 28%), transparent 34%),
-    radial-gradient(circle at 3% 95%, rgb(38 106 183 / 25%), transparent 38%),
-    linear-gradient(145deg, #07162d 0%, #0b2245 58%, #0b336a 100%);
+    radial-gradient(circle at 60% 44%, rgb(199 255 0 / 10%), transparent 30%),
+    linear-gradient(145deg, #0b0b0d 0%, #151618 60%, #202124 100%);
 }
 
 .auth-stage::before {
   position: absolute;
   inset: 0;
   content: "";
-  background-image: linear-gradient(rgb(112 180 255 / 5%) 1px, transparent 1px), linear-gradient(90deg, rgb(112 180 255 / 5%) 1px, transparent 1px);
+  background-image: linear-gradient(rgb(255 255 255 / 4%) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 4%) 1px, transparent 1px);
   background-size: 42px 42px;
   mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 80%, transparent);
 }
 
-.auth-orbit-ring {
+.auth-panel-shape {
   position: absolute;
   top: 50%;
   left: 50%;
-  aspect-ratio: 1;
-  border: 1px solid rgb(112 180 255 / 20%);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
+  width: 11rem;
+  height: 16rem;
+  border: 1px solid rgb(199 255 0 / 18%);
+  background: rgb(255 255 255 / 3%);
   animation: auth-orbit-enter 1s ease-out both;
 }
 
-.auth-orbit-ring-one { width: 18rem; animation-delay: 0.1s; }
-.auth-orbit-ring-two { width: 25rem; animation-delay: 0.25s; }
-.auth-orbit-ring-three { width: 32rem; animation-delay: 0.4s; }
+.auth-panel-shape-left { transform: translate(-90%, -50%) skewY(-12deg); }
+.auth-panel-shape-right { transform: translate(-10%, -50%) skewY(-12deg); animation-delay: 0.18s; }
 .auth-logo { animation: auth-logo-enter 0.9s 0.3s ease-out both; }
 .auth-copy { animation: auth-copy-enter 0.7s 0.7s ease-out both; }
 .auth-panel { animation: auth-copy-enter 0.6s 0.35s ease-out both; }
 
 @keyframes auth-orbit-enter {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.75); }
-  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  from { opacity: 0; filter: blur(8px); }
+  to { opacity: 1; filter: blur(0); }
 }
 @keyframes auth-logo-enter {
   from { opacity: 0; transform: translateY(16px) scale(0.94); }
@@ -397,7 +395,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-orbit-ring, .auth-logo, .auth-copy, .auth-panel { animation: none; }
+  .auth-panel-shape, .auth-logo, .auth-copy, .auth-panel { animation: none; }
 }
 
 /* Atendimento: papel de parede e pontas dos balões, no estilo do WhatsApp */

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 128" role="img" aria-labelledby="title">
+  <title id="title">Hub System</title>
+  <g>
+    <path fill="#FFFFFF" d="M14 29 52 16v84l-38 13z"/>
+    <path fill="#FFFFFF" d="m76 25 38-13v87l-38 13z"/>
+    <path fill="#C7FF00" d="m43 31 43-15v31L65 55V44l-22 8z"/>
+    <path fill="#C7FF00" d="m43 79 22-8v13l21-7v31L43 123z"/>
+  </g>
+  <text x="142" y="88" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="700" letter-spacing="-4">Hub System</text>
+</svg>

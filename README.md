@@ -8,6 +8,18 @@ Gestão comercial, operacional e financeira para agência de sites e tráfego pa
 - **Configuração das integrações, crons, permissões e solução de problemas:** [docs/integracoes.md](docs/integracoes.md)
 - **Prospectador local com Docker sob demanda:** [docs/prospectador-local.md](docs/prospectador-local.md)
 
+## Identidade visual
+
+A identidade oficial usa grafite, branco e verde-lima. Os arquivos usados pelo sistema ficam em [`public/brand`](public/brand), e o kit completo com SVGs mestres, PNGs transparentes, ícones e regras de uso fica em [`Hub-System-Identidade-Visual-v2`](Hub-System-Identidade-Visual-v2/GUIA-DA-MARCA.md).
+
+Para regenerar todas as exportações a partir dos SVGs mestres:
+
+```bash
+node scripts/build-brand-v2.mjs
+```
+
+O ZIP do kit é uma entrega local e não é versionado, evitando duplicar os mesmos arquivos binários no repositório.
+
 ## Módulos
 
 | Área | Rotas | Destaques |
