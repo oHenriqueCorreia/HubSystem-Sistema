@@ -130,23 +130,25 @@ export default async function InicioPage() {
   const today = day;
   const canTasks = Boolean(user.permissions["tasks.read"]);
   const canAgenda = canTasks || Boolean(user.permissions["calendar.read"]);
-  const [overview, myDay, lookups, clients] = await Promise.all([
+  const month = monthBounds(day);
+  const sixAgo = monthBounds(addMonthsCivil(day, -5)).from;
+  // Os escopos do financeiro dependem só das permissões: os gráficos carregam junto com o resto.
+  const financeScopes = prefs.hidden.includes("financeiro")
+    ? []
+    : ([user.permissions["finance.company.read"] ? "empresa" : null, user.permissions["finance.personal.manage"] ? "pessoal" : null].filter(Boolean) as ("empresa" | "pessoal")[]);
+  const [overview, myDay, lookups, clients, financeCharts] = await Promise.all([
     getHomeOverview(user),
     canTasks && !prefs.hidden.includes("meu_dia") ? getMyDay(user.id) : Promise.resolve(null),
     canAgenda ? getCrmLookups() : Promise.resolve(null),
     canAgenda && !prefs.hidden.includes("agendas") ? listClientOptions() : Promise.resolve([]),
+    Promise.all(
+      financeScopes.map(async (scope) => {
+        const [evolution, lookups] = await Promise.all([listFlow(scope, sixAgo, month.to), getLookups(scope)]);
+        return { scope, evolution, rows: evolution.filter((t) => (t.status === "pago" ? (t.paid_at ?? "") >= month.from : t.due_date >= month.from)), categories: lookups.categories.map((c) => ({ id: c.id, name: c.name })) };
+      }),
+    ),
   ]);
   const visible = prefs.order.filter((k) => !prefs.hidden.includes(k));
-  const month = monthBounds(day);
-  const sixAgo = monthBounds(addMonthsCivil(day, -5)).from;
-  const financeCharts = prefs.hidden.includes("financeiro")
-    ? []
-    : await Promise.all(
-        overview.finance.map(async (f) => {
-          const [evolution, lookups] = await Promise.all([listFlow(f.scope, sixAgo, month.to), getLookups(f.scope)]);
-          return { scope: f.scope, evolution, rows: evolution.filter((t) => (t.status === "pago" ? (t.paid_at ?? "") >= month.from : t.due_date >= month.from)), categories: lookups.categories.map((c) => ({ id: c.id, name: c.name })) };
-        }),
-      );
   const seesOthers = [user.permissions["calendar.read"], user.permissions["tasks.read"]].some((scope) => scope === "team" || scope === "all");
   const agendaOwners = (lookups?.owners ?? []).filter((o) => seesOthers || o.id === user.id);
   const o = overview;
